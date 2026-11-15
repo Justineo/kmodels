@@ -6,7 +6,7 @@ import { z } from "zod";
 
 const runSchema = z.object({
   databaseId: z.number().int().positive(),
-  attempt: z.number().int().positive().default(1),
+  attempt: z.number().int().positive(),
   headSha: z.string().regex(/^[0-9a-f]{40}$/),
   url: z.string().url(),
   conclusion: z.string(),
@@ -84,15 +84,13 @@ export async function loadRefreshExecution(
       await gh(["api", `repos/${repository}/actions/runs/${runId}/artifacts?per_page=100`]),
     ),
   );
-  const legacyArtifact = `catalog-refresh-${runId}`;
-  const attemptArtifact = `${legacyArtifact}-attempt-${run.attempt}`;
+  const reportArtifact = `catalog-refresh-${runId}-attempt-${run.attempt}`;
   const available = new Set(artifacts.filter(({ expired }) => !expired).map(({ name }) => name));
   const verificationArtifact = `catalog-verification-${runId}-attempt-${run.attempt}`;
-  const artifactName = [attemptArtifact, legacyArtifact].find((name) => available.has(name));
   let verificationFailure: "test_timeout" | undefined;
   let reportPath: string | undefined;
-  if (artifactName !== undefined) {
-    const reportDirectory = join(directory, artifactName);
+  if (available.has(reportArtifact)) {
+    const reportDirectory = join(directory, reportArtifact);
     await gh([
       "run",
       "download",
@@ -100,16 +98,12 @@ export async function loadRefreshExecution(
       "--repo",
       repository,
       "--name",
-      artifactName,
+      reportArtifact,
       "--dir",
       reportDirectory,
     ]);
     reportPath = join(reportDirectory, "refresh-report.json");
-    if (
-      artifactName === attemptArtifact &&
-      run.conclusion === "failure" &&
-      failedSteps.includes("Verify generated catalog")
-    ) {
+    if (run.conclusion === "failure" && failedSteps.includes("Verify generated catalog")) {
       if (available.has(verificationArtifact))
         await gh([
           "run",
@@ -151,7 +145,7 @@ export async function loadRefreshExecution(
     failed_steps: failedSteps,
     repair_required: repairRequired,
     evidence_incomplete:
-      artifactName === undefined ||
+      reportPath === undefined ||
       verificationFailure !== undefined ||
       !["success", "failure"].includes(run.conclusion) ||
       (run.conclusion === "failure" && !repairRequired),

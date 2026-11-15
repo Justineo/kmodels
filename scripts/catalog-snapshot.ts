@@ -8,7 +8,6 @@ import { atomicWrite, sha256 } from "../src/catalog/io.ts";
 
 const repository = "Justineo/kmodels";
 const releaseTag = "catalog-snapshots";
-const transitionTag = "catalog-pre-cutover-audit";
 const pointerFile = "catalog-snapshot.json";
 const markerFile = ".catalog-hydrated";
 const maxBytes = 128 * 1024 * 1024;
@@ -192,28 +191,6 @@ export function expiredAssets(
   });
 }
 
-function pruneTransitionAudit(now: number) {
-  const ref = `refs/tags/${transitionTag}`;
-  const refs = z
-    .array(
-      z.object({
-        ref: z.string(),
-        object: z.object({ sha: z.string().regex(/^[a-f0-9]{40}$/), type: z.string() }),
-      }),
-    )
-    .parse(JSON.parse(gh("api", `repos/${repository}/git/matching-refs/tags/${transitionTag}`)));
-  const tag = refs.find((entry) => entry.ref === ref);
-  if (tag === undefined) return;
-  if (tag.object.type !== "tag") throw new Error("Transition audit must be an annotated tag");
-  const details = z
-    .object({
-      tagger: z.object({ date: z.iso.datetime({ offset: true }) }),
-    })
-    .parse(JSON.parse(gh("api", `repos/${repository}/git/tags/${tag.object.sha}`)));
-  if (Date.parse(details.tagger.date) / 1000 < now - retentionSeconds)
-    gh("api", "--method", "DELETE", `repos/${repository}/git/refs/tags/${transitionTag}`);
-}
-
 async function publish(directory: string, output: string, capturedAt: number) {
   const { archive, pointer } = await packSnapshot(directory, capturedAt);
   await publishArchive(archive, pointer, output);
@@ -331,7 +308,6 @@ async function main() {
       throw new Error("Current catalog snapshot is missing or invalid; refusing to prune");
     for (const id of expiredAssets(assets, current, now))
       gh("api", "--method", "DELETE", `repos/${repository}/releases/assets/${id}`);
-    pruneTransitionAudit(now);
     return;
   }
   throw new Error(

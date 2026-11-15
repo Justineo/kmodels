@@ -139,7 +139,7 @@ describe("repair execution evidence", () => {
     expect(evidence).toMatchObject({ repair_required: true, evidence_incomplete: true });
   });
 
-  it("does not let failed-log access errors silently fall back to a healthy committed report", async () => {
+  it("does not let failed-log access errors silently fall back to a healthy accepted report", async () => {
     const responses = mockGitHub("Build generated catalog");
     const gh = async (args: string[]) => {
       if (args.includes("--log-failed")) throw new Error("GitHub unavailable");
@@ -170,15 +170,34 @@ describe("repair execution evidence", () => {
     expect(gh.mock.calls.some(([args]) => args.includes("download"))).toBe(false);
   });
 
-  it("still loads older refresh reports without attempt-specific artifacts", async () => {
+  it("does not substitute an unscoped report for the selected workflow attempt", async () => {
     const gh = mockGitHub("Verify generated catalog", true, undefined, "catalog-refresh-123");
     const path = await directory();
     const evidence = await loadRefreshExecution("example/catalog", path, gh);
     expect(evidence).toMatchObject({
       repair_required: true,
-      evidence_incomplete: false,
-      report_path: join(path, "catalog-refresh-123/refresh-report.json"),
+      evidence_incomplete: true,
     });
+    expect(evidence?.report_path).toBeUndefined();
+    expect(gh.mock.calls.some(([args]) => args.includes("download"))).toBe(false);
+  });
+
+  it("requires the workflow attempt instead of guessing the first attempt", async () => {
+    const gh = mockGitHub(undefined);
+    gh.mockImplementationOnce(async () =>
+      JSON.stringify([
+        {
+          databaseId: 123,
+          headSha: "a".repeat(40),
+          url: "https://github.com/example/catalog/actions/runs/123",
+          conclusion: "success",
+          createdAt: "2026-10-07T00:00:00Z",
+        },
+      ]),
+    );
+    await expect(loadRefreshExecution("example/catalog", await directory(), gh)).rejects.toThrow(
+      /attempt/,
+    );
   });
 
   it.each([

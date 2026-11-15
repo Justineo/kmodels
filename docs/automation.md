@@ -11,6 +11,9 @@ Status: implemented
   gate. Preparation reads the latest completed main-branch refresh's report
   artifact, run identity, failed steps, and bounded failure log with read-only Actions access.
   Evidence lives outside the checkout; failed generated data never replaces the accepted pair.
+  Report and verification artifacts must match the selected run's explicit attempt. Unscoped or
+  other-attempt artifacts cannot substitute for missing evidence; missing attempt metadata fails
+  preparation instead of guessing an attempt.
   Collection, generated-data verification, and build failures enter execution review even when
   the provider report contains no repair candidate. A generated verification that reports only
   test-body timeouts on both attempts leaves operational evidence in the refresh artifact
@@ -19,7 +22,7 @@ Status: implemented
   Operational failures or a missing report
   remain explicitly incomplete; GitHub evidence retrieval errors fail preparation instead of
   silently falling back to a healthy old report. Local runs without execution evidence use the
-  committed report. Code-repair inference also begins when the selected refresh report contains
+  hydrated accepted snapshot's report. Code-repair inference also begins when the selected refresh report contains
   a parser failure, a changed source-contract finding, known unrecognized public pricing-card
   structure, an explicitly rejected Databricks pricing subpage, a missing owned accounting/endpoint contract, a repeated public 404/410, a rejected provider validation, or a failed
   pricing validation. Repeated public acquisition failures also enter investigation when they retain
@@ -173,7 +176,7 @@ Status: implemented
   token does not trigger push workflows. A final delivery job requires successful publication
   and deployment dispatch for every repair intent. A passing inference process or a textual report is not delivery.
   Failed or incomplete runs leave their diagnostics in Actions; the next scheduled run re-evaluates
-  the latest committed refresh and retries remaining candidates. There is no issue-based queue,
+  the latest completed refresh evidence and retries remaining candidates. There is no issue-based queue,
   automatic success disposition, or immediate unbounded retry loop. DeepSeek inference uses
   `DEEPSEEK_API_KEY`, not Copilot's included inference allowance. The key is passed only to the
   API proxy, excluded from the agent container, and sent only to `https://api.deepseek.com`.
@@ -451,10 +454,8 @@ Status: implemented
   commits and their Actions trailers, or check out a recent pointer and hydrate it.
   To restore a historical snapshot, hydrate and validate it in an isolated checkout, then publish
   those verified bytes with a fresh capture time and advance the pointer from current `main`.
-  The one-time history cutover keeps the annotated `catalog-pre-cutover-audit` tag for seven days
-  after migration, allowing the audit window to span both storage layouts. Cleanup removes that
-  tag after the window. The release tag itself points at an independent root so it cannot pin
-  old generated Git history.
+  The release tag points at an independent root so snapshot storage cannot pin old generated Git
+  history.
 - The report's provider table pairs current model, source, and pricing-coverage counts with their
   deltas. Model and source deltas show only nonzero `+`, `−`, and `~` terms; coverage deltas
   separately show changes in resolved and unknown model counts. Catalog publication and pricing

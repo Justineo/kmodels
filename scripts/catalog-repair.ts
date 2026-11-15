@@ -201,7 +201,7 @@ const markdown =
           "## Latest completed refresh execution",
           "",
           `Run: ${execution.run.url} (${execution.run.conclusion}); checkout: ${execution.run.headSha}.`,
-          `Report: ${configuredPath ?? "data/refresh-summary.json (committed fallback)"}.`,
+          `Report: ${configuredPath ?? "data/refresh-summary.json (accepted snapshot)"}.`,
           `Failed steps: ${execution.failed_steps.join(", ") || "none"}.`,
           ...(execution.verification_failure === "test_timeout"
             ? [
