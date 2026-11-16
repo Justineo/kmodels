@@ -64,6 +64,12 @@ Public rates come from three machine-readable AWS Price List offers:
 - [AmazonBedrockFoundationModels](https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockFoundationModels/current/index.json)
 - [AmazonBedrockService](https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockService/current/index.json)
 
+Product matching reuses normalized names and tokens by publisher and exact source text within
+one price-list interpretation. Cards have fixed identities during that phase; regional SKUs
+must not repeatedly tokenize the same labels. The cache ends with the parse. Display-name,
+reviewed identity, usage, rerank and family matching keep their existing priority and ambiguity
+checks; normalization reuse cannot create a new identity bridge or carry one into another parse.
+
 The Foundation Models feed has its own 16 MiB response ceiling so the growing native inventory
 fits within a bounded acquisition budget. Oversized or malformed feeds still fail as pricing
 dependencies rather than publishing a partial commercial partition.

@@ -42,7 +42,8 @@ export function websiteCoreAssets(
   let chunk = createChunk();
   let statusIndexes = new Map<number, number>();
   let cellIndexes = new Map<number, number>();
-  let acceptedSource = "";
+  const byteLength = (value: unknown) => encoder.encode(JSON.stringify(value)).byteLength;
+  let sourceBytes = byteLength(chunk);
 
   function intern<T>(
     reference: number | null,
@@ -57,45 +58,56 @@ export function websiteCoreAssets(
     if (value === undefined) throw new Error("Missing website pricing dictionary entry");
     const index = target.length;
     indexes.set(reference, index);
+    sourceBytes += byteLength(value) + (index === 0 ? 0 : 1);
     target.push(value);
     return index;
   }
 
-  function append(index: number): string {
+  function append(index: number): void {
     const model = catalog.models[index];
     const row = pricing.pricing[index];
     if (model === undefined || row === undefined) throw new Error("Missing website core row");
     chunk.models.push(model);
-    chunk.pricing.pricing.push([
+    const localRow: WebsitePricingSummaries["pricing"][number] = [
       row[0],
       intern(row[1], pricing.statuses, chunk.pricing.statuses, statusIndexes),
       intern(row[2], pricing.cells, chunk.pricing.cells, cellIndexes),
       intern(row[3], pricing.cells, chunk.pricing.cells, cellIndexes),
       intern(row[4], pricing.cells, chunk.pricing.cells, cellIndexes),
-    ]);
-    return JSON.stringify(chunk);
+    ];
+    chunk.pricing.pricing.push(localRow);
+    sourceBytes += byteLength(model) + byteLength(localRow) + (chunk.models.length === 1 ? 0 : 2);
   }
 
-  function publish(source: string, count: number): void {
-    assets.push({ fileName: websiteCoreChunkPath(catalog.data_version, counts.length), source });
-    counts.push(count);
+  function publish(): void {
+    assets.push({
+      fileName: websiteCoreChunkPath(catalog.data_version, counts.length),
+      source: JSON.stringify(chunk),
+    });
+    counts.push(chunk.models.length);
   }
 
   for (let index = 0; index < catalog.models.length; index += 1) {
-    let source = append(index);
-    if (encoder.encode(source).byteLength > WEBSITE_CORE_CHUNK_MAX_BYTES) {
+    const statusCount = chunk.pricing.statuses.length;
+    const cellCount = chunk.pricing.cells.length;
+    append(index);
+    if (sourceBytes > WEBSITE_CORE_CHUNK_MAX_BYTES) {
       if (chunk.models.length === 1) throw new Error("A website core row exceeds the chunk limit");
-      publish(acceptedSource, chunk.models.length - 1);
+      chunk.models.pop();
+      chunk.pricing.pricing.pop();
+      chunk.pricing.statuses.length = statusCount;
+      chunk.pricing.cells.length = cellCount;
+      publish();
       chunk = createChunk();
       statusIndexes = new Map();
       cellIndexes = new Map();
-      source = append(index);
-      if (encoder.encode(source).byteLength > WEBSITE_CORE_CHUNK_MAX_BYTES)
+      sourceBytes = byteLength(chunk);
+      append(index);
+      if (sourceBytes > WEBSITE_CORE_CHUNK_MAX_BYTES)
         throw new Error("A website core row exceeds the chunk limit");
     }
-    acceptedSource = source;
   }
-  if (chunk.models.length > 0) publish(acceptedSource, chunk.models.length);
+  if (chunk.models.length > 0) publish();
   const manifest = JSON.stringify({
     schema_version: 1,
     data_version: catalog.data_version,

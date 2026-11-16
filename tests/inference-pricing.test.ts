@@ -9,6 +9,8 @@ import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts";
 import { catalogSchema, type Catalog } from "../src/catalog/schema.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
+import { createCommercialPriceLookup } from "../src/pricing/commercial.ts";
+import { validatePriceData } from "../src/pricing/validation.ts";
 import type { InferencePriceMapping, InferencePriceRule } from "../src/pricing/inference-schema.ts";
 import type { PriceDataEnvelope, Selector } from "../src/pricing/schema.ts";
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
@@ -1179,6 +1181,72 @@ it("publishes complete mixed-provider selections with equivalent partition looku
   associations.offer_selections = [];
   expect(published.mapping.offer_selections).toEqual(original.offer_selections);
 });
+
+it("shares a checked price export across website projection without changing owned inputs or output", () => {
+  const { catalog, pricing, prices, associations } = mixedPublication();
+  const original = structuredClone({ prices, associations });
+  const isolated = websiteInferencePrices(catalog, pricing, associations);
+  const shared = websiteInferencePrices(catalog, pricing, associations, validatePriceData(prices));
+  expect(shared).toEqual(isolated);
+  expect({ prices, associations }).toEqual(original);
+});
+
+it("isolates commercial queries over the shared snapshot from caller mutation", () => {
+  const { prices, associations } = mixedPublication();
+  const lookup = createCommercialPriceLookup(prices, associations);
+  const modelQuery = {
+    subject: { kind: "model" as const, provider_id: "typesafe", model_id: "jev-1.13.0" },
+  };
+  const siblingQuery = {
+    subject: {
+      kind: "model" as const,
+      provider_id: "amazon-bedrock",
+      model_id: "us.openai.gpt-6-astra",
+    },
+  };
+  const originalModel = lookup(modelQuery);
+  const originalSibling = lookup(siblingQuery);
+  const changedModel = lookup(modelQuery);
+  changedModel.candidates.length = 0;
+  const changedSibling = lookup(siblingQuery);
+  changedSibling.snapshot.pricingDataVersion = "f".repeat(64);
+  prices.providers.length = 0;
+  associations.rules.length = 0;
+  associations.offer_selections = [];
+  expect(lookup(modelQuery)).toEqual(originalModel);
+  expect(lookup(siblingQuery)).toEqual(originalSibling);
+});
+
+it.each(["duplicate", "empty_evidence"])(
+  "rejects %s foreign selections before website projection even without mapping rules",
+  (kind) => {
+    const { catalog, pricing, prices, associations } = mixedPublication();
+    const validated = validatePriceData(prices);
+    associations.rules = associations.rules.filter(({ provider_id }) => provider_id === "typesafe");
+    const foreignOffers = new Set(
+      pricing.data.books
+        .filter(({ provider_id }) => provider_id === "amazon-bedrock")
+        .flatMap(({ offers }) => offers.map(({ id }) => id)),
+    );
+    const selections = associations.offer_selections;
+    const foreign = selections?.find(
+      ({ offer_ref, selection }) => foreignOffers.has(offer_ref) && selection.length > 0,
+    );
+    if (foreign === undefined || selections === undefined)
+      throw new Error("Missing foreign selection fixture");
+    if (kind === "duplicate") selections.push(structuredClone(foreign));
+    else {
+      const claim = foreign.selection[0];
+      if (claim === undefined) throw new Error("Missing foreign selection claim");
+      claim.evidence = [];
+    }
+    const failure = kind === "duplicate" ? /repeats an offer identity/ : /Too small/;
+    expect(() => websiteInferencePrices(catalog, pricing, associations)).toThrow(failure);
+    expect(() => websiteInferencePrices(catalog, pricing, associations, validated)).toThrow(
+      failure,
+    );
+  },
+);
 it.each(["missing", "duplicate", "unknown", "different"])(
   "rejects %s selections globally even for a provider without mapping rules",
   (kind) => {

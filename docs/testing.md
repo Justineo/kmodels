@@ -92,6 +92,9 @@ after each test, including failures.
   protect consumer resource contracts. Test their behavior with synthetic inputs and verify the
   current published assets stay within the same bounds.
   Website core data splits at complete model/price row boundaries into 128 KiB UTF-8 chunks.
+  Count row and dictionary bytes incrementally, including JSON punctuation, and serialize each
+  emitted chunk once. A deterministic work guard bounds serialized bytes by four times the
+  emitted payload; growing a chunk must not repeatedly serialize its accepted prefix.
   Verify per-chunk bounds, complete round trips, local dictionary remapping, deterministic order,
   and rejection of missing, reordered or mixed-version chunks. Normal inventory growth creates
   more chunks and has no fixed aggregate-size assertion or warning.
@@ -260,6 +263,10 @@ snapshot member against an unchanged-code reference, and distinguish capacity re
 timing or process-RSS improvement. Do not collect live sources or adopt replay output into `data/`.
 Mirror and worker validation must agree on valid inputs and on global duplicate/I-JSON
 failures, provider identity failures and foreign evidence ownership, including error context.
+Canonical serializer changes also preserve noncharacters in every Unicode plane as rejection
+cases, valid supplementary characters, escaped member names and lexicographically ordered numeric
+member names. Shared portable projection controls compare complete output with independent
+provider preparation, and preserve foreign selection validation for providers without mapping rules.
 Cover failures in either execution path and both together, including a remote task selected
 later than a failing local task in the original order. Scoped memoization controls must cover
 nested calls, thrown errors and reuse of an object with changed values in a later scope.

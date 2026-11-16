@@ -1,7 +1,8 @@
 import { createAssetPack, type EncodedAssetPack } from "./asset-pack.ts";
 import { catalogExportAssets, websiteAssets } from "./endpoints.ts";
 import { sha256 } from "./io.ts";
-import { priceDataExportAssets } from "./pricing-lookup-export.ts";
+import { priceDataExport, priceDataExportAssets } from "./pricing-lookup-export.ts";
+import { validatePriceData } from "../pricing/validation.ts";
 import type { PricingCatalogEnvelope } from "./pricing-schema.ts";
 import type { Catalog } from "./schema.ts";
 import { inferencePricingPath, type InferencePricingPublication } from "./inference-pricing.ts";
@@ -51,18 +52,22 @@ export async function projectCatalogPair(input: ProjectionInput): Promise<PairPr
 }
 
 function projectionAssets(input: ProjectionInput, dataVersion: string) {
+  const prices =
+    input.pricing.data.provider_snapshots.length === 0
+      ? undefined
+      : validatePriceData(priceDataExport(input.catalog, input.pricing));
   const uiAssets = websiteAssets(
     input.catalog,
     input.pricing.data,
     dataVersion,
     input.inference === undefined
       ? undefined
-      : websiteInferencePrices(input.catalog, input.pricing, input.inference.mapping),
+      : websiteInferencePrices(input.catalog, input.pricing, input.inference.mapping, prices),
   );
   const exportAssets = [
     ...catalogExportAssets(input.catalog, input.catalogAssetSource),
     { fileName: "pricing/index.json", sourceChunks: input.pricingAssetChunks },
-    ...priceDataExportAssets(input.catalog, input.pricing),
+    ...(prices === undefined ? [] : priceDataExportAssets(prices)),
     ...(input.inference === undefined
       ? []
       : [{ fileName: inferencePricingPath, source: input.inference.source }]),

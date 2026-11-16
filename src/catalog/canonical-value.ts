@@ -1,4 +1,5 @@
 const utf8 = new TextEncoder();
+const iJsonSpecialCharacters = /[\ud800-\udfff\ufdd0-\ufdef\ufffe\uffff]/;
 let canonicalKeys = new WeakMap<object, string>();
 
 // Synchronous phases can discard their keys while their input graph remains live.
@@ -115,6 +116,7 @@ export function assertIJsonValue(value: unknown): void {
 }
 
 function assertIJsonString(value: string): void {
+  if (!iJsonSpecialCharacters.test(value)) return;
   for (let index = 0; index < value.length; index += 1) {
     const first = value.charCodeAt(index);
     let codePoint = first;
@@ -143,6 +145,7 @@ export function canonicalJsonChunksFromValidated(value: unknown): string[] {
   // Flatten bounded fragments once, leaving final assembly to the caller.
   const chunks: string[] = [];
   const fragments: string[] = [];
+  const memberPrefixes = new Map<string, string>();
   let length = 0;
   function append(source: string): void {
     fragments.push(source);
@@ -174,7 +177,12 @@ export function canonicalJsonChunksFromValidated(value: unknown): string[] {
       append("{");
       let separator = "";
       for (const key of Object.keys(current).sort()) {
-        append(`${separator}${JSON.stringify(key)}:`);
+        let prefix = memberPrefixes.get(key);
+        if (prefix === undefined) {
+          prefix = `${JSON.stringify(key)}:`;
+          memberPrefixes.set(key, prefix);
+        }
+        append(separator + prefix);
         write(Reflect.get(current, key));
         separator = ",";
       }

@@ -6,10 +6,15 @@ import type { PriceDataTerm } from "./schema.ts";
 import type { PricingSnapshot } from "./snapshot.ts";
 import type { PriceMeter } from "../catalog/pricing-schema.ts";
 
+type CommercialSelections = ReadonlyMap<
+  string,
+  NonNullable<InferencePriceMapping["offer_selections"]>[number]["selection"]
+>;
+
 export function inferenceMatchData(
   snapshot: PricingSnapshot,
   rules: readonly InferenceMatchData["rules"][number][],
-  selections: InferencePriceMapping["offer_selections"] = [],
+  selections: CommercialSelections = new Map(),
   meter?: PriceMeter,
 ): InferenceMatchData {
   const includesTerm = (value: PriceDataTerm) =>
@@ -87,9 +92,7 @@ export function inferenceMatchData(
     offers: offers.map(({ offer }) => ({
       id: offer.id,
       selection:
-        selections
-          .find(({ offer_ref }) => offer_ref === offer.id)
-          ?.selection.map(({ evidence: _evidence, ...claim }) => claim) ??
+        selections.get(offer.id)?.map(({ evidence: _evidence, ...claim }) => claim) ??
         rules.flatMap(({ execution_choices }) =>
           (execution_choices ?? [])
             .filter(({ offer_ref }) => offer_ref === offer.id)

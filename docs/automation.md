@@ -520,6 +520,9 @@ Status: implemented
   validation. It advances one atomic pointer and repairs durable mirrors after
   interruption. Production verifies pair-bound projection manifests and encoded
   entry hashes without parsing the canonical pair.
+  One checked portable price projection feeds both website matching and portable exports.
+  Internal matchers index that owned projection without cloning and validating the same books
+  again. Public lookup factories retain their independent input-cloning and validation boundary.
 - The `compile:pricing` task also makes canonical pricing compilation available
   independently. It performs no fetch, validates the catalog-bound public
   parsed input, and republishes the accepted pair and projections. The

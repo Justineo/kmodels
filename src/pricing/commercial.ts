@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { commercialChoiceSchema, priceMeterSchema } from "../catalog/pricing-schema.ts";
-import { createInferencePriceLookup, selectedTerm } from "./inference.ts";
-import { inferencePriceMappingSchema } from "./inference-schema.ts";
+import { prepareInferencePriceLookup, selectedTerm } from "./inference.ts";
 import { inferenceMatchData } from "./inference-matching-data.ts";
 import { matchInferencePrices } from "./inference-matching.ts";
 import { createPricingSnapshot } from "./snapshot.ts";
@@ -35,9 +34,11 @@ export type CommercialPriceQuery = z.input<typeof commercialPriceQuerySchema>;
 
 /** Resolve unit prices for a model or resource; no usage quantities or cost aggregation. */
 export function createCommercialPriceLookup(priceData: unknown, mappingData: unknown) {
-  const inference = createInferencePriceLookup(priceData, mappingData);
-  const snapshot = createPricingSnapshot(priceData);
-  const mapping = inferencePriceMappingSchema.parse(mappingData);
+  const {
+    lookup: inference,
+    snapshot,
+    selections,
+  } = prepareInferencePriceLookup(createPricingSnapshot(priceData), mappingData);
   return (input: CommercialPriceQuery) => {
     const query = parseRequest(commercialPriceQuerySchema, input);
     const { subject, ...selection } = query;
@@ -66,7 +67,7 @@ export function createCommercialPriceLookup(priceData: unknown, mappingData: unk
     const matching = inferenceMatchData(
       snapshot,
       [{ offer_refs: book.offers.map(({ id }) => id), fixed_selectors: [] }],
-      mapping.offer_selections,
+      selections,
       query.meter,
     );
     const matched = matchInferencePrices(
@@ -92,10 +93,7 @@ export function createCommercialPriceLookup(priceData: unknown, mappingData: unk
           selectors: selectorSchema.array().parse(candidate.selectors),
           missing_conditions: candidate.missing_conditions,
           gaps: candidate.gaps,
-          evidence:
-            mapping.offer_selections
-              ?.find(({ offer_ref }) => offer_ref === candidate.offer_ref)
-              ?.selection.flatMap(({ evidence }) => evidence) ?? [],
+          evidence: selections.get(candidate.offer_ref)?.flatMap(({ evidence }) => evidence) ?? [],
           offer: {
             ...owner.offer,
             states: owner.offer.states.filter((_, index) => candidate.states.includes(index)),

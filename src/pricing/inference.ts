@@ -64,7 +64,11 @@ export interface InferencePriceResult {
 
 /** Exact ID lookup over existing prices; no invocation protocol or account configuration. */
 export function createInferencePriceLookup(priceData: unknown, mappingData: unknown) {
-  const snapshot = createPricingSnapshot(priceData);
+  return prepareInferencePriceLookup(createPricingSnapshot(priceData), mappingData).lookup;
+}
+
+/** Internal composition shares one privately cloned and validated snapshot. */
+export function prepareInferencePriceLookup(snapshot: PricingSnapshot, mappingData: unknown) {
   const mapping = inferencePriceMappingSchema.parse(mappingData);
   if (
     mapping.pricing_data_version !== snapshot.data.snapshot.pricingDataVersion ||
@@ -73,10 +77,10 @@ export function createInferencePriceLookup(priceData: unknown, mappingData: unkn
     throw new PricingError("INVALID_DATA", "Inference mappings belong to another price snapshot");
   if (new Set(mapping.sources.map(({ id }) => id)).size !== mapping.sources.length)
     throw new PricingError("INVALID_DATA", "Inference evidence repeats a source identity");
-  if (
-    new Set(mapping.offer_selections?.map(({ offer_ref }) => offer_ref)).size !==
-    (mapping.offer_selections?.length ?? 0)
-  )
+  const selections = new Map(
+    mapping.offer_selections?.map(({ offer_ref, selection }) => [offer_ref, selection] as const),
+  );
+  if (selections.size !== (mapping.offer_selections?.length ?? 0))
     throw new PricingError("INVALID_DATA", "Commercial selection repeats an offer identity");
   for (const projection of mapping.offer_selections ?? []) {
     const owner = snapshot.offers.get(projection.offer_ref);
@@ -152,7 +156,7 @@ export function createInferencePriceLookup(priceData: unknown, mappingData: unkn
   for (const rule of mapping.rules) {
     validateRule(snapshot, rule, mapping.sources);
     for (const choice of rule.execution_choices ?? []) {
-      if (mapping.offer_selections?.some(({ offer_ref }) => offer_ref === choice.offer_ref))
+      if (selections.has(choice.offer_ref))
         throw new PricingError(
           "INVALID_DATA",
           "Legacy and canonical commercial selections overlap",
@@ -164,16 +168,26 @@ export function createInferencePriceLookup(priceData: unknown, mappingData: unkn
     }
   }
 
-  return (input: InferencePriceQuery): InferencePriceResult => {
+  const rulesByProvider = new Map<string, Map<string, typeof mapping.rules>>();
+  for (const rule of mapping.rules) {
+    let byId = rulesByProvider.get(rule.provider_id);
+    if (byId === undefined) {
+      byId = new Map();
+      rulesByProvider.set(rule.provider_id, byId);
+    }
+    const rules = byId.get(rule.model_id);
+    if (rules === undefined) byId.set(rule.model_id, [rule]);
+    else rules.push(rule);
+  }
+
+  const lookup = (input: InferencePriceQuery): InferencePriceResult => {
     const query = parseRequest(inferencePriceQuerySchema, input);
     const evaluatedAt =
       query.evaluated_at === undefined
         ? snapshot.data.snapshot.generatedAt
         : parseEvaluationTime(query.evaluated_at);
     validateSelectors(query.selectors, []);
-    const rules = mapping.rules.filter(
-      (rule) => rule.provider_id === query.provider_id && rule.model_id === query.model_id,
-    );
+    const rules = rulesByProvider.get(query.provider_id)?.get(query.model_id) ?? [];
     const result: InferencePriceResult = {
       query,
       snapshot: { ...snapshot.data.snapshot },
@@ -212,7 +226,7 @@ export function createInferencePriceLookup(priceData: unknown, mappingData: unkn
       result.freshness = provider.snapshot;
     }
     const matched = matchInferencePrices(
-      inferenceMatchData(snapshot, rules, mapping.offer_selections, query.meter),
+      inferenceMatchData(snapshot, rules, selections, query.meter),
       query.selectors,
       evaluatedAt,
       query.offer_ref,
@@ -239,9 +253,7 @@ export function createInferencePriceLookup(priceData: unknown, mappingData: unkn
             evidence: uniqueCanonicalValues(
               matchedRules.flatMap((rule) => [
                 ...(rule?.evidence ?? []),
-                ...(mapping.offer_selections
-                  ?.find(({ offer_ref }) => offer_ref === candidate.offer_ref)
-                  ?.selection.flatMap(({ evidence }) => evidence) ?? []),
+                ...(selections.get(candidate.offer_ref)?.flatMap(({ evidence }) => evidence) ?? []),
                 ...(rule?.execution_choices ?? []).flatMap((choice) =>
                   choice.mode === query.execution_mode && choice.offer_ref === candidate.offer_ref
                     ? choice.evidence
@@ -274,6 +286,7 @@ export function createInferencePriceLookup(priceData: unknown, mappingData: unkn
       ),
     });
   };
+  return { lookup, snapshot, selections };
 }
 
 function validateRule(

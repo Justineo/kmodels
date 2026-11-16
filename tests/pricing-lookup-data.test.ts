@@ -114,7 +114,9 @@ describe("unit-price exports", () => {
   });
   it("publishes the index, coverage and per-provider unit-price assets", async () => {
     const { catalog, pricing } = await generatedData();
-    const fileNames = priceDataExportAssets(catalog, pricing).map(({ fileName }) => fileName);
+    const fileNames = priceDataExportAssets(
+      validatePriceData(priceDataExport(catalog, pricing)),
+    ).map(({ fileName }) => fileName);
     expect(fileNames).toEqual([
       "pricing/lookup/index.json",
       "pricing/lookup/coverage.json",

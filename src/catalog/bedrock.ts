@@ -1794,53 +1794,69 @@ function oneModel(cards: Card[]): Card | undefined {
   return cards.every((card) => key(card) === identity) ? first : undefined;
 }
 
-function modelForProduct(cards: Card[], label: string, usage: string): Card | undefined {
-  const displayMatches = cards.filter((card) => {
-    const labelKey = identityKey(label, card.publisher);
-    return labelKey !== "" && labelKey === identityKey(card.name, card.publisher);
-  });
-  if (displayMatches.length > 0) return oneModel(displayMatches);
-  const usageModel = usage.match(
-    /^[A-Z0-9]+-(.+?)-(?:input|output|cache|text|image|audio|video)(?:[-_]|$)/i,
-  )?.[1];
-  const matches = cards.filter((card) => {
-    const labelKey = identityKey(label, card.publisher);
-    if (labelKey !== "" && card.identityKeys.has(labelKey)) return true;
-    // Native SKU labels can abbreviate the model while the usage type preserves
-    // its full published name (including VL/BF16 and the parameter count).
-    if (
-      usageModel !== undefined &&
-      !/ Latency Optimized$/i.test(label) &&
-      identityKey(usageModel, card.publisher) === identityKey(card.name, card.publisher)
-    )
-      return true;
-    return [...card.ids].some(([id]) => {
-      const stem = id.replace(/^[^.]+\./, "").replace(/-v\d+:\d+$/i, "");
-      const value = stem.replace(/[^a-z0-9]+/gi, "[-._:]?");
-      return (
-        value.length >= 8 &&
-        new RegExp(
-          `(?:^|[-:_.])${value}(?:$|[-:_.](?:mantle|input|output|cache|provisioned|reserved|batch|priority|flex|standard|text|image|audio|video))`,
-          "i",
-        ).test(usage)
-      );
+function productModelMatcher(cards: Card[]) {
+  const identities = new Map<string, Map<string, { key: string; tokens: string[] }>>();
+  function identity(value: string, publisher = "") {
+    let byValue = identities.get(publisher);
+    if (byValue === undefined) {
+      byValue = new Map();
+      identities.set(publisher, byValue);
+    }
+    const existing = byValue.get(value);
+    if (existing !== undefined) return existing;
+    const tokens = identityTokens(value, publisher);
+    const created = { key: [...tokens].sort().join(":"), tokens };
+    byValue.set(value, created);
+    return created;
+  }
+  return (label: string, usage: string): Card | undefined => {
+    const displayMatches = cards.filter((card) => {
+      const labelKey = identity(label, card.publisher).key;
+      return labelKey !== "" && labelKey === identity(card.name, card.publisher).key;
     });
-  });
-  if (matches.length > 0) return oneModel(matches);
-  const rerankMatches = cards.filter((card) => {
-    if (!card.tasks.includes("reranking")) return false;
-    const source = new Set(identityTokens(`${label} ${usage}`, card.publisher));
-    const identity = identityTokens(card.name, card.publisher);
-    return identity.length > 0 && identity.every((token) => source.has(token));
-  });
-  if (rerankMatches.length > 0) return oneModel(rerankMatches);
-  if (identityKey(label) !== "") return undefined;
-  const familyMatches = cards.filter((card) => {
-    const source = new Set(identityTokens(`${label} ${usage}`, card.publisher));
-    const family = new Set(identityTokens(card.name, card.publisher));
-    return family.size >= 2 && [...family].every((token) => source.has(token));
-  });
-  return oneModel(familyMatches);
+    if (displayMatches.length > 0) return oneModel(displayMatches);
+    const usageModel = usage.match(
+      /^[A-Z0-9]+-(.+?)-(?:input|output|cache|text|image|audio|video)(?:[-_]|$)/i,
+    )?.[1];
+    const matches = cards.filter((card) => {
+      const labelKey = identity(label, card.publisher).key;
+      if (labelKey !== "" && card.identityKeys.has(labelKey)) return true;
+      // Native SKU labels can abbreviate the model while the usage type preserves
+      // its full published name (including VL/BF16 and the parameter count).
+      if (
+        usageModel !== undefined &&
+        !/ Latency Optimized$/i.test(label) &&
+        identity(usageModel, card.publisher).key === identity(card.name, card.publisher).key
+      )
+        return true;
+      return [...card.ids].some(([id]) => {
+        const stem = id.replace(/^[^.]+\./, "").replace(/-v\d+:\d+$/i, "");
+        const value = stem.replace(/[^a-z0-9]+/gi, "[-._:]?");
+        return (
+          value.length >= 8 &&
+          new RegExp(
+            `(?:^|[-:_.])${value}(?:$|[-:_.](?:mantle|input|output|cache|provisioned|reserved|batch|priority|flex|standard|text|image|audio|video))`,
+            "i",
+          ).test(usage)
+        );
+      });
+    });
+    if (matches.length > 0) return oneModel(matches);
+    const rerankMatches = cards.filter((card) => {
+      if (!card.tasks.includes("reranking")) return false;
+      const source = new Set(identity(`${label} ${usage}`, card.publisher).tokens);
+      const tokens = identity(card.name, card.publisher).tokens;
+      return tokens.length > 0 && tokens.every((token) => source.has(token));
+    });
+    if (rerankMatches.length > 0) return oneModel(rerankMatches);
+    if (identity(label).key !== "") return undefined;
+    const familyMatches = cards.filter((card) => {
+      const source = new Set(identity(`${label} ${usage}`, card.publisher).tokens);
+      const family = new Set(identity(card.name, card.publisher).tokens);
+      return family.size >= 2 && [...family].every((token) => source.has(token));
+    });
+    return oneModel(familyMatches);
+  };
 }
 
 function meter(
@@ -2768,6 +2784,9 @@ function parsePrices(
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
   onPricingDependencyFailure?: (url: string) => void,
 ): BedrockPrices {
+  // Card identities stay fixed during price interpretation. Reuse normalization
+  // across regional SKUs, then release it with this parse instead of the catalog.
+  const matchModel = productModelMatcher(cards);
   const byId = new Map<string, Map<string, SourcePriceFact>>();
   const modelRawFacts = new Map<string, SourceRawPricingFact[]>();
   const rawFor = (id: string): SourceRawPricingFact[] => {
@@ -2865,9 +2884,7 @@ function parsePrices(
           ? nativeLabel.replace(/ Latency Optimized$/i, "")
           : nativeLabel;
       const excludedFromInvocation = outsideInvocationScope(attributes);
-      const card = excludedFromInvocation
-        ? undefined
-        : modelForProduct(cards, identityLabel, usage);
+      const card = excludedFromInvocation ? undefined : matchModel(identityLabel, usage);
       requiredDimensions += dimensions.length;
       const modelRefs =
         card === undefined ? [] : [...card.ids.keys()].map((id) => `amazon-bedrock/${id}`);
@@ -3028,7 +3045,7 @@ function parsePrices(
           parsed.conditions.cache_ttl_seconds === pagePrice.ttl &&
           (pagePrice.speed === undefined || parsed.conditions.speed === pagePrice.speed) &&
           decimalsEqual(pagePrice.price, price) &&
-          pagePrice.labels.some((label) => modelForProduct(cards, label, "") === card);
+          pagePrice.labels.some((label) => matchModel(label, "") === card);
         // Owned Nova/Anthropic tables qualify their tariffs more narrowly. Other models
         // use the guide's Standard geographic tariff, never its Global discount.
         const standardGeo =
@@ -3322,7 +3339,7 @@ function parsePrices(
             .get();
           const label = cells[0];
           if (label === undefined || label === "") return;
-          const card = modelForProduct(cards, label, "");
+          const card = matchModel(label, "");
           const ids =
             card === undefined
               ? []
@@ -3442,7 +3459,7 @@ function parsePrices(
           const raw = cells[1];
           if (label === undefined || label === "" || raw === undefined || raw === "") return;
           requiredDimensions++;
-          const card = modelForProduct(cards, label, "");
+          const card = matchModel(label, "");
           const ids =
             card === undefined
               ? []

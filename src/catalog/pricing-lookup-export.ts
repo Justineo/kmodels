@@ -13,7 +13,6 @@ import type {
 import type { Catalog } from "./schema.ts";
 import { priceDataCoverage } from "./pricing-coverage.ts";
 import { snapshotSourceRecords } from "./pricing-source-records.ts";
-import { validatePriceData } from "../pricing/validation.ts";
 
 export function priceDataExport(
   catalog: Catalog,
@@ -164,11 +163,9 @@ function evidenceReference(observation: unknown) {
 }
 
 export function priceDataExportAssets(
-  catalog: Catalog,
-  pricing: PricingCatalogEnvelope,
+  envelope: PriceDataEnvelope,
 ): Array<{ fileName: string; source: string }> {
-  if (pricing.data.provider_snapshots.length === 0) return [];
-  const envelope = validatePriceData(priceDataExport(catalog, pricing));
+  if (envelope.providers.length === 0) return [];
   return [
     { fileName: "pricing/lookup/index.json", source: canonicalJson(envelope) },
     {

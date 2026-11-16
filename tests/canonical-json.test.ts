@@ -92,6 +92,23 @@ describe("RFC 8785 JSON", () => {
     expect(assertCanonicalJson(encoded(expected), encoded(expected).byteLength)).toEqual(rows);
   });
 
+  it.each(['ASCII\\"\n\u0000', "模型 العربية €", "😀\u{1f600}\u{10fffd}"])(
+    "preserves accepted Unicode strings: %j",
+    (value) => {
+      expect(canonicalJson(value)).toBe(JSON.stringify(value));
+    },
+  );
+
+  it.each(
+    Array.from({ length: 17 }, (_, plane) => [
+      String.fromCodePoint(plane * 0x10000 + 0xfffe),
+      String.fromCodePoint(plane * 0x10000 + 0xffff),
+    ]).flat(),
+  )("rejects Unicode noncharacters in every plane: %j", (value) => {
+    expect(() => canonicalJson(value)).toThrow("noncharacter");
+    expect(() => canonicalJson({ [value]: 1 })).toThrow("noncharacter");
+  });
+
   it("deduplicates by canonical bytes and retains the last equal value", () => {
     const last = { a: 2, b: 1 };
     const result = uniqueCanonicalValues([{ b: 1, a: 2 }, ["x"], null, ["x"], last]);

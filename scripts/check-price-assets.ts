@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { isDeepStrictEqual } from "node:util";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { priceDataCoverage } from "../src/catalog/pricing-coverage.ts";
@@ -14,7 +15,10 @@ async function readJson(file: string): Promise<unknown> {
 }
 
 const index = validatePriceData(await readJson("index.json"));
-assert.deepEqual(await readJson("coverage.json"), priceDataCoverage(index));
+assert(
+  isDeepStrictEqual(await readJson("coverage.json"), priceDataCoverage(index)),
+  "Built price coverage does not match the validated index",
+);
 const inference = await readJson("../inference.json").then(
   (value) => inferencePriceMappingSchema.parse(value),
   (error: unknown) => {
@@ -35,19 +39,33 @@ const inferenceGaps: Array<{
   reasons: string[];
 }> = [];
 let inferenceIds = 0;
+let sharedSelectionsChecked = false;
 for (const provider of index.providers) {
   const providerId = provider.snapshot.provider_id;
   const partition = await readJson(`providers/${providerId}.json`);
-  assert.deepEqual(partition, { ...index, providers: [provider] });
-  validatePriceData(partition);
+  assert(
+    isDeepStrictEqual(partition, { ...index, providers: [provider] }),
+    `Built price partition does not match the validated index: ${providerId}`,
+  );
+  // Exact equality with the validated complete index proves this partition's
+  // schema, semantics and global reference closure without another full clone.
   if (inference === undefined) continue;
   const rules = inference.rules.filter(({ provider_id }) => provider_id === providerId);
   if (rules.length === 0) continue;
+  const offerRefs = new Set(provider.books.flatMap(({ offers }) => offers.map(({ id }) => id)));
   const lookup = createInferencePriceLookup(partition, {
     ...inference,
     rules,
     sources: inference.sources.filter(({ provider_id }) => provider_id === providerId),
+    ...(inference.offer_selections === undefined || !sharedSelectionsChecked
+      ? {}
+      : {
+          offer_selections: inference.offer_selections.filter(({ offer_ref }) =>
+            offerRefs.has(offer_ref),
+          ),
+        }),
   });
+  sharedSelectionsChecked = true;
   const counts: Record<string, number> = {};
   for (const modelId of new Set(rules.map(({ model_id }) => model_id))) {
     inferenceIds++;

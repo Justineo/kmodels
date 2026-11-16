@@ -1,12 +1,17 @@
-import { createInferencePriceLookup, type InferencePriceResult } from "../pricing/inference.ts";
-import type { InferencePriceMapping } from "../pricing/inference-schema.ts";
+import { prepareInferencePriceLookup, type InferencePriceResult } from "../pricing/inference.ts";
+import type { InferencePriceMapping, InferencePriceRule } from "../pricing/inference-schema.ts";
 import { priceDataExport } from "./pricing-lookup-export.ts";
 import { formatDimension } from "./pricing-presentation.ts";
 import type { PricingCatalogEnvelope } from "./pricing-schema.ts";
 import type { Catalog } from "./schema.ts";
 import type { WebsiteInferencePrice } from "./website-schema.ts";
 import { inferenceMatchData } from "../pricing/inference-matching-data.ts";
-import { indexValidatedPriceData, offerApplicabilities } from "../pricing/snapshot.ts";
+import {
+  createPricingSnapshot,
+  indexValidatedPriceData,
+  offerApplicabilities,
+} from "../pricing/snapshot.ts";
+import type { PriceDataEnvelope } from "../pricing/schema.ts";
 import { inferencePricingOptions } from "./website-data.ts";
 import { inferencePriceExplanation } from "./inference-price-presentation.ts";
 
@@ -15,15 +20,41 @@ export function websiteInferencePrices(
   catalog: Catalog,
   pricing: PricingCatalogEnvelope,
   mapping: InferencePriceMapping,
+  validatedPrices?: PriceDataEnvelope,
 ): Map<string, WebsiteInferencePrice[]> {
   const results = new Map<string, WebsiteInferencePrice[]>();
-  for (const provider of pricing.data.provider_snapshots) {
+  for (const [providerIndex, provider] of pricing.data.provider_snapshots.entries()) {
     const providerId = provider.provider_id;
-    const prices = priceDataExport(catalog, pricing, [providerId]);
+    const priceSnapshot =
+      validatedPrices === undefined
+        ? createPricingSnapshot(priceDataExport(catalog, pricing, [providerId]))
+        : indexValidatedPriceData({
+            ...validatedPrices,
+            providers: validatedPrices.providers.filter(
+              ({ snapshot }) => snapshot.provider_id === providerId,
+            ),
+          });
+    const prices = priceSnapshot.data;
     const rules = mapping.rules.filter(({ provider_id }) => provider_id === providerId);
     const sources = mapping.sources.filter(({ provider_id }) => provider_id === providerId);
-    const lookup = createInferencePriceLookup(prices, { ...mapping, rules, sources });
-    const snapshot = indexValidatedPriceData(prices);
+    const offerIds = priceSnapshot.offers;
+    // The first lookup checks the shared selection schema and duplicate identities.
+    // Later providers need only their owned selection rows, with the same semantic checks.
+    const { lookup, snapshot, selections } = prepareInferencePriceLookup(priceSnapshot, {
+      ...mapping,
+      rules,
+      sources,
+      ...(mapping.offer_selections === undefined
+        ? {}
+        : {
+            offer_selections:
+              providerIndex === 0
+                ? mapping.offer_selections
+                : mapping.offer_selections.filter(({ offer_ref }) => offerIds.has(offer_ref)),
+          }),
+    });
+    const rulesByModel = groupRules(rules, "model_ref");
+    const rulesById = groupRules(rules, "model_id");
     const sourceUrls = new Map([
       ...prices.providers.flatMap(({ sources }) =>
         sources.map(({ id, url }) => [id, url] as const),
@@ -31,7 +62,7 @@ export function websiteInferencePrices(
       ...sources.map(({ id, url }) => [id, url] as const),
     ]);
     for (const model of catalog.models.filter(({ provider_id }) => provider_id === providerId)) {
-      const modelRules = rules.filter(({ model_ref }) => model_ref === model.uid);
+      const modelRules = rulesByModel.get(model.uid) ?? [];
       const ids = new Set([
         ...(modelRules.some(({ model_id }) => model_id === model.model_id) ? [model.model_id] : []),
         ...modelRules.map(({ model_id }) => model_id),
@@ -41,11 +72,7 @@ export function websiteInferencePrices(
         model.uid,
         [...ids].map((model_id) => {
           const result = lookup({ provider_id: providerId, model_id });
-          const matching = inferenceMatchData(
-            snapshot,
-            rules.filter((rule) => rule.model_id === model_id),
-            mapping.offer_selections,
-          );
+          const matching = inferenceMatchData(snapshot, rulesById.get(model_id) ?? [], selections);
           const pricing_options = inferencePricingOptions(
             [...new Set(matching.rules.flatMap(({ offer_refs }) => offer_refs))].flatMap((ref) => {
               const owner = snapshot.offers.get(ref);
@@ -63,6 +90,16 @@ export function websiteInferencePrices(
     }
   }
   return results;
+}
+
+function groupRules(rules: readonly InferencePriceRule[], key: "model_ref" | "model_id") {
+  const groups = new Map<string, InferencePriceRule[]>();
+  for (const rule of rules) {
+    const group = groups.get(rule[key]);
+    if (group === undefined) groups.set(rule[key], [rule]);
+    else group.push(rule);
+  }
+  return groups;
 }
 
 export function websiteInferencePrice(

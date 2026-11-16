@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { AssetSource } from "../src/catalog/asset-pack.ts";
 import { WEBSITE_CORE_CHUNK_MAX_BYTES, websiteCoreAssets } from "../src/catalog/website-core.ts";
 import { loadWebsiteCatalog, parseWebsiteCatalog } from "../src/catalog/website-runtime.ts";
@@ -64,6 +64,25 @@ function reader(assets: AssetSource[]) {
 }
 
 describe("website core chunks", () => {
+  it("bounds serialization work by the emitted UTF-8 payload", () => {
+    const { catalog, pricing } = input(1_500);
+    const stringify = JSON.stringify;
+    let serializedBytes = 0;
+    const serialization = vi.spyOn(JSON, "stringify").mockImplementation((value: unknown) => {
+      const source = stringify(value);
+      if (source !== undefined) serializedBytes += Buffer.byteLength(source);
+      return source;
+    });
+    let assets: AssetSource[];
+    try {
+      assets = websiteCoreAssets(catalog, pricing);
+    } finally {
+      serialization.mockRestore();
+    }
+    const outputBytes = assets.reduce((total, { source }) => total + Buffer.byteLength(source), 0);
+    expect(serializedBytes).toBeLessThanOrEqual(outputBytes * 4);
+  });
+
   it("splits growing UTF-8 data without losing order, prices or local dictionary references", async () => {
     const { catalog, pricing } = input(1_500);
     const assets = websiteCoreAssets(catalog, pricing);

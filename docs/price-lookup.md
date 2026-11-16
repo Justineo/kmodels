@@ -42,9 +42,18 @@ Neither missing prices nor missing usage implies zero. No cheapest/default offer
 The factories validate and privately clone their inputs. Results are independent copies. Mapping
 and price data must identify the same accepted snapshot; replace them together. Complete provider
 partitions preserve reference closure, including contributions to independently priced terms.
+The commercial factory shares one owned snapshot and mapping across its model and resource paths.
+Literal IDs and commercial selections are indexed once inside that owned state. Validation-only
+canonical keys and applicability indexes end with their synchronous validation scope; retaining a
+lookup or a validated export must not retain those temporary validation caches.
 
 The public [package contract](../packages/pricing/CONTRACT.md) and generated data/query JSON schemas
 describe the wire. Fixtures check conditions, evidence, unknowns and mutation isolation. Package
 checks verify packed declarations and equivalent Node/browser query results with networking
 disabled. Generated checks compare every provider export with the canonical data. Production builds
 replay mapped IDs against the materialized price assets.
+Build verification compares each provider file exactly with its independently validated complete
+index partition before replaying the public matcher. That equality reuses the proven schema and
+reference closure instead of cloning and validating the same partition a second time.
+Mismatch diagnostics identify the artifact and provider without formatting complete price books
+into an assertion diff; rejecting a damaged publication must not duplicate its data into logs.

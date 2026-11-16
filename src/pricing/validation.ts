@@ -1,5 +1,6 @@
 import { assertIJsonValue, canonicalJson } from "../catalog/canonical-value.ts";
 import { pricingLimits } from "../catalog/pricing-constants.ts";
+import { withPricingCanonicalCache } from "../catalog/pricing-canonical.ts";
 import {
   priceDataEnvelopeSchema,
   priceDataSchemaVersion,
@@ -41,13 +42,15 @@ export function validatePriceData(input: unknown): PriceDataEnvelope {
     throw new PricingError("UNSUPPORTED_SCHEMA", "Supported price data schema: 2.0");
   }
   try {
-    assertIJsonValue(input);
-    const parsed = priceDataEnvelopeSchema.safeParse(input);
-    if (!parsed.success) throw new Error(parsed.error.message);
-    requireUniqueIds(parsed.data.providers.map(({ snapshot }) => snapshot.provider_id));
-    const globalIds = new Set<string>();
-    for (const provider of parsed.data.providers) validateProvider(provider, globalIds);
-    return parsed.data;
+    return withPricingCanonicalCache(() => {
+      assertIJsonValue(input);
+      const parsed = priceDataEnvelopeSchema.safeParse(input);
+      if (!parsed.success) throw new Error(parsed.error.message);
+      requireUniqueIds(parsed.data.providers.map(({ snapshot }) => snapshot.provider_id));
+      const globalIds = new Set<string>();
+      for (const provider of parsed.data.providers) validateProvider(provider, globalIds);
+      return parsed.data;
+    });
   } catch (error) {
     throw new PricingError(
       "INVALID_DATA",
