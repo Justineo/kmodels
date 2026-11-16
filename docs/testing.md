@@ -44,9 +44,11 @@ remain independent.
 The website suite rebuilds the full inference and website publication once in a five-minute
 setup hook, outside each consumer assertion's budget. On CI this shared synchronous projection
 can take nearly three minutes; the assertions still enforce schema, parity and byte limits.
-The Vercel request-denominator regression likewise collects its complete reviewed inventory in a
-30-second setup hook, then checks the two affected rows within the normal test budget. Keep the
-full provider fixture: its independent service books satisfy the provider topology contract.
+The Vercel request-denominator and Bedrock profile source-Region regressions likewise collect
+their complete reviewed inventories in 30-second setup hooks, then check the affected rows within
+the normal five-second test budget. Keep the full provider fixtures: their independent service
+books satisfy the provider topology contract. Fixture acquisition, assembly and lookup preparation
+belong in the bounded setup rather than the consumer assertion's budget.
 
 For replay performance changes, compare the same committed data and pinned Node version with
 the same heap limit. Measure elapsed time and peak process RSS, including worker threads;

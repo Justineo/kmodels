@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
-import { expect, it, vi } from "vite-plus/test";
+import { beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { collectProvider } from "../src/catalog/collector.ts";
 import { fetchSource } from "../src/catalog/fetch.ts";
@@ -467,67 +467,76 @@ it("resolves India Kimi rates by the literal profile without borrowing other geo
   }
 }, 15000);
 
-it("keeps shared commercial Geo rates and named tier rates within each profile's source Regions", async () => {
-  const candidate = await collect((bundle) => {
-    const card = bundle.documents.find(({ url }) =>
-      url.endsWith("model-card-openai-gpt-6-astra.md"),
-    );
-    if (card === undefined) throw new Error("Missing Bedrock OpenAI fixture");
-    const indiaGeo = [
-      "**Geo: India**",
-      "",
-      "Geo inference ID: `in.openai.gpt-6-astra`",
-      "",
-      "| Source Region | Destination Regions |",
-      "| --- | --- |",
-      "| ap-south-1 (Mumbai) | ap-south-1 (Mumbai) |",
-      "",
-      "",
-    ].join("\n");
-    card.body = card.body
-      .replace("## Programmatic Access", "## Call the model")
-      .replace(
-        "To call this model from code, use the following model IDs and endpoint URLs.",
-        "Use these model IDs and endpoint URLs to call the model.",
-      )
-      .replace("## Regional Availability", "## Supported Regions")
-      .replaceAll("Availability using the `", "The `")
-      .replaceAll("APIs supported on `", "APIs supported on the `")
-      .replaceAll("Input Modalities", "Input modalities")
-      .replaceAll("Output Modalities", "Output modalities")
-      .replace("us.openai.gpt-6-astra |", "us.openai.gpt-6-astra, in.openai.gpt-6-astra |")
-      .replaceAll("Geo CRIS (US)", "US Geo CRIS")
-      .replace(
-        /^\| ap-south-1 \(Mumbai\).*$/m,
-        "| ap-south-1 | Not supported | Supported | Supported |",
-      )
-      .replace("## Quotas and Limits", `${indiaGeo}## Quotas and Limits`);
-  });
-  const query = lookup(candidate);
-  const provider_id = "amazon-bedrock";
-  const standard = [
-    ...conditions.filter(({ dimension }) => !["region", "service_tier"].includes(dimension.value)),
-    select("service_tier", "standard"),
-  ];
-  for (const [prefix, region, otherRegion] of [
-    ["in", "ap-south-1", "us-east-1"],
-    ["us", "us-east-1", "ap-south-1"],
-  ] as const) {
-    const model_id = `${prefix}.openai.gpt-6-astra`;
+describe("Bedrock profile source Regions", () => {
+  let query: ReturnType<typeof lookup>;
+
+  beforeAll(async () => {
+    const candidate = await collect((bundle) => {
+      const card = bundle.documents.find(({ url }) =>
+        url.endsWith("model-card-openai-gpt-6-astra.md"),
+      );
+      if (card === undefined) throw new Error("Missing Bedrock OpenAI fixture");
+      const indiaGeo = [
+        "**Geo: India**",
+        "",
+        "Geo inference ID: `in.openai.gpt-6-astra`",
+        "",
+        "| Source Region | Destination Regions |",
+        "| --- | --- |",
+        "| ap-south-1 (Mumbai) | ap-south-1 (Mumbai) |",
+        "",
+        "",
+      ].join("\n");
+      card.body = card.body
+        .replace("## Programmatic Access", "## Call the model")
+        .replace(
+          "To call this model from code, use the following model IDs and endpoint URLs.",
+          "Use these model IDs and endpoint URLs to call the model.",
+        )
+        .replace("## Regional Availability", "## Supported Regions")
+        .replaceAll("Availability using the `", "The `")
+        .replaceAll("APIs supported on `", "APIs supported on the `")
+        .replaceAll("Input Modalities", "Input modalities")
+        .replaceAll("Output Modalities", "Output modalities")
+        .replace("us.openai.gpt-6-astra |", "us.openai.gpt-6-astra, in.openai.gpt-6-astra |")
+        .replaceAll("Geo CRIS (US)", "US Geo CRIS")
+        .replace(
+          /^\| ap-south-1 \(Mumbai\).*$/m,
+          "| ap-south-1 | Not supported | Supported | Supported |",
+        )
+        .replace("## Quotas and Limits", `${indiaGeo}## Quotas and Limits`);
+    });
+    query = lookup(candidate);
+  }, 30_000);
+
+  it("keeps shared commercial Geo rates and named tier rates within each profile's source Regions", () => {
+    const provider_id = "amazon-bedrock";
+    const standard = [
+      ...conditions.filter(
+        ({ dimension }) => !["region", "service_tier"].includes(dimension.value),
+      ),
+      select("service_tier", "standard"),
+    ];
+    for (const [prefix, region, otherRegion] of [
+      ["in", "ap-south-1", "us-east-1"],
+      ["us", "us-east-1", "ap-south-1"],
+    ] as const) {
+      const model_id = `${prefix}.openai.gpt-6-astra`;
+      expect(
+        query({ provider_id, model_id, selectors: [...standard, select("region", region)] }).status,
+      ).toBe("matched");
+      expect(
+        query({ provider_id, model_id, selectors: [...standard, select("region", otherRegion)] })
+          .reason,
+      ).toBe("no_applicable_price");
+    }
     expect(
-      query({ provider_id, model_id, selectors: [...standard, select("region", region)] }).status,
+      query({ provider_id, model_id: "us.openai.gpt-6-astra", selectors: conditions }).status,
     ).toBe("matched");
     expect(
-      query({ provider_id, model_id, selectors: [...standard, select("region", otherRegion)] })
-        .reason,
+      query({ provider_id, model_id: "in.openai.gpt-6-astra", selectors: conditions }).reason,
     ).toBe("no_applicable_price");
-  }
-  expect(
-    query({ provider_id, model_id: "us.openai.gpt-6-astra", selectors: conditions }).status,
-  ).toBe("matched");
-  expect(
-    query({ provider_id, model_id: "in.openai.gpt-6-astra", selectors: conditions }).reason,
-  ).toBe("no_applicable_price");
+  });
 });
 
 it("associates the AWS GovCloud profile geography published by the model card", async () => {
