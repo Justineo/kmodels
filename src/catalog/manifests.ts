@@ -2925,7 +2925,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "vertex-pricing" },
-        extractorVersion: "vertex-pricing-v26",
+        extractorVersion: "vertex-pricing-v27",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: ["model_id", "tasks", "pricing", "pricing_inputs"],
         allowedHosts: [

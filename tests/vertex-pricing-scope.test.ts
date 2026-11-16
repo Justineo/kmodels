@@ -58,6 +58,33 @@ function parse(
 async function coherentPricing() {
   return (await nativePricing()).replaceAll("longer than or equal to", "longer than");
 }
+function repairCandidates(result: ReturnType<typeof parse>) {
+  return catalogRepairCandidates({
+    schema_version: 2,
+    generated_at: observedAt,
+    providers: [
+      {
+        provider_id: "vertex",
+        signals: [],
+        attempt: {
+          outcome: "accepted",
+          sources: [
+            {
+              source_id: source.id,
+              outcome: "unchanged",
+              content_changed: false,
+              pricing_reconciliation: sourcePricingReconciliation(
+                result.models,
+                result.findings,
+                true,
+              ),
+            },
+          ],
+        },
+      },
+    ],
+  });
+}
 it.each([
   ["Claude Haiku 5.5(D364-3640-5C2F)", "Claude Haiku 5 5"],
   ["Claude Haiku 5.5(D364-3640-5C2F)", "Claude Haiku 5.5"],
@@ -249,10 +276,13 @@ describe("Vertex native tariff scopes", () => {
     );
     expect(parsed.findings).toContainEqual(
       expect.objectContaining({
-        disposition: "unresolved",
-        reason_code: "pricing_context_scope_unresolved",
+        disposition: "raw",
+        reason_code: "pricing_context_boundary_disputed",
       }),
     );
+    expect(
+      sourcePricingReconciliation(parsed.models, parsed.findings, true).reason_counts,
+    ).not.toHaveProperty("pricing_context_scope_unresolved");
   });
   it("does not borrow another endpoint's threshold declaration", async () => {
     const body = (await nativePricing())
@@ -452,35 +482,16 @@ describe("Vertex native tariff scopes", () => {
     async (contract) => {
       const result = parse(
         contract === "context"
-          ? await nativePricing()
+          ? (await nativePricing()).replaceAll(
+              "If a query input context is longer than or equal to 200K tokens",
+              "Not an owned context rule",
+            )
           : (await coherentPricing()).replace(
               'id="pricing-global">Global',
               'id="pricing-global">All locations',
             ),
       );
-      const reconciliation = sourcePricingReconciliation(result.models, result.findings, true);
-      const candidates = catalogRepairCandidates({
-        schema_version: 2,
-        generated_at: observedAt,
-        providers: [
-          {
-            provider_id: "vertex",
-            signals: [],
-            attempt: {
-              outcome: "accepted",
-              sources: [
-                {
-                  source_id: source.id,
-                  outcome: "unchanged",
-                  content_changed: false,
-                  pricing_reconciliation: reconciliation,
-                },
-              ],
-            },
-          },
-        ],
-      });
-      expect(candidates).toContainEqual(
+      expect(repairCandidates(result)).toContainEqual(
         expect.objectContaining({
           source_id: source.id,
           trigger: "source_pricing_structure",
@@ -489,6 +500,12 @@ describe("Vertex native tariff scopes", () => {
       );
     },
   );
+  it("keeps a preserved disputed context boundary out of repair investigation", async () => {
+    const candidates = repairCandidates(parse(await nativePricing()));
+    expect(
+      candidates.filter(({ message }) => message.includes("pricing_context_scope_unresolved")),
+    ).toEqual([]);
+  });
   it.each([
     "Standard Model",
     "Standard",

@@ -236,7 +236,10 @@ from source collection and mapping implementation.
   The SKU pair establishes the cutoff and the price table supplies the amounts. Without that
   pair, only the exact disputed count remains unknown.
   Owned context/location failures produce explicit diagnostics and enter repair investigation even
-  on unchanged source bytes. Ordinary raw prices do not acquire that contract-failure trigger.
+  on unchanged source bytes. Ordinary raw prices do not acquire that contract-failure trigger, and
+  a preserved disputed boundary reconciles as retained raw evidence under
+  `pricing_context_boundary_disputed` rather than as an owned context failure: the source conflict
+  is documented, so no extractor contract is missing for it.
 - Reviewed partner sections may use `Price /1M (USD)` token tables; the header is recognized only
   under the reviewed model-provider section titles. The Gemini 2.5 layout keeps its exact
   short/long-context and cached-input columns. Unrelated abbreviated tables remain excluded.

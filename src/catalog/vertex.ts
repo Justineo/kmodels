@@ -66,7 +66,7 @@ interface PricingTableContext {
   notes: string[];
 }
 type PricingTableContexts = ReadonlyMap<NonNullable<Selection[0]>, PricingTableContext>;
-type PriceQuoteIssue = "context" | "location" | "model" | "account_credit";
+type PriceQuoteIssue = "context" | "context_dispute" | "location" | "model" | "account_credit";
 interface ModelPriceQuote {
   model: ProviderModel;
   label: string;
@@ -1389,7 +1389,7 @@ function addPriceQuote(
           },
         },
         fragment,
-        "context",
+        "context_dispute",
         context,
         reconcile,
       );
@@ -1410,11 +1410,13 @@ function addPriceQuote(
     },
   });
   reconcile?.({
-    disposition: issue === "account_credit" ? "raw" : "unresolved",
+    disposition: issue === "account_credit" || issue === "context_dispute" ? "raw" : "unresolved",
     reason_code:
       issue === "account_credit"
         ? "account_credit_effective_price"
-        : `pricing_${issue}_scope_unresolved`,
+        : issue === "context_dispute"
+          ? "pricing_context_boundary_disputed"
+          : `pricing_${issue}_scope_unresolved`,
     sample: `${model.model_id}: ${rate.meter}: ${rate.raw_unit ?? rate.unit}`.slice(0, 256),
   });
 }
