@@ -74,16 +74,19 @@ export interface CatalogPairPaths {
 
 export type { CatalogPairIdentity } from "./pair-identity.ts";
 
-export interface CatalogPairCandidate {
+export interface CatalogPairData {
   catalog: Catalog;
   pricing: PricingCatalogEnvelope;
+  inference?: InferencePricingPublication;
+}
+
+export interface CatalogPairCandidate extends CatalogPairData {
   catalogStorageSource: string;
   catalogAssetSource: string;
   pricingAssetSource: string;
   pricingAssetChunks: readonly string[];
   identity: CatalogPairIdentity;
   pairId: string;
-  inference?: InferencePricingPublication;
 }
 
 const defaultCatalogPairPaths: CatalogPairPaths = {
@@ -93,7 +96,10 @@ const defaultCatalogPairPaths: CatalogPairPaths = {
   inferenceMirror: join(rootDirectory, "data/inference-pricing.json"),
   projections: defaultProjectionPaths,
 };
-const preparedCandidates = new WeakSet<CatalogPairCandidate>();
+const preparedCandidates = new WeakSet<object>();
+function isPreparedCandidate(candidate: CatalogPairData): candidate is CatalogPairCandidate {
+  return preparedCandidates.has(candidate);
+}
 const pricingHeaderSchema = pricingCatalogSchema.extend({ books: z.array(z.unknown()) });
 const storedPricingHeaderSchema = pricingCatalogEnvelopeSchema.extend({
   data: pricingHeaderSchema,
@@ -133,10 +139,10 @@ export async function prepareCatalogPairInParallel(
 // Replay may rebuild the same values in different objects. Only an immutable,
 // locally prepared candidate can supply already-validated pricing and source bytes.
 export async function prepareRecompiledCatalogPair(
-  current: CatalogPairCandidate,
+  current: CatalogPairData,
   pricing: PricingCatalog,
 ): Promise<CatalogPairCandidate> {
-  if (preparedCandidates.has(current) && isDeepStrictEqual(pricing, current.pricing.data))
+  if (isPreparedCandidate(current) && isDeepStrictEqual(pricing, current.pricing.data))
     return current;
   return prepareCatalogPairInParallel(current.catalog, pricing);
 }

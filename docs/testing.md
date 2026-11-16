@@ -31,9 +31,10 @@ requires adding it to that list. The boundary guard follows test helpers, static
 re-exports, dynamic imports, and URL paths recursively, including nested test directories.
 The generated project reads its shared accepted pair through the normal checked mirror reader
 in a bounded setup hook. The shared context retains the checked graphs and inference mapping,
-releasing canonical publication fragments before consumer tests. Replay prepares its candidate
-through the parallel boundary for that assertion; website projections reuse the checked inference
-mapping and end caches with their synchronous phase, as in production. The reader checks schema,
+releasing canonical publication fragments before consumer tests. Replay consumes those checked
+graphs directly and prepares only its result through the parallel boundary for that assertion;
+website projections reuse the checked inference mapping and end caches with their synchronous
+phase, as in production. The reader checks schema,
 metadata hashes, provenance and canonical identity; generated tests additionally exercise parallel
 provider validation and compare replay and consumer outputs. This keeps cold filesystem,
 decompression and schema-validation cost out of the first assertion's default five-second budget.
@@ -61,10 +62,13 @@ JavaScript heap usage alone misses encoding buffers and worker memory. Verify th
 pricing hash and pair identity remain unchanged. Also exercise the generated-data project with
 `NODE_OPTIONS=--max-old-space-size=2048 vp run test:data` to expose temporary full-graph copies
 that a larger local heap would hide. Keep schema, byte-budget and global semantic checks intact.
-This is a diagnostic pressure run. Large accepted pairs can exhaust it during provider-validation
-replay even on unchanged code; compare the same snapshot and runtime on the baseline before
-attributing that failure to a patch. Record an exhausted baseline separately from normal release
-validation rather than declaring the pressure check passed or changing semantic assertions.
+This is a diagnostic pressure run. Replay must not prepare a redundant baseline publication:
+its canonical price text would overlap replay-input parsing and the result's serialization.
+Reading inputs earlier only moves that overlap to result preparation. Keep only the checked
+baseline graphs and prepare publication bytes for the result. Compare the same snapshot and
+runtime on the baseline before attributing a failure to a patch; baseline exhaustion establishes
+an existing problem, not an unavoidable capacity requirement. Verify exact publication parity
+for graph-only and already-prepared baselines, including unchanged, changed and absent replay.
 
 Both test projects block unmocked Fetch, Node HTTP(S), and child-process transports. Transport
 tests provide local responses explicitly; a fixture containing an official URL does not authorize

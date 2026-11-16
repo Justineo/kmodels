@@ -18,7 +18,11 @@ import {
 import { providerPricingPartitionHash, type ProviderPricingPartition } from "./pricing-assembly.ts";
 import { adoptedTopologies, validateAdoptedTopology } from "./pricing-adopted-topology.ts";
 import { pricingLimits } from "./pricing-constants.ts";
-import { prepareRecompiledCatalogPair, type CatalogPairCandidate } from "./pricing-publication.ts";
+import {
+  prepareRecompiledCatalogPair,
+  type CatalogPairCandidate,
+  type CatalogPairData,
+} from "./pricing-publication.ts";
 import {
   emptyPricingCatalog,
   pricingCatalogSchema,
@@ -251,7 +255,7 @@ export function createPricingCompilationSnapshot(
 }
 
 export async function readPricingCompilationSnapshot(
-  candidate: CatalogPairCandidate,
+  candidate: Pick<CatalogPairData, "pricing">,
   path = pricingCompilationPath,
 ): Promise<PricingCompilationSnapshot | undefined> {
   let compressed: Uint8Array;
@@ -280,7 +284,7 @@ export async function writePricingCompilationSnapshot(
 }
 
 export async function compilePricingSnapshot(
-  current: CatalogPairCandidate,
+  current: CatalogPairData,
   snapshot: PricingCompilationSnapshot,
   providerManifests: readonly ProviderManifest[] = manifests,
 ): Promise<PricingCompilationResult> {
@@ -386,8 +390,10 @@ export async function compilePricingSnapshot(
       return partition;
     }),
   );
-  const prepared =
-    replayedProviders.length === 0 ? current : await prepareRecompiledCatalogPair(current, pricing);
+  const prepared = await prepareRecompiledCatalogPair(
+    current,
+    replayedProviders.length === 0 ? current.pricing.data : pricing,
+  );
   const inferenceSources = tasks
     .filter(({ providerId }) => replayedProviders.includes(providerId))
     .flatMap(({ providerId, sources }) =>
@@ -525,7 +531,7 @@ function replaySources(
   replay: PricingReplayProvider,
   manifest: ProviderManifest,
   snapshot: ProviderPricingSnapshot,
-  current: CatalogPairCandidate,
+  current: CatalogPairData,
 ): ParsedPricingSource[] {
   const manifestSources = new Map(manifest.sources.map((source) => [source.id, source]));
   const catalogSources = new Map(current.catalog.sources.map((source) => [source.id, source]));
@@ -606,7 +612,7 @@ function pricingCatalogFromPartitions(
 
 function validateCompilationBinding(
   snapshot: PricingCompilationSnapshot,
-  candidate: CatalogPairCandidate,
+  candidate: Pick<CatalogPairData, "pricing">,
 ): void {
   if (
     snapshot.core_catalog_version !== candidate.pricing.core_catalog_version ||

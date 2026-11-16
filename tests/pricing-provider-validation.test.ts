@@ -8,7 +8,6 @@ import {
   adoptedTopologies,
   validateAdoptedTopology,
 } from "../src/catalog/pricing-adopted-topology.ts";
-import { prepareCatalogPairInParallel } from "../src/catalog/pricing-publication.ts";
 import { providerPartition } from "../src/catalog/pricing-transition.ts";
 import { rationalFromDecimal } from "../src/catalog/pricing-rational.ts";
 import { validatePricingCatalogInParallel } from "../src/catalog/pricing-validation-parallel.ts";
@@ -118,7 +117,7 @@ describe("provider pricing validation", () => {
 
   it("replays admissible inputs and preserves obsolete or rejected retained partitions", async () => {
     const { catalog, pricing } = await generatedData();
-    const current = await prepareCatalogPairInParallel(catalog, pricing);
+    const current = { catalog, pricing };
     const snapshot = await readPricingCompilationSnapshot(current);
     if (snapshot === undefined) throw new Error("Pricing replay input is missing");
 

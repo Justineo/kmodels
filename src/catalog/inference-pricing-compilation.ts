@@ -4,7 +4,11 @@ import {
   inferencePriceSourceSchema,
   type InferencePriceSource,
 } from "./inference-pricing-source.ts";
-import { withInferencePriceMapping, type CatalogPairCandidate } from "./pricing-publication.ts";
+import {
+  withInferencePriceMapping,
+  type CatalogPairCandidate,
+  type CatalogPairData,
+} from "./pricing-publication.ts";
 import { projectCommercialSelections } from "./commercial-selection-compilation.ts";
 import { batchInferenceAssociations } from "./batch-model-offers.ts";
 import { sourceContextSelectors } from "./offer-boundary.ts";
@@ -16,7 +20,7 @@ type Source = InferencePriceSource["record"];
 export function compileInferencePriceMapping(
   candidate: CatalogPairCandidate,
   inputs: readonly InferencePriceSource[],
-  previous?: CatalogPairCandidate,
+  previous?: CatalogPairData,
 ): CatalogPairCandidate {
   const prior = previous?.inference?.mapping;
   if (inputs.length === 0 && prior === undefined) return candidate;

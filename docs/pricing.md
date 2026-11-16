@@ -86,6 +86,14 @@ provider partitions through a bounded largest-first worker pool, validates the
 complete canonical resource, advances the accepted pair, and regenerates its
 projections without network access.
 
+Replay accepts checked catalog and pricing graphs without requiring a serialized
+baseline publication. Only its result needs publication bytes; preparing both the
+baseline and result would retain two complete canonical price texts while replay
+inputs and worker results are also live. Callers that already own an immutable,
+locally prepared candidate still reuse that exact candidate when pricing is unchanged.
+Graph-only baselines go through the normal complete preparation and validation of
+the result, including inference mapping from any accepted prior publication.
+
 The canonical compilation input is bound to the exact catalog core, and each
 replay source records its content hash and extractor version. Provider snapshot
 metadata comes from the accepted canonical pair rather than being duplicated.

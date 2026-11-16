@@ -685,6 +685,33 @@ describe("local canonical pricing compilation", () => {
     expect(compiled.candidate).toBe(current);
   });
 
+  it.each(["unchanged", "changed", "absent"])(
+    "publishes identical bytes from a graph-only baseline with %s replay input",
+    async (input) => {
+      const current = candidate("1");
+      const snapshot = createPricingCompilationSnapshot(
+        current,
+        input === "absent"
+          ? []
+          : [{ provider_id: providerId, sources: [replaySource(input === "changed" ? "2" : "1")] }],
+      );
+      const prepared = await compilePricingSnapshot(current, snapshot, [providerManifest]);
+      const graphs = await compilePricingSnapshot(
+        { catalog: current.catalog, pricing: current.pricing },
+        snapshot,
+        [providerManifest],
+      );
+
+      expect(graphs.candidate.identity).toEqual(prepared.candidate.identity);
+      expect(graphs.candidate.pricingAssetChunks).toEqual(prepared.candidate.pricingAssetChunks);
+      expect(graphs.candidate.pricing).toEqual(prepared.candidate.pricing);
+      expect(graphs.candidate.inference).toEqual(prepared.candidate.inference);
+      expect(graphs.replayedProviders).toEqual(prepared.replayedProviders);
+      expect(graphs.preservedProviders).toEqual(prepared.preservedProviders);
+      expect(graphs.replayFailures).toEqual(prepared.replayFailures);
+    },
+  );
+
   it("returns only a matching fingerprint across the worker boundary, otherwise the full result", async () => {
     const current = candidate("1");
     const partition = providerPartition(current.pricing.data, providerId, () => providerId);
