@@ -514,8 +514,16 @@ Status: implemented
   second timeout-only failure blocks publication. The generated verification job retains a
   40-minute cap for its retry; the publication queue prevents overlapping refresh writers.
 - The catalog and canonical pricing advance as one validated accepted pair. Collection
+  recovers accepted state before loading fresh shards, keeping their decoded graphs out of
+  mirror parsing. Recovery drops old canonical bytes before invoking the shard loader.
+  Each shard's decompression and I-JSON parsing end before strict schema cloning, so expanded
+  byte buffers do not remain owned by the merge loop during that cloning.
+  After fallback and summary preparation, collection releases replaced accepted graphs,
+  retaining only required source metadata and retained replay inputs. It then
   overlaps provider validation with canonical serialization, then freezes and
-  brands the exact candidate object. Commit concurrently compresses deterministic
+  brands the exact candidate object. Only the most complex provider is copied to a worker;
+  other candidate partitions are validated in process with the same global and provider checks.
+  Commit concurrently compresses deterministic
   projection assets and stages the immutable pair without repeating semantic
   validation. It advances one atomic pointer and repairs durable mirrors after
   interruption. Production verifies pair-bound projection manifests and encoded

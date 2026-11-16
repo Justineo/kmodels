@@ -5,7 +5,10 @@ import {
   captureInferencePriceSources,
   type InferencePriceSource,
 } from "./inference-pricing-source.ts";
-import { compileInferencePriceMapping } from "./inference-pricing-compilation.ts";
+import {
+  compileInferencePriceMapping,
+  type InferencePriceBaseline,
+} from "./inference-pricing-compilation.ts";
 import { canonicalJson, compareUtf8 } from "./canonical-value.ts";
 import { mapConcurrentByKey } from "./concurrency.ts";
 import type { ProviderResult, CollectionBatch } from "./collection-result.ts";
@@ -40,6 +43,7 @@ import {
   prepareCatalogPairInParallel,
   recoverCatalogPair,
   type CatalogPairCandidate,
+  type CatalogPairData,
 } from "./pricing-publication.ts";
 import {
   sourcePricingExtraction,
@@ -121,7 +125,7 @@ interface CollectionOptions {
   rebuildProvider?: string;
   pricingTransitions?: readonly ProviderPricingTransition[];
   pricingSafetyFindings?: readonly AcceptedPairSafetyFinding[];
-  collected?: CollectionBatch & { state: FetchState };
+  loadCollected?: () => Promise<CollectionBatch & { state: FetchState }>;
 }
 
 function previousModels(catalog: Catalog | undefined, providerId: string): ProviderModel[] {
@@ -1405,12 +1409,68 @@ export function collect(options: CollectionOptions = {}): Promise<Catalog> {
 }
 
 async function prepareCollection(options: CollectionOptions) {
-  if (options.collected !== undefined && (options.rebuild || options.rebuildProvider !== undefined))
+  const {
+    composed,
+    summary,
+    stateWrites,
+    results,
+    explicitProviders,
+    inferenceBaseline,
+    previousPricingCompilation,
+    operational,
+  } = await prepareCollectionInputs(options);
+  // Replaced accepted books and publication bytes end with the input phase, before
+  // new canonical chunks overlap validation workers' private provider graphs.
+  const [prepared] = await Promise.all([
+    prepareCatalogPairInParallel(composed.catalog, composed.pricing),
+    ...stateWrites,
+  ]);
+  const candidate = compileInferencePriceMapping(
+    prepared,
+    results.flatMap((result) =>
+      explicitProviders.has(result.provider.id) ? [] : (result.inferencePriceSources ?? []),
+    ),
+    inferenceBaseline,
+  );
+  const pricingCompilation = createPricingCompilationSnapshot(
+    candidate,
+    pricingCompilationEntries(candidate, results, explicitProviders, previousPricingCompilation),
+  );
+  const runReportPath = process.env.KMODELS_REFRESH_REPORT_PATH;
+  if (runReportPath !== undefined && runReportPath.trim() !== "")
+    await writeJson(runReportPath, { ...summary, operational });
+  await writePricingCompilationSnapshot(pricingCompilation);
+  return { candidate, catalog: composed.catalog, summary };
+}
+
+async function prepareCollectionInputs(options: CollectionOptions) {
+  if (
+    options.loadCollected !== undefined &&
+    (options.rebuild || options.rebuildProvider !== undefined)
+  )
     throw new Error("Sharded collection cannot be combined with a rebuild");
   const observedAt = (options.now ?? new Date()).toISOString();
   if ((options.jitterMs ?? 0) > 0) await wait(Math.floor(Math.random() * (options.jitterMs ?? 0)));
 
-  const acceptedPair = await recoverCatalogPair();
+  // End recovery's ownership of old canonical chunks before loading fresh shards.
+  const acceptedPair = await recoverCatalogPair().then((pair) => {
+    if (pair === undefined) return undefined;
+    const inferenceBaseline: InferencePriceBaseline = {
+      catalog: { sources: pair.catalog.sources },
+      pricing: { data: { provider_snapshots: pair.pricing.data.provider_snapshots } },
+      ...(pair.inference === undefined
+        ? {}
+        : {
+            inference: {
+              mapping: {
+                rules: pair.inference.mapping.rules,
+                sources: pair.inference.mapping.sources,
+              },
+            },
+          }),
+    };
+    return { catalog: pair.catalog, pricing: pair.pricing, pairId: pair.pairId, inferenceBaseline };
+  });
   const acceptedCatalog = acceptedPair?.catalog;
   const acceptedPricing = acceptedPair?.pricing.data ?? emptyPricingCatalog();
   const previousPricingCompilation = await loadPreviousPricingCompilation(acceptedPair);
@@ -1418,11 +1478,11 @@ async function prepareCollection(options: CollectionOptions) {
   const stateValue = await readJson(join(rootDirectory, "data/fetch-state.json"));
   const stateResult = stateValue === undefined ? undefined : fetchStateSchema.safeParse(stateValue);
   const previousState: FetchState = stateResult?.success ? stateResult.data : { sources: {} };
-  const state = options.collected?.state ?? structuredClone(previousState);
+  const received = options.loadCollected === undefined ? undefined : await options.loadCollected();
+  const state = received?.state ?? structuredClone(previousState);
 
   const collected =
-    options.collected ??
-    (await collectProviders(previous, state, observedAt, options.rebuildProvider));
+    received ?? (await collectProviders(previous, state, observedAt, options.rebuildProvider));
   const { results } = collected;
 
   const providers = results
@@ -1498,7 +1558,6 @@ async function prepareCollection(options: CollectionOptions) {
       safety_findings: options.pricingSafetyFindings ?? [],
     },
   );
-  const candidatePromise = prepareCatalogPairInParallel(composed.catalog, composed.pricing);
   const summary = summarizeRefresh(
     previous,
     composed.catalog,
@@ -1521,33 +1580,36 @@ async function prepareCollection(options: CollectionOptions) {
           };
     }),
   );
-  const [prepared] = await Promise.all([candidatePromise, ...stateWrites]);
-  const candidate = compileInferencePriceMapping(
-    prepared,
-    results.flatMap((result) =>
-      explicitProviders.has(result.provider.id) ? [] : (result.inferencePriceSources ?? []),
-    ),
-    acceptedPair,
+  const retainedProviders = new Set(
+    composed.pricing.provider_snapshots
+      .filter(({ publication }) => publication === "retained")
+      .map(({ provider_id }) => provider_id),
   );
-  const pricingCompilation = createPricingCompilationSnapshot(
-    candidate,
-    pricingCompilationEntries(candidate, results, explicitProviders, previousPricingCompilation),
-  );
-  const runReportPath = process.env.KMODELS_REFRESH_REPORT_PATH;
-  if (runReportPath !== undefined && runReportPath.trim() !== "")
-    await writeJson(runReportPath, {
-      ...summary,
-      operational: {
-        provider_durations: collected.durations,
-        source_durations: collected.sourceDurations,
-      },
-    });
-  await writePricingCompilationSnapshot(pricingCompilation);
-  return { candidate, catalog: composed.catalog, summary };
+  return {
+    composed,
+    summary,
+    stateWrites,
+    results,
+    explicitProviders,
+    inferenceBaseline: acceptedPair?.inferenceBaseline,
+    previousPricingCompilation:
+      previousPricingCompilation === undefined
+        ? undefined
+        : {
+            ...previousPricingCompilation,
+            providers: previousPricingCompilation.providers.filter(({ provider_id }) =>
+              retainedProviders.has(provider_id),
+            ),
+          },
+    operational: {
+      provider_durations: collected.durations,
+      source_durations: collected.sourceDurations,
+    },
+  };
 }
 
 async function loadPreviousPricingCompilation(
-  acceptedPair: Awaited<ReturnType<typeof recoverCatalogPair>>,
+  acceptedPair: Pick<CatalogPairData, "pricing"> | undefined,
 ): Promise<PricingCompilationSnapshot | undefined> {
   if (acceptedPair === undefined) return undefined;
   try {

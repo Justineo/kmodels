@@ -261,6 +261,15 @@ A passing accepted-pair publication benchmark alone does not cover simultaneousl
 collection inputs. Keep phase instrumentation out of final samples, compare every generated
 snapshot member against an unchanged-code reference, and distinguish capacity recovery from a
 timing or process-RSS improvement. Do not collect live sources or adopt replay output into `data/`.
+Collection ownership diagnostics distinguish replaced accepted books and canonical chunks from
+retained books and required source records before dispatching candidate validation. A compact
+prior inference baseline must preserve full-candidate results for current, captured historical
+and changed source evidence, including rejection of obsolete aliases.
+Deferred-loader tests keep shard decoding behind accepted-state recovery, reject rebuild
+combinations before invoking the loader, and require a failed load to abort before collection
+state writes or pair commit. Tests use private temporary storage and block live source fetching.
+Public preparation rejects global topology failures before serializing the full pricing graph;
+the work guard includes a valid-input control to prove it observes that allocation boundary.
 Mirror and worker validation must agree on valid inputs and on global duplicate/I-JSON
 failures, provider identity failures and foreign evidence ownership, including error context.
 Canonical serializer changes also preserve noncharacters in every Unicode plane as rejection

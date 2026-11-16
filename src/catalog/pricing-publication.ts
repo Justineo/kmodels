@@ -39,7 +39,7 @@ import {
 } from "./pricing-schema.ts";
 import {
   validatePricingCatalogInParallel,
-  validatePricingCatalogForRead,
+  validatePricingCatalogWithLocalPartitions,
 } from "./pricing-validation-parallel.ts";
 import { validatePricingCatalog } from "./pricing-validation.ts";
 import { defaultProjectionPaths, type ProjectionPaths } from "./projection-paths.ts";
@@ -161,9 +161,9 @@ async function prepareStructurallyValidatedPair(
   assertIJsonValue(parsedCatalog);
   const data = "pricing_data_version" in pricing ? pricing.data : pricing;
   const validation =
-    mode === "mirror"
-      ? validatePricingCatalogForRead(data, parsedCatalog)
-      : validatePricingCatalogInParallel(data, parsedCatalog, mode === "recovery" ? 2 : 3);
+    mode === "recovery"
+      ? validatePricingCatalogInParallel(data, parsedCatalog, 2)
+      : validatePricingCatalogWithLocalPartitions(data, parsedCatalog);
   // Owned reads release workers and temporary validation caches before allocating
   // the canonical source. Public preparation retains its serialization-before-await
   // boundary for caller input.
@@ -390,7 +390,7 @@ export async function readCatalogPairMirrors(
   const pricing =
     pricingBytes === undefined
       ? createPricingCatalogEnvelope(emptyPricingCatalog(), catalog)
-      : decodePricingCatalogStorage(decompressPricing(pricingBytes));
+      : await readPricingMirror(pricingBytes);
   const inferenceBytes =
     paths.inferenceMirror === undefined ? undefined : await optionalRead(paths.inferenceMirror);
   return prepareStructurallyValidatedPair(
@@ -409,8 +409,13 @@ function decodeCatalogStorage(input: Uint8Array): Catalog {
   );
 }
 
-function decodePricingCatalogStorage(input: Uint8Array): PricingCatalogEnvelope {
-  return decodePricingStorageBooks(decodePricingStorageHeader(input));
+async function readPricingMirror(input: Uint8Array): Promise<PricingCatalogEnvelope> {
+  // Only the compressed input crosses the await. Release the complete decoded
+  // buffer and raw parse frame before cloning the owned header's books.
+  const header = await Promise.resolve().then(() =>
+    decodePricingStorageHeader(decompressPricing(input)),
+  );
+  return decodePricingStorageBooks(header);
 }
 
 function decodePricingStorageHeader(input: Uint8Array) {

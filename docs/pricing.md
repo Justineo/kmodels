@@ -895,25 +895,25 @@ Stored pricing is decoded through a strict envelope/header followed by one book 
 Each parsed book replaces its unvalidated predecessor in the owned decoding state, so reading
 does not retain a complete unvalidated graph alongside a complete schema clone. Decoding
 stops at the first malformed book and retains its `data.books[index]` issue paths.
+Compressed mirror decoding returns only the owned header across an await, releasing its
+expanded byte buffer and raw parse frame before per-book schema cloning.
 The local read/recovery path enters preparation after structural validation; public preparation still
 validates caller-owned structures. Semantic validation, canonical hashes, core bindings and
 publication freezing run on both paths. There is no shape-validation cache for mutable objects.
-Provider validation runs at most three worker tasks concurrently, bounding the number of live
-private provider graph copies and validation caches. Every partition still uses the same
-validator; parent topology, global limits and canonical publication checks remain unchanged.
-Public preparation keeps cost ordering and native object-message transport. Three workers trade
-an additional simultaneous graph copy relative to two workers for lower validation latency.
-Mirror reads instead send only the estimated most expensive provider to one worker while
-validating the other owned partitions in process. The estimate includes applicability clause,
-condition and categorical-value counts, not just record counts. A single-provider read stays
-in process because it has no independent work to overlap with transport. Parent topology,
-limits and every provider validator remain unchanged. Errors retain the original task-order
-priority, even when the remote provider is later in that order. Worker teardown is awaited
-on both success and failure, before canonical source allocation. This bounds transport to one
-provider copy. Compared with entirely in-process mirror validation, this trades a higher
-first-read peak for lower latency; phase-local cache release can lower the complete publication
-peak independently. Measure both peaks rather than assuming one represents the other. It does
-not lower admission limits or bypass consumer validation.
+Public preparation and mirror reads send only the estimated most expensive provider to one
+worker while validating the other partitions in process. The estimate includes applicability
+clause, condition and categorical-value counts, not just record counts. A single-provider
+preparation stays in process because it has no independent work to overlap with transport.
+Parent topology, I-JSON and global limits complete synchronously before canonical allocation
+or dispatch. Every partition still uses the same validator. Errors retain the original
+task-order priority, even when the remote provider is later in that order. Teardown is awaited
+on success and failure. Transport is bounded to one provider copy, without retaining private
+copies of every provider in several worker heaps. Validation caches remain local to each
+synchronous provider phase. Mirror reads wait for teardown before allocating canonical
+fragments; public preparation retains its serialization-before-await boundary.
+The generated-data validator separately runs at most three worker tasks concurrently.
+No scheduling policy lowers admission limits or bypasses consumer validation. First-read,
+preparation and complete-publication peaks need separate measurements.
 Process peak RSS also depends on allocation and GC timing. Compilation retains its separate
 four-worker pool default. Accepted-snapshot recovery selects two validation workers and waits
 for their validation and teardown before allocating canonical data fragments. The recovered
@@ -922,6 +922,15 @@ validation. This prevents canonical fragments from overlapping worker graph copi
 at the cost of less CPU overlap. Public preparation of caller-owned input retains its
 serialization-before-await boundary. These are scheduling policies, not
 data-admission limits; endpoint memory alone cannot establish a process peak reduction.
+Collection recovers accepted state before invoking its lazy shard loader, so fresh shard graphs
+do not overlap mirror decoding. Recovery returns graph data and source metadata rather than
+retaining the old canonical chunks through shard loading. Collection then completes fallback,
+safety checks and summary generation in an input phase. Only composed graphs, retained providers'
+replay inputs and a source-only inference baseline cross into new candidate preparation. It keeps prior
+rules, mapping sources, captured pricing source records and catalog source records, preserving
+their lookup priority without retaining replaced price books or old serialized publication bytes.
+Replaced accepted graphs can therefore be released before new canonical fragments overlap worker
+copies. Public preparation and replay's prepared-candidate reuse boundary remain unchanged.
 Offline replay sends each compilation worker a SHA-256 fingerprint of the accepted provider
 partition. The worker fingerprints its complete assembled result, including source evidence and
 metadata, using bounded canonical chunks. An equal partition returns only that fingerprint,

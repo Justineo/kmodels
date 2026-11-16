@@ -53,7 +53,7 @@ async function main() {
     );
     const catalog = await collect({
       now: new Date(plan.observed_at),
-      collected: await readCollectionShards(resolve(second), plan),
+      loadCollected: () => readCollectionShards(resolve(second), plan),
     });
     console.log(`Assembled ${catalog.models.length} models from ${providerCount} providers`);
     return;

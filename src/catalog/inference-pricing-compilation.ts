@@ -16,11 +16,17 @@ import { selectorSchema } from "../pricing/schema.ts";
 
 type Source = InferencePriceSource["record"];
 
+export interface InferencePriceBaseline {
+  catalog: Pick<CatalogPairData["catalog"], "sources">;
+  pricing: { data: Pick<CatalogPairData["pricing"]["data"], "provider_snapshots"> };
+  inference?: { mapping: Pick<InferencePriceMapping, "rules" | "sources"> };
+}
+
 /** Rebuild only evidenced joins. Changed or missing identity evidence never revives an old alias. */
 export function compileInferencePriceMapping(
   candidate: CatalogPairCandidate,
   inputs: readonly InferencePriceSource[],
-  previous?: CatalogPairData,
+  previous?: InferencePriceBaseline,
 ): CatalogPairCandidate {
   const prior = previous?.inference?.mapping;
   if (inputs.length === 0 && prior === undefined) return candidate;

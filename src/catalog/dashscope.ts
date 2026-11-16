@@ -1055,7 +1055,7 @@ function parseDashscopeRecommendedComponents(input: ParseInput): Map<string, Pro
     const id = exactId(text(title));
     const href = attributes.get("href");
     let region: string | undefined;
-    if (href !== undefined && /^https:\/\/modelstudio\.console\.alibabacloud\.com\//.test(href)) {
+    if (href !== undefined && href.startsWith("https://modelstudio.console.alibabacloud.com/")) {
       try {
         const target = recommendedListingTarget(href);
         if (target.id === id) region = target.region;

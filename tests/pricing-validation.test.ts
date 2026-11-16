@@ -9,7 +9,7 @@ import {
 import { pricingCatalogSchema, type PricingCatalog } from "../src/catalog/pricing-schema.ts";
 import {
   validatePricingCatalogInParallel,
-  validatePricingCatalogForRead,
+  validatePricingCatalogWithLocalPartitions,
 } from "../src/catalog/pricing-validation-parallel.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
@@ -300,7 +300,7 @@ describe("canonical pricing serialized catalog validation", () => {
           return error instanceof Error ? error.message : String(error);
         }
       }
-      const local = await failure(() => validatePricingCatalogForRead(data, ownedCore));
+      const local = await failure(() => validatePricingCatalogWithLocalPartitions(data, ownedCore));
       const parallel = await failure(() => validatePricingCatalogInParallel(data, ownedCore));
       expect(local).toBe(parallel);
       if (kind === "valid" || kind === "unscoped_raw") expect(local).toBeUndefined();
@@ -375,7 +375,7 @@ describe("canonical pricing serialized catalog validation", () => {
           ...core.sources,
         ],
       };
-      const validation = validatePricingCatalogForRead(data, combinedCore);
+      const validation = validatePricingCatalogWithLocalPartitions(data, combinedCore);
       if (kind === "valid") await expect(validation).resolves.toBeUndefined();
       else
         await expect(validation).rejects.toThrow(

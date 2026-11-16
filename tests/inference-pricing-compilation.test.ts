@@ -10,7 +10,10 @@ import {
   prepareCatalogPair,
   type CatalogPairCandidate,
 } from "../src/catalog/pricing-publication.ts";
-import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
+import {
+  compileInferencePriceMapping,
+  type InferencePriceBaseline,
+} from "../src/catalog/inference-pricing-compilation.ts";
 import {
   createPricingCompilationSnapshot,
   compilePricingSnapshot,
@@ -252,6 +255,45 @@ describe("direct inference price source-to-consumer compilation", () => {
       reason: "unreviewed_id",
     });
   });
+
+  it.each(["current", "captured", "changed"])(
+    "recompiles from a source-only baseline with equivalent %s evidence",
+    async (mode) => {
+      const previous = pair(await collect());
+      const publication = previous.inference;
+      if (publication === undefined) throw new Error("Missing inference fixture");
+      const priorSources = mode === "captured" ? [] : publication.mapping.sources;
+      const full = {
+        ...previous,
+        catalog: {
+          ...previous.catalog,
+          sources: mode === "captured" ? [] : previous.catalog.sources,
+        },
+        inference: { ...publication, mapping: { ...publication.mapping, sources: priorSources } },
+      };
+      const baseline: InferencePriceBaseline = {
+        catalog: { sources: full.catalog.sources },
+        pricing: { data: { provider_snapshots: previous.pricing.data.provider_snapshots } },
+        inference: { mapping: { rules: publication.mapping.rules, sources: priorSources } },
+      };
+      const current = structuredClone(previous.catalog);
+      if (mode === "changed") {
+        const source = current.sources[0];
+        if (source === undefined) throw new Error("Missing identity source");
+        source.content_hash = sha256("changed baseline evidence");
+        source.observed_at = later;
+      }
+      if (mode === "captured")
+        expect(previous.pricing.data.provider_snapshots[0]?.source_records?.length).toBeGreaterThan(
+          0,
+        );
+      const prepared = prepareCatalogPair(current, previous.pricing.data);
+      const reference = compileInferencePriceMapping(prepared, [], full);
+      const compact = compileInferencePriceMapping(prepared, [], baseline);
+      expect(compact).toEqual(reference);
+      expect(lookup(compact, "jev-latest").status).toBe(mode === "changed" ? "unknown" : "matched");
+    },
+  );
 
   it("does not revive an older alias when recompiling retained prices against newer ID evidence", async () => {
     const collected = await collect();

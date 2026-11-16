@@ -20,12 +20,15 @@ interface ValidationResult {
 
 // Overlap the most complex partition with in-process validation of the remaining
 // owned graph. Only one partition is cloned, and its worker ends before return.
-export async function validatePricingCatalogForRead(
+export function validatePricingCatalogWithLocalPartitions(
   data: PricingCatalog,
   core: PricingValidationCore,
 ): Promise<void> {
   validatePricingCatalogTopology(data, core);
-  const tasks = providerTasks(data, core);
+  return validatePartitions(providerTasks(data, core));
+}
+
+async function validatePartitions(tasks: ValidationTask[]): Promise<void> {
   let remoteIndex = 0;
   let remoteWeight = -1;
   for (const [index, task] of tasks.entries()) {

@@ -275,12 +275,20 @@ export async function readCollectionShards(
   const shards: CollectionShard[] = [];
   for (const name of files.sort(compareUtf8)) {
     const path = join(directory, name);
-    if ((await stat(path)).size > pricingLimits.pricingInputBytes)
-      throw new Error("Collection shard exceeds its encoded byte limit");
-    const decoded = gunzipSync(await readFile(path), {
-      maxOutputLength: pricingLimits.pricingInputBytes,
-    });
-    shards.push(shardSchema.parse(parseIJson(decoded, pricingLimits.pricingInputBytes)));
+    shards.push(await readCollectionShard(path));
   }
   return mergeCollectionShards(plan, shards);
+}
+
+async function readCollectionShard(path: string): Promise<CollectionShard> {
+  if ((await stat(path)).size > pricingLimits.pricingInputBytes)
+    throw new Error("Collection shard exceeds its encoded byte limit");
+  // Schema cloning needs only the parse tree, not its expanded byte buffer.
+  const input = await readFile(path).then((compressed) =>
+    parseIJson(
+      gunzipSync(compressed, { maxOutputLength: pricingLimits.pricingInputBytes }),
+      pricingLimits.pricingInputBytes,
+    ),
+  );
+  return shardSchema.parse(input);
 }

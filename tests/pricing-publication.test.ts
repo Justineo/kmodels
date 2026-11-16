@@ -2,7 +2,8 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync, gunzipSync } from "node:zlib";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import * as canonicalValues from "../src/catalog/canonical-value.ts";
 import { decodeAssetPackManifest, validateAssetPack } from "../src/catalog/asset-pack.ts";
 import {
   commitCatalogPair,
@@ -154,6 +155,26 @@ describe("crash-consistent catalog pair publication", () => {
     await expect(prepareCatalogPairInParallel(catalog(), invalid)).rejects.toThrow(
       "Unrecognized key",
     );
+  });
+
+  it("rejects global topology failures before serializing a complete pricing graph", async () => {
+    const invalid: PricingCatalog = {
+      ...pricing,
+      provider_snapshots: [
+        { provider_id: "missing", observed_at: "2026-07-28T00:00:00.000Z", publication: "fresh" },
+      ],
+    };
+    const serialize = vi.spyOn(canonicalValues, "canonicalJsonChunksFromValidated");
+    try {
+      const valid = structuredClone(pricing);
+      await prepareCatalogPairInParallel(catalog(), valid);
+      expect(serialize.mock.calls.some(([value]) => value === valid)).toBe(true);
+      serialize.mockClear();
+      await expect(prepareCatalogPairInParallel(catalog(), invalid)).rejects.toThrow();
+      expect(serialize.mock.calls.some(([value]) => value === invalid)).toBe(false);
+    } finally {
+      serialize.mockRestore();
+    }
   });
 
   it("preserves the full path when a book fails structural validation", async () => {
