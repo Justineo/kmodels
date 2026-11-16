@@ -621,6 +621,80 @@ function bounded(
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
+interface SpeechInventoryGroup {
+  region?: string;
+  family: string;
+  ids: string[];
+}
+
+const speechInventoryHeadings = new Map<string, RegExp>([
+  ["asr", /^Models and languages$/],
+  ["tts", /^Supported models$/],
+]);
+
+const speechInventoryModality: Record<string, { input: Modality[]; output: Modality[] }> = {
+  asr: { input: ["audio"], output: ["text"] },
+  tts: { input: ["text"], output: ["audio"] },
+};
+
+function componentLabel(raw: string): string {
+  return text(raw.replace(/<[^>]+>/g, ""));
+}
+
+/**
+ * The speech pages publish their inventory as component lists instead of catalog
+ * tables: region tabs for text-to-speech and model-family accordions for speech
+ * recognition. Only the component title supplies the grouping label.
+ */
+function speechInventoryGroups(body: string, category: string): SpeechInventoryGroup[] {
+  const heading = speechInventoryHeadings.get(category);
+  if (heading === undefined || !markdownDocument(body)) return [];
+  const lines = body.split(/\r?\n/);
+  const start = lines.findIndex((line) => {
+    const match = line.match(/^#{1,6}\s+(.+?)\s*$/);
+    return match?.[1] !== undefined && heading.test(componentLabel(match[1]));
+  });
+  if (start < 0) return [];
+  const end = lines.findIndex((line, index) => index > start && /^#{1,2}\s+/.test(line));
+  const groups = new Map<string, SpeechInventoryGroup>();
+  let family = "";
+  let region: string | undefined;
+  let open = false;
+  for (const line of lines.slice(start + 1, end < 0 ? lines.length : end)) {
+    const boundary = line.match(/^\s*<(?:Tab|Accordion)\s+title="([^"]*)"/);
+    if (boundary?.[1] !== undefined) {
+      const label = componentLabel(boundary[1]);
+      open = true;
+      family = category === "tts" ? "" : label;
+      region = category === "tts" ? recommendedRegions.get(label) : undefined;
+      continue;
+    }
+    if (/^\s*<\/(?:Tab|Accordion)>/.test(line)) {
+      open = false;
+      family = "";
+      region = undefined;
+      continue;
+    }
+    if (!open) continue;
+    const item = line.match(/^\s*-\s+(.+)$/)?.[1];
+    if (item === undefined) continue;
+    const bold = item.match(/^\*\*([^*]+)\*\*:\s*(.*)$/);
+    const label = bold?.[1] === undefined ? family : componentLabel(bold[1]);
+    const payload = (bold?.[2] ?? item).split(": ")[0] ?? "";
+    const ids = payload.split(",").flatMap((candidate) => exactId(candidate.trim()) ?? []);
+    if (ids.length === 0) continue;
+    const key = `${region ?? ""}\u0000${label}`;
+    const group = groups.get(key) ?? {
+      family: label,
+      ids: [],
+      ...(region === undefined ? {} : { region }),
+    };
+    group.ids.push(...ids);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
 export function parseDashscopeCatalog(input: ParseInput): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "dashscope-catalog") throw new Error("Wrong DashScope catalog extractor");
@@ -721,7 +795,40 @@ export function parseDashscopeCatalog(input: ParseInput): SourceParseResult {
       "rows",
     ]);
   }
-  // The TTS page now lists its model inventory as region sections of code IDs rather than tables.
+  // The speech pages now list their model inventory as component lists rather than tables.
+  if (catalogTables === 0) {
+    for (const group of speechInventoryGroups(body, extractor.category)) {
+      const modalities = speechInventoryModality[extractor.category];
+      for (const id of group.ids) {
+        const model = baseModel({
+          providerId: input.provider.id,
+          id,
+          name: id,
+          sourceId: input.source.id,
+          observedAt: input.observedAt,
+        });
+        add(models, {
+          ...model,
+          tasks: rowOperations(extractor.category, id, group.family, undefined, [
+            extractor.category === "tts" ? "Supported models" : "Models and languages",
+          ]),
+          ...(extractor.category === "tts" && group.family !== ""
+            ? { raw_type: group.family }
+            : {}),
+          ...(modalities === undefined ? {} : { modalities }),
+          status: "active",
+          release_stage: /preview/i.test(id) ? "preview" : "unknown",
+          pricing_state: "unknown",
+          scope: "regional_catalog",
+          ...(group.region === undefined
+            ? {}
+            : { availability: [{ region: group.region, deployment_type: "model_api" }] }),
+        });
+      }
+      if (group.ids.length > 0) catalogTables += 1;
+    }
+  }
+  // The TTS page previously listed its model inventory as region sections of code IDs.
   if (extractor.category === "tts" && catalogTables === 0) {
     const $ = load(body);
     const heading = $("h2")
@@ -923,6 +1030,59 @@ function recommendedListingTarget(raw: string): { id: string; region: string } {
   return { id, region };
 }
 
+function recommendedCardAttributes(raw: string): Map<string, string> {
+  const attributes = new Map<string, string>();
+  for (const match of raw.matchAll(/([A-Za-z]+)="([^"]*)"/g))
+    if (match[1] !== undefined && match[2] !== undefined) attributes.set(match[1], match[2]);
+  return attributes;
+}
+
+/**
+ * The Markdown overview renders its model listing as `Card` components. A card
+ * titled with an exact ID and linked to a regional Model Plaza detail page carries
+ * both identity and region; a card that links to a documentation page or omits the
+ * link carries identity only and is reported as a contract finding.
+ */
+function parseDashscopeRecommendedComponents(input: ParseInput): Map<string, ProviderModel> {
+  const models = new Map<string, ProviderModel>();
+  const findings: string[] = [];
+  for (const [index, line] of input.body.split(/\r?\n/).entries()) {
+    const tag = line.match(/<Card\s+([^>]*?)\/?>\s*$/)?.[1];
+    if (tag === undefined) continue;
+    const attributes = recommendedCardAttributes(tag);
+    const title = attributes.get("title");
+    if (title === undefined) continue;
+    const id = exactId(text(title));
+    const href = attributes.get("href");
+    let region: string | undefined;
+    if (href !== undefined && /^https:\/\/modelstudio\.console\.alibabacloud\.com\//.test(href)) {
+      try {
+        const target = recommendedListingTarget(href);
+        if (target.id === id) region = target.region;
+      } catch {
+        region = undefined;
+      }
+    }
+    if (id === undefined || region === undefined) {
+      findings.push(`/cards/${index}`);
+      continue;
+    }
+    add(models, {
+      ...baseModel({
+        providerId: input.provider.id,
+        id,
+        name: id,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      }),
+      availability: [{ region, deployment_type: "model_api" }],
+      scope: "regional_catalog",
+    });
+  }
+  if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
+  return models;
+}
+
 function parseDashscopeRecommendedListing(input: ParseInput): Map<string, ProviderModel> {
   const models = new Map<string, ProviderModel>();
   const findings: string[] = [];
@@ -957,7 +1117,10 @@ function parseDashscopeRecommendedListing(input: ParseInput): Map<string, Provid
 }
 
 function parseDashscopeRecommendedMarkdown(input: ParseInput): Map<string, ProviderModel> {
-  if (!/Model ID\s*`/.test(input.body)) return parseDashscopeRecommendedListing(input);
+  if (!/Model ID\s*`/.test(input.body))
+    return /<Card\s+[^>]*title="/.test(input.body)
+      ? parseDashscopeRecommendedComponents(input)
+      : parseDashscopeRecommendedListing(input);
   const lines = input.body.split(/\r?\n/);
   const starts = lines.flatMap((line, index) =>
     /^\[!\[\]\([^\n]+\) [^\n]+\]\([^\n]+\)\s*$/.test(line) ? [index] : [],

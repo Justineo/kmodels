@@ -10414,6 +10414,148 @@ describe("DashScope adapters", () => {
     ]);
   });
 
+  it("reads the component-based speech inventories published in Markdown", async () => {
+    const tts = parse(source("dashscope-tts"), await fixture("dashscope/tts-supported-models.md"));
+    expect(
+      tts.map(({ model_id, tasks, modalities, availability, raw_type }) => ({
+        model_id,
+        tasks,
+        modalities,
+        availability,
+        raw_type,
+      })),
+    ).toEqual([
+      {
+        model_id: "cosyvoice-v2",
+        tasks: ["speech_synthesis"],
+        modalities: { input: ["text"], output: ["audio"] },
+        availability: [{ region: "China (Beijing)", deployment_type: "model_api" }],
+        raw_type: "CosyVoice",
+      },
+      {
+        model_id: "cosyvoice-v3-plus",
+        tasks: ["speech_synthesis"],
+        modalities: { input: ["text"], output: ["audio"] },
+        availability: [{ region: "Singapore", deployment_type: "model_api" }],
+        raw_type: "CosyVoice",
+      },
+      {
+        model_id: "cosyvoice-v3.5-plus",
+        tasks: ["speech_synthesis"],
+        modalities: { input: ["text"], output: ["audio"] },
+        availability: [{ region: "China (Beijing)", deployment_type: "model_api" }],
+        raw_type: "CosyVoice",
+      },
+      {
+        model_id: "qwen-audio-3.1-tts-flash",
+        tasks: ["speech_synthesis"],
+        modalities: { input: ["text"], output: ["audio"] },
+        availability: [{ region: "Singapore", deployment_type: "model_api" }],
+        raw_type: "Qwen-Audio-TTS",
+      },
+      {
+        model_id: "qwen-audio-3.1-tts-plus",
+        tasks: ["speech_synthesis"],
+        modalities: { input: ["text"], output: ["audio"] },
+        availability: [{ region: "Singapore", deployment_type: "model_api" }],
+        raw_type: "Qwen-Audio-TTS",
+      },
+    ]);
+
+    const asr = parse(
+      source("dashscope-asr"),
+      await fixture("dashscope/asr-models-and-languages.md"),
+    );
+    expect(
+      asr.map(({ model_id, tasks, modalities, availability, raw_type }) => ({
+        model_id,
+        tasks,
+        modalities,
+        availability,
+        raw_type,
+      })),
+    ).toEqual([
+      {
+        model_id: "fun-asr",
+        tasks: ["transcription"],
+        modalities: { input: ["audio"], output: ["text"] },
+        availability: undefined,
+        raw_type: undefined,
+      },
+      {
+        model_id: "fun-asr-flash-8k-realtime",
+        tasks: ["transcription"],
+        modalities: { input: ["audio"], output: ["text"] },
+        availability: undefined,
+        raw_type: undefined,
+      },
+      {
+        model_id: "fun-asr-realtime",
+        tasks: ["transcription"],
+        modalities: { input: ["audio"], output: ["text"] },
+        availability: undefined,
+        raw_type: undefined,
+      },
+      {
+        model_id: "qwen-audio-3.0-asr-flash-streaming",
+        tasks: ["transcription"],
+        modalities: { input: ["audio"], output: ["text"] },
+        availability: undefined,
+        raw_type: undefined,
+      },
+      {
+        model_id: "qwen-audio-3.1-asr-flash-streaming",
+        tasks: ["transcription"],
+        modalities: { input: ["audio"], output: ["text"] },
+        availability: undefined,
+        raw_type: undefined,
+      },
+      {
+        model_id: "qwen3-asr-flash",
+        tasks: ["transcription"],
+        modalities: { input: ["audio"], output: ["text"] },
+        availability: undefined,
+        raw_type: undefined,
+      },
+      {
+        model_id: "qwen3-asr-flash-filetrans",
+        tasks: ["transcription"],
+        modalities: { input: ["audio"], output: ["text"] },
+        availability: undefined,
+        raw_type: undefined,
+      },
+      {
+        model_id: "qwen3-asr-flash-realtime",
+        tasks: ["transcription"],
+        modalities: { input: ["audio"], output: ["text"] },
+        availability: undefined,
+        raw_type: undefined,
+      },
+    ]);
+  });
+
+  it("reads Markdown recommended-model cards by their Model Plaza detail link", async () => {
+    const models = parse(
+      source("dashscope-recommended"),
+      await fixture("dashscope/recommended-components.md"),
+    );
+    expect(models).toHaveLength(17);
+    expect(models.find(({ model_id }) => model_id === "MiniMax-M2.5")).toMatchObject({
+      availability: [{ region: "China (Beijing)", deployment_type: "model_api" }],
+    });
+    expect(models.find(({ model_id }) => model_id === "ZHIPU/GLM-5.3")).toMatchObject({
+      availability: [{ region: "Singapore", deployment_type: "model_api" }],
+    });
+    expect(models.find(({ model_id }) => model_id === "happyoyster-1.0-adventure")).toMatchObject({
+      availability: [{ region: "Singapore", deployment_type: "model_api" }],
+    });
+    // Cards linking to a guide page or omitting the link publish no region and stay unbound.
+    expect(models.map(({ model_id }) => model_id)).not.toContain("glm-5.3");
+    expect(models.map(({ model_id }) => model_id)).not.toContain("happyoyster-1.0-acting");
+    expect(models.map(({ model_id }) => model_id)).not.toContain("qwen-audio-3.1-realtime-flash");
+    expect(models.every(({ availability }) => (availability?.length ?? 0) === 1)).toBe(true);
+  });
+
   it("validates Markdown recommended-model cards against their published routes", async () => {
     const body = await fixture("dashscope/recommended.md");
     const models = parse(source("dashscope-recommended"), body);
@@ -11785,7 +11927,7 @@ describe("DashScope adapters", () => {
     expect(catalogSources.length).toBeGreaterThan(0);
     expect(
       catalogSources.every(({ format, extractorVersion }) => {
-        return format === "html" && extractorVersion === "dashscope-catalog-v8";
+        return format === "html" && extractorVersion === "dashscope-catalog-v9";
       }),
     ).toBe(true);
     const markdownSources = value.sources.filter(
@@ -11798,7 +11940,7 @@ describe("DashScope adapters", () => {
       markdownSources.every(({ format, url }) => format === "markdown" && url.endsWith(".md")),
     ).toBe(true);
     expect(source("dashscope-recommended")).toMatchObject({
-      extractorVersion: "dashscope-recommended-v8",
+      extractorVersion: "dashscope-recommended-v9",
       retainOmittedFacts: true,
     });
     expect(source("dashscope-pricing")).toMatchObject({

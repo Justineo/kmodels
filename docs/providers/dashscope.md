@@ -171,9 +171,17 @@ Production collection uses only Alibaba Cloud first-party sources:
   `Recommended models`/`All models`/`Legacy models` ownership is declared by heading elements that
   are page siblings of the tables rather than enclosing sections, so catalog extraction resolves
   each table's heading outline from its preceding siblings before applying the reviewed section
-  filter. The TTS catalog now publishes its inventory as region sections of exact `<code>` IDs under
-  a `Supported models` heading instead of model tables, so that source reads the region sections
-  directly while keeping the table path and the at-least-one-section completeness guard;
+  filter. The speech catalogs publish their inventory as Markdown component lists rather than
+  tables: text-to-speech uses region `<Tab>` components and speech recognition uses model-family
+  `<Accordion>` components. Both read the exact IDs from the component list and keep the
+  at-least-one-section completeness guard. Text-to-speech takes its region and `raw_type` family
+  from the tab, while speech recognition takes only the family (as task evidence) because that
+  page no longer publishes a per-model region or execution type; its availability therefore comes
+  from the regional inventory rather than from an inferred suffix. The recommended-model Markdown
+  page now renders its listing as `<Card>` components, so each card supplies its exact ID from the
+  `title` attribute and its region from a Model Plaza detail link. A card that links to a guide
+  page or omits the link publishes identity without a region and is recorded as a contract
+  finding instead of being guessed;
 - the [model price book](https://www.alibabacloud.com/help/en/model-studio/model-pricing) owns
   current public invocation prices, including USD-prefixed Qwen3.8 Omni token and cache-hit rows
   scoped by the table's region and deployment column. The same price parser accepts explicit
