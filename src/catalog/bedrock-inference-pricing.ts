@@ -171,8 +171,9 @@ export function bedrockInferencePrices(
         if (model === undefined) continue;
         if (rerankArnRequired && model.tasks.includes("reranking")) {
           // The operation's required modelArn field owns addressing, not the generic
-          // Runtime template in the model card. Admit only documented literal ARNs below.
-          report(`/inference-pricing/rerank-requires-arn/${identity.modelId}`);
+          // Runtime template in the model card. Skipping the bare ID is the reviewed
+          // contract, so it is not a contract finding; only documented literal ARNs
+          // below become price rules.
           continue;
         }
         if (

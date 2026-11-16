@@ -903,6 +903,47 @@ it("does not infer private resource IDs, regional prefixes, or reranker ARNs", a
     expect(query({ provider_id: "amazon-bedrock", model_id }).reason).toBe("unreviewed_id");
 });
 
+it("treats the required reranker ARN as the reviewed addressing contract", async () => {
+  const manifest = manifests.find(({ provider }) => provider.id === "amazon-bedrock");
+  const source = manifest?.sources.find(({ id }) => id === "bedrock-models");
+  if (!manifest || !source) throw new Error("Missing Bedrock source");
+  const bundle = bundleSchema.parse(JSON.parse(await fixture("document/bedrock.json")));
+  const card = bundle.documents.find(
+    ({ url }) =>
+      new URL(url).pathname === "/bedrock/latest/userguide/model-card-cohere-rerank-3-5.md",
+  );
+  if (card === undefined) throw new Error("Missing Cohere Rerank model card");
+  const documents = [
+    card,
+    ...(await Promise.all(
+      [
+        "userguide/rerank-supported.md",
+        "userguide/rerank-use.md",
+        "APIReference/API_agent-runtime_BedrockRerankingModelConfiguration.md",
+      ].map(async (path) => ({
+        url: root + path,
+        body: await fixture(`bedrock/invocation-${path.slice(path.lastIndexOf("/") + 1)}`),
+      })),
+    )),
+  ];
+  const input = {
+    provider: { ...manifest.provider, source_ids: [source.id] },
+    source,
+    observedAt: at,
+    body: JSON.stringify({ index: { url: source.url, body: "# Model cards" }, documents }),
+  };
+  const paths: string[] = [];
+  const onContractFinding = ({ diagnostics }: { diagnostics: { path: string }[] }) =>
+    paths.push(...diagnostics.map((diagnostic) => diagnostic.path));
+  const parsed = parseSource({ ...input, onContractFinding });
+  const prices = bedrockInferencePrices({ ...input, onContractFinding }, parsed.models, documents);
+  expect(paths).not.toContain("/inference-pricing/rerank-requires-arn/cohere.rerank-v3-5:0");
+  expect(paths).not.toContain("/inference-pricing/rerank-model-arn");
+  expect(prices.inference_prices.map(({ model_id }) => model_id)).toEqual([
+    "arn:aws:bedrock:us-east-1::foundation-model/cohere.rerank-v3-5:0",
+  ]);
+});
+
 it("publishes residual Geo prices without borrowing commercial, Mantle, or Global tariffs", async () => {
   const reviewed = bundleSchema.parse(
     JSON.parse(await fixture("bedrock/residual-route-pricing.json")),
