@@ -249,8 +249,8 @@ function retryDelay(response: Response): number {
   for (const header of ["retry-after", "x-ms-ratelimit-retailprices-retry-after"]) {
     const raw = response.headers.get(header)?.trim();
     if (raw === undefined) continue;
-    if (/^\d+$/.test(raw)) {
-      delay = Math.max(delay, Number(raw) * 1000);
+    if (/^\d+(?:\s*,\s*\d+)*$/.test(raw)) {
+      for (const seconds of raw.split(",")) delay = Math.max(delay, Number(seconds) * 1000);
     } else if (header === "retry-after" && /^[A-Za-z]/.test(raw)) {
       const date = Date.parse(raw);
       if (Number.isFinite(date)) delay = Math.max(delay, date - Date.now());

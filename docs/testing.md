@@ -49,6 +49,11 @@ their complete reviewed inventories in 30-second setup hooks, then check the aff
 the normal five-second test budget. Keep the full provider fixtures: their independent service
 books satisfy the provider topology contract. Fixture acquisition, assembly and lookup preparation
 belong in the bounded setup rather than the consumer assertion's budget.
+These timeouts bound a stalled test or setup; they are not product performance targets. Choose
+the boundary and budget for the work being exercised and cold CI measurements, rather than
+preserving an inherited limit unconditionally. Keep semantic assertions in the test. Moving
+fixture preparation into setup must not bypass a resource or latency assertion; the dedicated
+pricing interaction gate and deterministic work bounds own those performance contracts.
 
 For replay performance changes, compare the same committed data and pinned Node version with
 the same heap limit. Measure elapsed time and peak process RSS, including worker threads;
@@ -56,6 +61,10 @@ JavaScript heap usage alone misses encoding buffers and worker memory. Verify th
 pricing hash and pair identity remain unchanged. Also exercise the generated-data project with
 `NODE_OPTIONS=--max-old-space-size=2048 vp run test:data` to expose temporary full-graph copies
 that a larger local heap would hide. Keep schema, byte-budget and global semantic checks intact.
+This is a diagnostic pressure run. Large accepted pairs can exhaust it during provider-validation
+replay even on unchanged code; compare the same snapshot and runtime on the baseline before
+attributing that failure to a patch. Record an exhausted baseline separately from normal release
+validation rather than declaring the pressure check passed or changing semantic assertions.
 
 Both test projects block unmocked Fetch, Node HTTP(S), and child-process transports. Transport
 tests provide local responses explicitly; a fixture containing an official URL does not authorize

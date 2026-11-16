@@ -141,6 +141,13 @@ Status: implemented
   Incomplete admission errors include the bounded, JSON-escaped blocker reason so the failed-step
   log distinguishes an investigated source blocker from an unexplained engine failure.
   A `commit_repair` intent submits a focused, evidence-backed repair for trusted validation.
+  The incident batch selects one provider, so another provider's unresolved source candidate stays
+  deferred rather than becoming a prerequisite for this repair. A reviewed repair may coexist with
+  blocked or pending candidates in its admission. Publication is atomic for the submitted patch,
+  and its affected dependency closure can include other providers through shared code or manifests.
+  A failure there rejects this patch; it does not mark every provider's investigation incomplete or
+  prevent a later independent run. Provider labels alone cannot prove that a failing shared check
+  is irrelevant to a manifest or assembly change.
   The actual working-tree patch is bounded to 100 files and
   4 MiB and admitted only for catalog TypeScript, unit-test files, provider fixture helpers
   named `*-fixture.ts` or `*-fixtures.ts`, reviewed fixtures, provider

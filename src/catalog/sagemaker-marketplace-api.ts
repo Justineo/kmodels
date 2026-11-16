@@ -1,4 +1,5 @@
 import { SageMakerClient } from "@aws-sdk/client-sagemaker";
+import { DefaultRateLimiter } from "@smithy/core/retry";
 import { mapConcurrent } from "./concurrency.ts";
 import type { FetchPayload, FetchResult, FetchObservation, StatusPayload } from "./fetch.ts";
 import { sha256 } from "./io.ts";
@@ -72,6 +73,7 @@ export async function fetchSagemakerMarketplaceApi(
   });
   const ids = [...new Set(specs.map(({ listing_id }) => listing_id))].sort();
   const client = new SageMakerClient({ region: "us-east-1" });
+  const rateLimiter = new DefaultRateLimiter();
   try {
     const signer = await client.config.signer();
     const host = new URL(endpoint).hostname;
@@ -83,6 +85,8 @@ export async function fetchSagemakerMarketplaceApi(
         ExecutionSemantics: "ALL_OR_NOTHING",
       });
       const response = await post(body, async () => {
+        // The SDK supplies signing only; raw Fetch requests need their own shared limiter.
+        await rateLimiter.getSendToken();
         const signed = await signer.sign(
           {
             protocol: "https:",
@@ -94,13 +98,17 @@ export async function fetchSagemakerMarketplaceApi(
           },
           { signingRegion: "us-east-1", signingService: "aws-marketplace" },
         );
-        return fetch(endpoint, {
+        const response = await fetch(endpoint, {
           method: "POST",
           headers: signed.headers,
           body,
           redirect: "error",
           signal: AbortSignal.timeout(30_000),
         });
+        rateLimiter.updateClientSendingRate(
+          response.status === 429 ? { errorType: "THROTTLING" } : {},
+        );
+        return response;
       });
       const normalized =
         response.status === 200

@@ -324,6 +324,9 @@ placeholders such as `Pending` before they can enter a numeric fact.
   pricing source spends this quota. A throttled page is retried in place, including the reviewed
   `Too many requests` body returned with HTTP 200. A cooldown beyond the shared request budget
   leaves the previous price partition in place. No partial page walk enters price assembly.
+  A successful page's retry-after header alone does not request a sleep while requests remain.
+  Remaining-request samples do not establish a global requests-per-minute quota; ARM and model
+  inference quotas do not define this separate public feed's limits.
 - A pricing `source_unavailable` outcome can also wrap a parser rejection after a successful
   fetch. Inspect the underlying warning and replay the Retail parser before diagnosing transport.
   The public feed includes model SKUs absent from the documented catalog and versionless rows

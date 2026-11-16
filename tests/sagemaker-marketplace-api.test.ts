@@ -24,6 +24,8 @@ vi.mock("@aws-sdk/client-sagemaker", () => ({
   },
 }));
 afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -66,6 +68,44 @@ const catalog = await readFile(
   new URL("./fixtures/sagemaker-models.html", import.meta.url),
   "utf8",
 );
+function publicInputs(count = 1) {
+  const publicReads: SourceManifest[] = [];
+  const $ = load(catalog);
+  const panel = $("dd[tab-id^='proprietary-models-']");
+  panel.attr("tab-id", "proprietary-models-(0)");
+  panel
+    .find("tr")
+    .filter((_index, row) => $(row).find("td").length > 0)
+    .remove();
+  const specs = Array.from({ length: count }, (_, index) => ({
+    ...generation.spec,
+    model_id: count === 1 ? generation.spec.model_id : `${generation.spec.model_id}-${index}`,
+    listing_id: count === 1 ? fixture.listingId : `${fixture.listingId}${index}`,
+  }));
+  const manifest =
+    count === 1
+      ? generation.manifest
+      : specs.map(({ model_id, version }) => ({
+          model_id,
+          version,
+          spec_key: `proprietary-models/${model_id}/proprietary_specs_${version}.json`,
+          search_keywords: ["Audio2Text", "Generation"],
+        }));
+  const read = async (input: SourceManifest) => {
+    publicReads.push(input);
+    const spec = specs.find(({ model_id }) =>
+      input.url.includes(`/proprietary-models/${model_id}/`),
+    );
+    const body =
+      spec !== undefined
+        ? JSON.stringify(spec)
+        : input.url.includes("proprietary-sdk-manifest")
+          ? JSON.stringify(manifest)
+          : $.html();
+    return { body, contentHash: sha256(body), etag: undefined, lastModified: undefined };
+  };
+  return { read, publicReads };
+}
 const models = parseSource({
   provider,
   source: sdk,
@@ -298,26 +338,7 @@ describe("SageMaker default Marketplace API pricing", () => {
 it.each([200, 404] as const)(
   "acquires the bounded SDK-selected default listing with HTTP %s",
   async (status) => {
-    const publicReads: object[] = [];
-    const $ = load(catalog);
-    const panel = $("dd[tab-id^='proprietary-models-']");
-    panel.attr("tab-id", "proprietary-models-(0)");
-    panel
-      .find("tr")
-      .filter((_index, row) => $(row).find("td").length > 0)
-      .remove();
-    const read = async (input: typeof source) => {
-      publicReads.push(input);
-      const body =
-        input.url === source.url
-          ? ""
-          : input.url.includes("proprietary-sdk-manifest")
-            ? JSON.stringify(generation.manifest)
-            : input.url.includes("proprietary_specs_")
-              ? JSON.stringify(generation.spec)
-              : $.html();
-      return { body, contentHash: sha256(body), etag: undefined, lastModified: undefined };
-    };
+    const { publicReads, read } = publicInputs();
     aws.sign.mockImplementation(async (request) => ({
       ...request,
       headers: { ...request.headers, authorization: "PRIVATE_FIXTURE_SIGNATURE" },
@@ -366,3 +387,50 @@ it.each([200, 404] as const)(
     expect(aws.destroy).toHaveBeenCalledOnce();
   },
 );
+
+it("slows new listings as well as retries after Marketplace throttles one request", async () => {
+  vi.useFakeTimers();
+  // Match Node's minimum delay when the SDK schedules a fractional token wait.
+  const schedule = globalThis.setTimeout;
+  vi.spyOn(globalThis, "setTimeout").mockImplementation((callback, delay, ...args) =>
+    schedule(callback, Math.max(1, Math.trunc(delay ?? 1)), ...args),
+  );
+  const { read } = publicInputs(6);
+  aws.sign.mockImplementation(async (request: unknown) => request);
+  const nativeFetch = vi.fn(async (_input: unknown, options?: RequestInit) => {
+    if (typeof options?.body !== "string") throw new Error("Missing listing request");
+    const query = z.object({ Parameters: z.string() }).parse(JSON.parse(options.body));
+    const { listingId } = z.object({ listingId: z.string() }).parse(JSON.parse(query.Parameters));
+    return nativeFetch.mock.calls.length === 1
+      ? new Response("Rate exceeded", { status: 429, headers: { "Retry-After": "0, 0" } })
+      : new Response(JSON.stringify(wire(fixture.summary, {}, listingId)));
+  });
+  vi.stubGlobal("fetch", nativeFetch);
+  const result = fetchSagemakerMarketplaceApi(source, read, async (_body, send) => {
+    let response = await send();
+    if (response.status === 429) response = await send();
+    if (response.status !== 200) throw new Error("Listing retry did not recover");
+    return {
+      body: await response.text(),
+      contentHash: "b".repeat(64),
+      etag: undefined,
+      lastModified: undefined,
+      status: 200,
+    };
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(nativeFetch).toHaveBeenCalledTimes(4);
+  await vi.advanceTimersByTimeAsync(100);
+  expect(nativeFetch).toHaveBeenCalledTimes(4);
+  await vi.runAllTimersAsync();
+  const bundle = z
+    .object({ listings: z.array(z.object({ body: z.string() })) })
+    .parse(JSON.parse((await result).body));
+  expect(bundle.listings).toHaveLength(6);
+  expect(
+    bundle.listings.every(
+      ({ body }) => z.object({ status: z.string() }).parse(JSON.parse(body)).status === "available",
+    ),
+  ).toBe(true);
+  expect(nativeFetch).toHaveBeenCalledTimes(7);
+});

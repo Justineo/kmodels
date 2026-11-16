@@ -198,6 +198,20 @@ per-response and bundle bytes, retries and redirect rejection. Empty usage rate-
 explicit unresolved coverage, including two listings labeled `FREE`: that label supplies no numeric
 software rate or infrastructure price. Eight current listings have empty rate cards and one
 returns 404. These observations do not establish retirement or the absence of a hosted product.
+Marketplace requests share the Smithy adaptive rate limiter for one collection attempt. It observes
+HTTP 429 responses and controls both new listing requests and retries; public S3 spec reads keep
+their independent four-request concurrency. The SageMaker client supplies credentials and signing
+only, so configuring its SDK retry mode would not throttle these raw Fetch calls. The existing
+three-attempt retry and server-cooldown budget remain in force. The reviewed endpoint can return
+`ThrottlingException` with duplicate zero-valued `Retry-After` headers; that provides no positive
+cooldown and must not be treated as permission for every worker to continue at its original rate.
+The [documented Discovery API](https://docs.aws.amazon.com/marketplace/latest/developerguide/discovery-apis.html)
+has a separate endpoint and [per-account operation quotas](https://docs.aws.amazon.com/marketplace/latest/developerguide/discovery-service-quotas.html).
+Its `GetListing` quota does not establish the quota for this frontend's `GetListingView`.
+The configured credential's read-only probe of the documented `GetListing` returns
+`AccessDeniedException`; migrating also requires evidence that its offer/term selection preserves
+the reviewed default public-price scope. Neither an endpoint rename nor a guessed fixed request
+rate is a substitute for that review.
 Upfront-only contracts are excluded, while unknown term types remain diagnosed without dropping
 known usage siblings.
 

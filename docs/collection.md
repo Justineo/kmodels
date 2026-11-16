@@ -122,7 +122,9 @@ Status: implemented
   failures and reviewed cloud throttling responses, including rate-limit bodies returned with a
   successful status. It makes at most three attempts and honors the full `Retry-After` delay in
   seconds or HTTP-date form, including delays longer than 30 seconds. The reviewed Azure Retail
-  Prices seconds header `x-ms-ratelimit-retailPrices-retry-after` is also recognized; when both
+  Prices seconds header `x-ms-ratelimit-retailPrices-retry-after` is also recognized; duplicate
+  seconds values coalesced into a comma-separated header preserve the longest valid wait. HTTP-date
+  parsing retains the date's comma. When both
   headers apply, the longer delay wins. Missing, malformed, or expired delays use exponential
   backoff with full jitter. Each request has a five-minute retry budget: if the required wait
   would exceed the remaining budget, the request fails without another attempt instead of

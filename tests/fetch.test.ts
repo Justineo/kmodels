@@ -730,6 +730,8 @@ describe("source retry cooldown", () => {
 
   it.each([
     { headers: "Retry-After: 60\r\n", delay: 60_000 },
+    { headers: "Retry-After: 60, 60\r\n", delay: 60_000 },
+    { headers: "Retry-After: 30, 90\r\n", delay: 90_000 },
     { headers: "Retry-After: Tue, 29 Sep 2026 00:01:30 GMT\r\n", delay: 90_000 },
     { headers: "x-ms-ratelimit-retailPrices-retry-after: 60\r\n", delay: 60_000 },
     {
