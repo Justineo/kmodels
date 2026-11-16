@@ -24,8 +24,8 @@ vi.mock("@aws-sdk/client-sagemaker", () => ({
   },
 }));
 afterEach(() => {
-  vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -433,4 +433,8 @@ it("slows new listings as well as retries after Marketplace throttles one reques
     ),
   ).toBe(true);
   expect(nativeFetch).toHaveBeenCalledTimes(7);
+});
+
+it("runs native timers after the throttled collection", async () => {
+  await new Promise<void>((resolve) => setTimeout(resolve, 1));
 });
