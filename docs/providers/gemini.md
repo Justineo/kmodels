@@ -63,6 +63,14 @@ HTML bundles replayable. Fixed
 first-party companions provide lifecycle, changelog, Gemma identity, and Interactions routes. This
 source owns model identity and does not depend on the pricing page.
 
+Model-page capability flags follow each labeled section's own support marker, including
+attributed AI Studio badges and legacy HTML support spans. Parameter-option exclusions in
+explanatory prose do not negate their parent capability. Missing, unrecognized or conflicting
+markers remain unknown; duplicate sections cannot select a value by order. `Context caching`
+and legacy `Caching` labels establish the broad prompt-cache flag, without implying an explicit
+cache-object API. Capability-derived task evidence uses the same owning markers; unsupported
+Live API alone does not establish that all streaming is unsupported.
+
 `gemini-pricing` independently reads the [Google AI Studio pricing page](https://aistudio.google.com/docs/pricing).
 Its Markdown model links, price tables and owned tier tabs feed the existing price parser.
 Native backslash and two-space hard breaks retain their clause boundaries, alongside legacy HTML

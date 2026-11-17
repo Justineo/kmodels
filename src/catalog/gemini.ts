@@ -267,36 +267,54 @@ function modelLimits(cell: Selection | undefined): ProviderModel["limits"] {
   };
 }
 
-function support(value: string): boolean | "unknown" {
-  if (/not supported/i.test(value)) return false;
-  if (/supported|experimental/i.test(value)) return true;
-  return "unknown";
+function modelCapabilitySupport(
+  $: LoadedDocument,
+  ...cells: (Selection | undefined)[]
+): Map<string, boolean | "unknown"> {
+  const result = new Map<string, boolean | "unknown">();
+  for (const cell of cells)
+    cell?.find("section").each((_index, section) => {
+      const selection = $(section);
+      const owned = (selector: string): Selection =>
+        selection
+          .find(selector)
+          .filter((_markerIndex, marker) => $(marker).closest("section").get(0) === section);
+      const labelNode = owned("b").first();
+      const label = text(labelNode.text()).toLowerCase();
+      if (!label) return;
+      // Older HTML can put an exact status directly after the bold label.
+      const following = labelNode.get(0)?.nextSibling;
+      const bare = following?.type === "text" ? text(following.data).toLowerCase() : "";
+      const supported =
+        owned(".gemini-api-supported,.gemini-api-experimental").length > 0 ||
+        bare === "supported" ||
+        bare === "experimental";
+      const unsupported = owned(".gemini-api-not-supported").length > 0 || bare === "not supported";
+      const value =
+        owned(".gemini-api-unknown").length > 0 || supported === unsupported
+          ? "unknown"
+          : supported;
+      const key = label === "context caching" ? "caching" : label;
+      const current = result.get(key);
+      result.set(key, current === undefined || current === value ? value : "unknown");
+    });
+  return result;
 }
 
 function modelCapabilities(
-  $: LoadedDocument,
-  capabilityCell: Selection | undefined,
-  consumptionCell: Selection | undefined,
+  values: ReadonlyMap<string, boolean | "unknown">,
 ): ProviderModel["capabilities"] {
-  const result = unknownCapabilities();
-  const apply = (cell: Selection | undefined): void => {
-    cell?.find("section").each((_index, section) => {
-      const selection = $(section);
-      const label = text(selection.find("b").first().text()).toLowerCase();
-      const value = support(text(selection.text()).slice(label.length));
-      if (label === "caching") result.prompt_cache = value;
-      if (label === "code execution") result.code_execution = value;
-      if (label === "computer use") result.computer_use = value;
-      if (label === "function calling") result.tool_call = value;
-      if (label === "structured outputs") result.structured_output = value;
-      if (label === "thinking") result.reasoning = value;
-      if (label === "batch api") result.batch = value;
-      if (label === "live api" && value === true) result.streaming = true;
-    });
+  return {
+    ...unknownCapabilities(),
+    prompt_cache: values.get("caching") ?? "unknown",
+    code_execution: values.get("code execution") ?? "unknown",
+    computer_use: values.get("computer use") ?? "unknown",
+    tool_call: values.get("function calling") ?? "unknown",
+    structured_output: values.get("structured outputs") ?? "unknown",
+    reasoning: values.get("thinking") ?? "unknown",
+    batch: values.get("batch api") ?? "unknown",
+    streaming: values.get("live api") === true ? true : "unknown",
   };
-  apply(capabilityCell);
-  apply(consumptionCell);
-  return result;
 }
 
 function pageOperations(
@@ -304,13 +322,12 @@ function pageOperations(
   codeLabel: string,
   modelModalities: ProviderModel["modalities"],
   capabilities: ProviderModel["capabilities"],
-  capabilityCell: Selection | undefined,
+  capabilitySupport: ReadonlyMap<string, boolean | "unknown">,
 ): ModelTask[] {
   const values: ModelTask[] = [];
   const lower = title.toLowerCase();
-  const capabilityText = capabilityCell === undefined ? "" : text(capabilityCell.text());
   const agent = /agent code/i.test(codeLabel);
-  const live = /Live API\s+Supported/i.test(capabilityText) || /\blive\b|realtime/i.test(lower);
+  const live = capabilitySupport.get("live api") === true || /\blive\b|realtime/i.test(lower);
   if (agent) values.push("text_generation");
   if (!agent && modelModalities.output.includes("embedding")) values.push("embeddings");
   if (!agent && modelModalities.output.includes("video")) values.push("video_generation");
@@ -327,7 +344,7 @@ function pageOperations(
     !/tts|text-to-speech|lyria|music/i.test(lower)
   )
     values.push("text_generation");
-  if (/Image generation\s+Supported/i.test(capabilityText)) values.push("image_generation");
+  if (capabilitySupport.get("image generation") === true) values.push("image_generation");
   if (live && modelModalities.input.includes("audio") && modelModalities.output.includes("audio"))
     values.push("speech_to_speech");
   if (capabilities.computer_use === true) values.push("text_generation");
@@ -424,9 +441,16 @@ function studioMarkup(body: string, changelog = false): string {
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
-      .replace(/{% badge type="([^"]+)" \/%}/g, (_match, badge: string) =>
-        badge === "supported" ? " Supported " : badge === "not-supported" ? " Not supported " : " ",
-      )
+      .replace(/{% badge\b([^%]*)\/%}/g, (_match, attributes: string) => {
+        const types = [...attributes.matchAll(/(?:^|\s)type="([^"]*)"/g)];
+        const type = types.length === 1 ? types[0]?.[1] : undefined;
+        if (type === "supported") return ' <span class="gemini-api-supported">Supported</span> ';
+        if (type === "not-supported")
+          return ' <span class="gemini-api-not-supported">Not supported</span> ';
+        if (type === "experimental")
+          return ' <span class="gemini-api-experimental">Experimental</span> ';
+        return ' <span class="gemini-api-unknown"></span> ';
+      })
       .replace(/{% section(?: [^%]*)? %}/g, "<section>")
       .replace(/{% \/section %}/g, "</section>")
       .replace(/{%[^%]*%}/g, " ")
@@ -523,11 +547,12 @@ function pageModels(input: Input, body: string, card: Card | undefined): PageMod
     const modelModalities = supportedData($, property($, table, /Supported data types$/i));
     const limits = modelLimits(property($, table, /(?:Token|Streaming )?limits/i));
     const capabilityCell = property($, table, /Capabilities$/i);
-    const capabilities = modelCapabilities(
+    const capabilitySupport = modelCapabilitySupport(
       $,
       capabilityCell,
       property($, table, /Consumption options$/i),
     );
+    const capabilities = modelCapabilities(capabilitySupport);
     const updated = modelDate(text(property($, table, /Latest update$/i)?.text() ?? ""));
     const versionIds = unique(
       property($, table, /Versions$/i)
@@ -546,7 +571,7 @@ function pageModels(input: Input, body: string, card: Card | undefined): PageMod
           observedAt: input.observedAt,
         }),
         description: card?.description ?? description($),
-        tasks: pageOperations(title, codeLabel, modelModalities, capabilities, capabilityCell),
+        tasks: pageOperations(title, codeLabel, modelModalities, capabilities, capabilitySupport),
         modalities: modelModalities,
         capabilities,
         limits,

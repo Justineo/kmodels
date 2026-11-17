@@ -1,0 +1,59 @@
+> ## AI Agent Context
+> - Full documentation index: https://aistudio.google.com/llms.txt
+
+# Capability marker probe
+
+{% table variant="model" %}
+  * Property
+  * Description
+
+  ---
+
+  * Model code
+  * `capability-marker-probe`
+
+  ---
+
+  * Supported data types
+  * **Inputs** Text
+
+    **Output** Text
+
+  ---
+
+  * Capabilities
+  * {% section class="three-column-grid" %}
+    {% section %}
+    [**Thinking**](/docs/thinking)
+
+    {% badge label=Supported (low, medium, high) type="supported" /%}
+
+    Note: `minimal` is not supported and returns an error.
+
+    {% /section %}
+
+    {% section %}
+    [**Function calling**](/docs/function-calling)
+
+    {% badge type="not-supported" /%}
+
+    {% /section %}
+
+    {% section %}
+    [**Context caching**](/docs/caching)
+
+    {% badge label=Supported (Implicit only) type="supported" /%}
+
+    {% /section %}
+    {% /section %}
+
+  ---
+
+  * Consumption options
+  * {% section %}
+    [**Batch API**](/docs/batch-api)
+
+    {% badge type="supported" /%}
+
+    {% /section %}
+{% /table %}
