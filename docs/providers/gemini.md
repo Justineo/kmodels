@@ -65,6 +65,15 @@ source owns model identity and does not depend on the pricing page.
 
 `gemini-pricing` independently reads the [Google AI Studio pricing page](https://aistudio.google.com/docs/pricing).
 Its Markdown model links, price tables and owned tier tabs feed the existing price parser.
+Native backslash and two-space hard breaks retain their clause boundaries, alongside legacy HTML
+breaks. Each amount's own descriptor establishes its meter, denominator, modality and dates;
+neighboring read, storage or equivalence quotes cannot supply those semantics. The complete
+normalized source segment remains evidence, including when one clause has an unknown unit.
+An explicit token-price `or` per-minute equivalence shares its trailing qualifiers with that
+token quote while retaining the token denominator. `Equivalent to` starts a non-billable
+equivalence group through the end of its segment, including comma-separated amounts; without a
+primary token quote the group stays raw. Unreviewed colon-prefixed labels stay raw and cannot
+qualify the preceding amount. The parser does not infer arbitrary natural-language price scopes.
 The Gemma 4 free-tier table and the owned Search and Maps billing sections also accept AI Studio
 Markdown. Legacy HTML bundles remain replayable.
 It is optional and non-exhaustive:

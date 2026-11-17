@@ -2576,7 +2576,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-pricing" },
-        extractorVersion: "gemini-pricing-v17",
+        extractorVersion: "gemini-pricing-v18",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing", "pricing_inputs"],
         headers: [{ name: "Accept-Language", value: "en-US,en;q=0.9" }],

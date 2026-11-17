@@ -50,10 +50,13 @@ interface PageModel {
   versionIds: string[];
 }
 
-interface PriceCandidate {
-  price: string;
+interface PriceClause {
   descriptor: string;
   segment: string;
+}
+
+interface PriceCandidate extends PriceClause {
+  price: string;
   unit: SourcePriceFact["unit"];
 }
 
@@ -69,7 +72,7 @@ interface SearchGroundingBilling {
 
 interface PriceCandidates {
   values: PriceCandidate[];
-  unknownUnits: string[];
+  raw: (PriceClause & { reason: "unknown_unit" | "unsupported_structure" })[];
 }
 
 interface PricingInputContract {
@@ -430,6 +433,7 @@ function studioMarkup(body: string, changelog = false): string {
       .replace(/\[([^\]]+)\]\([^\s)]+\)/g, "$1")
       .replace(/`([^`\n]+)`/g, "<code>$1</code>")
       .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+      .replace(/\\+[ \t]*\r?\n[ \t]*/g, "<br>")
       .replace(/ {2,}\n[ \t]*/g, "<br>");
   const renderTable = (rows: string[][], retired: boolean) => {
     const [headers, ...values] = rows;
@@ -864,16 +868,9 @@ function explicitModalities(value: string): Modality[] {
   return media(value).filter((modality) => modality !== "embedding" && modality !== "pdf");
 }
 
-function priceModalities(
-  row: string,
-  segment: string,
-  descriptor: string,
-  fallback: Modality[],
-): Modality[] {
+function priceModalities(row: string, descriptor: string, fallback: Modality[]): Modality[] {
   const local = explicitModalities(descriptor);
   if (local.length > 0) return local;
-  const segmentModalities = explicitModalities(segment);
-  if (segmentModalities.length > 0) return segmentModalities;
   const rowModalities = explicitModalities(row);
   return rowModalities.length > 0 ? rowModalities : fallback.filter((value) => value !== "pdf");
 }
@@ -915,7 +912,6 @@ function conditions(
 function meterRates(
   model: ProviderModel,
   row: string,
-  segment: string,
   descriptor: string,
   unit: SourcePriceFact["unit"],
   baseConditions: SourcePriceFact["conditions"],
@@ -942,7 +938,7 @@ function meterRates(
   if (
     lower.includes("lyria") ||
     lower.includes("song") ||
-    (model.tasks.includes("audio_generation") && /per song/i.test(segment))
+    (model.tasks.includes("audio_generation") && /per song/i.test(descriptor))
   )
     return [
       {
@@ -950,8 +946,8 @@ function meterRates(
         conditions: { ...baseConditions, operation: "music_generation" },
       },
     ];
-  if (lower.includes("storage") || segment.toLowerCase().includes("storage price")) {
-    const selected = priceModalities(row, segment, descriptor, []);
+  if (lower.includes("storage") || descriptor.toLowerCase().includes("storage price")) {
+    const selected = priceModalities(row, descriptor, []);
     if (selected.length === 0) return [{ meter: "cache_storage", conditions: baseConditions }];
     return selected.map((modality) => ({
       meter: "cache_storage",
@@ -965,7 +961,6 @@ function meterRates(
   if (!input && !output && !cache && !embedding) return [];
   const selected = priceModalities(
     row,
-    segment,
     descriptor,
     input || cache ? model.modalities.input : model.modalities.output,
   );
@@ -1048,21 +1043,47 @@ function candidates(
   searchPerQuery: boolean,
 ): PriceCandidates {
   const values: PriceCandidate[] = [];
-  const unknownUnits: string[] = [];
-  const equivalences: string[] = [];
+  const raw: PriceCandidates["raw"] = [];
+  const equivalences: PriceClause[] = [];
   for (const segment of segments(cell)) {
-    // Provider estimates are not an additional charge or a token-denominated price.
-    if (/^Equivalent to\s+\$/i.test(segment)) {
-      equivalences.push(segment);
-      continue;
-    }
-    const matches = [...segment.matchAll(/\$(\d+(?:\.\d+)?)/g)];
+    const equivalenceStart = segment.search(/\bEquivalent to\s+\$/i);
+    const priced = equivalenceStart < 0 ? segment : segment.slice(0, equivalenceStart);
+    if (equivalenceStart >= 0)
+      equivalences.push({ descriptor: segment.slice(equivalenceStart), segment });
+    const matches = [...priced.matchAll(/\$(\d+(?:\.\d+)?)/g)];
+    const prefixes = matches.map(
+      (match) =>
+        segment.slice(0, match.index).match(/(?:^|[.;]\s*)([A-Za-z][A-Za-z /()-]*:\s*)$/)?.[1] ??
+        "",
+    );
+    const descriptors = matches.map((match, index) =>
+      text(
+        segment.slice(
+          (match.index ?? 0) + match[0].length,
+          (matches[index + 1]?.index ?? priced.length) - (prefixes[index + 1]?.length ?? 0),
+        ),
+      ),
+    );
     for (const [index, match] of matches.entries()) {
       const price = match[1];
       if (price === undefined) throw new Error("Gemini pricing amount changed");
-      const start = (match.index ?? 0) + match[0].length;
-      const descriptor = text(segment.slice(start, matches[index + 1]?.index ?? segment.length));
-      const nativeUnit = priceUnit(header, descriptor, row);
+      const ownDescriptor = descriptors[index] ?? "";
+      const nativeUnit = priceUnit(header, ownDescriptor, row);
+      const alternateDescriptor = descriptors[index + 1] ?? "";
+      // The owned token/minute "or" quote shares qualifiers, not its alternative denominator.
+      const descriptor =
+        nativeUnit === "million_tokens" &&
+        /^or$/i.test(ownDescriptor) &&
+        priceUnit(header, alternateDescriptor, row) === "minute" &&
+        prefixes[index + 1] === ""
+          ? `${ownDescriptor} ${alternateDescriptor}`
+          : ownDescriptor;
+      // Classify this amount locally; the complete segment remains source evidence.
+      const clause = { descriptor, segment };
+      if (prefixes[index] !== "") {
+        raw.push({ ...clause, reason: "unsupported_structure" });
+        continue;
+      }
       const ambiguousSearchRequest =
         geminiGroundingOperation(row) === "google_search" &&
         nativeUnit === "thousand_requests" &&
@@ -1072,13 +1093,13 @@ function candidates(
           ? "thousand_search_units"
           : undefined
         : nativeUnit;
-      if (unit === undefined) unknownUnits.push(segment);
-      else values.push({ price, descriptor, segment, unit });
+      if (unit === undefined) raw.push({ ...clause, reason: "unknown_unit" });
+      else values.push({ price, ...clause, unit });
     }
   }
   if (!values.some(({ unit }) => unit === "million_tokens" || unit === "million_tokens_per_hour"))
-    unknownUnits.push(...equivalences);
-  return { values, unknownUnits };
+    raw.push(...equivalences.map((clause) => ({ ...clause, reason: "unknown_unit" as const })));
+  return { values, raw };
 }
 
 function selectedCandidates(header: string, values: PriceCandidate[]): PriceCandidate[] {
@@ -1106,6 +1127,7 @@ function preserveRawPricing(
   fragment: string,
   reason: "unknown_unit" | "unknown_meter" | "unsupported_structure",
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+  descriptor?: string,
 ): void {
   const key = row
     .normalize("NFKD")
@@ -1117,12 +1139,14 @@ function preserveRawPricing(
     term_key: `unparsed_${accountEligibility}:${key || "pricing_row"}`,
     impact: "base_price",
     reason,
-    conditions: conditions(tier, accountEligibility, "", row),
+    conditions: conditions(tier, accountEligibility, descriptor ?? "", row),
     source_ref: sourceId,
     raw: {
       label: row,
       fragment,
-      ...(/storage|storage price/i.test(`${row} ${fragment}`) ? { meter: "cache_storage" } : {}),
+      ...(/storage|storage price/i.test(`${row} ${descriptor ?? fragment}`)
+        ? { meter: "cache_storage" }
+        : {}),
     },
   });
   onPricingReconciliation?.({
@@ -1147,7 +1171,6 @@ function addRates(
     const rates = meterRates(
       model,
       row,
-      segment,
       descriptor,
       unit,
       conditions(tier, accountEligibility, descriptor, row),
@@ -1162,6 +1185,7 @@ function addRates(
         segment,
         "unknown_meter",
         onPricingReconciliation,
+        descriptor,
       );
       continue;
     }
@@ -1173,16 +1197,22 @@ function addRates(
         unit === "thousand_search_units"
           ? "thousand_requests"
           : unit;
-      const fact = publishedRate(
-        rate.meter,
-        price,
-        billedUnit,
-        sourceId,
-        accountEligibility === "free_tier"
-          ? `Free Tier; ${row}; Free of charge`
-          : `${header}; ${row}; ${descriptor || segment}`,
-        rate.conditions,
-      );
+      const fact: SourcePriceFact = {
+        ...publishedRate(
+          rate.meter,
+          price,
+          billedUnit,
+          sourceId,
+          accountEligibility === "free_tier"
+            ? `Free Tier; ${row}; Free of charge`
+            : `${header}; ${row}; ${descriptor || segment}`,
+          rate.conditions,
+        ),
+        source_locator: {
+          kind: "fragment",
+          value: accountEligibility === "free_tier" ? `Free Tier; ${row}; Free of charge` : segment,
+        },
+      };
       model.price_facts.push(
         billedUnit === unit
           ? fact
@@ -1407,18 +1437,19 @@ function applyPricing(
                 fragment: allowanceText,
                 rule: allowanceRule,
               });
-            for (const fragment of parsed.unknownUnits)
+            for (const { segment, descriptor, reason } of parsed.raw)
               preserveRawPricing(
                 model,
                 sourceId,
                 tier,
                 row,
                 "paid_tier",
-                fragment,
-                "unknown_unit",
+                segment,
+                reason,
                 onPricingReconciliation,
+                descriptor,
               );
-            if (paid.length === 0 && parsed.unknownUnits.length === 0)
+            if (paid.length === 0 && parsed.raw.length === 0)
               onPricingReconciliation?.({
                 disposition: "explicit_non_numeric",
                 reason_code: "paid_tier_not_numeric",
