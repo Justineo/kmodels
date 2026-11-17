@@ -96,7 +96,7 @@ The pricing source also collects the console's first-party `listFoundationModels
 through `IntlBroadScopeAspnGateway`. Requests use flat model pagination (`group: false`),
 `supports.inference`, `queryPrice`, the exact regional origin and a separate `serviceSite` filter.
 Only static console routing metadata is sent; no Cookie, API key, anonymous tracking ID or trace
-ID is needed. Collect Beijing/Chinese mainland, Singapore/International, Frankfurt/Global and EU,
+ID is needed. Collect Beijing's regional routing bucket, Singapore/International, Frankfurt/Global and EU,
 Tokyo/Global and Japan, Hong Kong/Global and Hong Kong, and Virginia/Global and US independently.
 `serviceSites` is an availability list, not permission to copy a returned quote into its other scopes.
 Each origin is explicitly allowlisted. Validate the outer and nested success envelopes, stable
@@ -172,12 +172,15 @@ it to Frankfurt or derive either cache price from a generic multiplier.
 The historical `unpublished_cache_read` key means the accepted collection lacks an exact price;
 it does not establish that Alibaba has not published one. Display it as a missing catalog price,
 not an extra user-selectable condition. Known ordinary input/output rates remain usable.
-An unqualified Beijing guide row is broader than a console quote explicitly scoped to Chinese
-mainland. The quote does not close a missing cache claim for that broader row. The
+Beijing's legacy `asia-pacific-china` service-site filter is a console routing bucket, not evidence
+of a Chinese mainland deployment restriction. The console publishes each model's exact regional
+prices without a deployment-scope picker. The
 [Beijing access guide](https://www.alibabacloud.com/help/en/model-studio/beijing-access-information)
-also distinguishes Chinese mainland from China Elastic Zone, so a missing deployment scope
-cannot be filled from the single Beijing filter currently collected by the market adapter.
-Preserve this scope uncertainty until the source supplies an exact bridge.
+distinguishes older Chinese mainland deployments from newer models that default to China Elastic
+Zone. Keep these console quotes scoped to the exact model and Beijing access/billing region,
+without inventing a physical deployment constraint or deriving one from a model's launch date.
+Those quotes can therefore satisfy Beijing guide cache claims in the same billing scope. Other
+regions' explicit Global/EU/Japan/US filters retain their evidenced deployment conditions.
 
 A parsed numeric context band is one condition, not both a token range and an independently
 selectable tier label. Unparsed labels remain categorical conditions; no numeric range is guessed.
@@ -402,8 +405,8 @@ covers the base rate. When the guide excludes an exception from its multiplier a
 sources supply no applicable exact tariff, that charge remains raw `unknown_amount`; it is not
 silently omitted, zero, or evidence of provider non-publication. The base price, explicit write,
 other cache mode and sibling regions survive. The explicit cache contract retains its published
-five-minute TTL as a fixed cache-write rate condition. Preserve it in applicability and display
-it as readonly when it is the sole applicable value. No request creation time or undocumented native mode selector is inferred.
+five-minute TTL as a fixed cache-write rate condition. Preserve it in applicability and resolve
+it internally when it is the sole applicable value. No request creation time or undocumented native mode selector is inferred.
 
 Built-in web, image-to-image, and text-to-image search are separate shared provider-service books.
 Equal scope/rate variants are stored once with all exact compatible model references instead of

@@ -147,7 +147,29 @@ it("normalizes each published cache TTL and keeps reads independent of creation 
     ["Singapore", 3600, "3"],
     ["Germany (Frankfurt)", 300, "1.767"],
     ["Germany (Frankfurt)", 3600, "2.827"],
+    ["China (Beijing)", 300, "1.767"],
+    ["China (Beijing)", 3600, "2.827"],
   ]);
+});
+
+it("keeps Beijing billing prices independent of an unproven physical deployment scope", async () => {
+  const market: unknown = JSON.parse(
+    await readFile(new URL("./fixtures/dashscope/qwen4-market.json", import.meta.url), "utf8"),
+  );
+  const parsed = parseDashscopeMarket(input, { market });
+  const beijing = parsed.models.filter((model) =>
+    model.price_facts.some(({ conditions }) => conditions.region === "China (Beijing)"),
+  );
+  expect(beijing).toHaveLength(1);
+  expect(beijing[0]?.price_facts).toHaveLength(6);
+  for (const rate of beijing[0]?.price_facts ?? [])
+    expect(rate.conditions).not.toHaveProperty("deployment_scope");
+  const frankfurt = parsed.models.find((model) =>
+    model.price_facts.some(({ conditions }) => conditions.region === "Germany (Frankfurt)"),
+  );
+  expect(
+    frankfurt?.price_facts.every(({ conditions }) => conditions.deployment_scope === "Global"),
+  ).toBe(true);
 });
 
 it("retains cache creation evidence when the duration semantics are unreviewed", () => {

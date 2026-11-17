@@ -28,6 +28,7 @@ import { fixedPricingSelections } from "../src/catalog/pricing-selector-input.ts
 import InferencePrices from "../src/components/InferencePrices.vue";
 import { renderComponent } from "./render-component.ts";
 import { websiteModelDetail } from "../src/catalog/website-data.ts";
+import { websiteInferencePrices } from "../src/catalog/website-inference-pricing.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/catalog/fetch.ts")>()),
@@ -122,6 +123,13 @@ function context(value: string): Selector {
     dimension: { namespace: "kmodels", value: "context_tokens" },
     value,
     unit: { factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }] },
+  };
+}
+function cacheMode(value: string): Selector {
+  return {
+    kind: "categorical",
+    dimension: { namespace: "provider", provider_id: "dashscope", value: "cache_mode" },
+    value: { namespace: "provider", provider_id: "dashscope", value },
   };
 }
 const globalUS = [
@@ -409,11 +417,7 @@ it("uses the same conditions and reasons in static output and compact UI data", 
 }, 15000);
 
 it("publishes exact console cache tariffs through collection, portable lookup and website details", async () => {
-  const implicit: Selector = {
-    kind: "categorical",
-    dimension: { namespace: "provider", provider_id: "dashscope", value: "cache_mode" },
-    value: { namespace: "provider", provider_id: "dashscope", value: "implicit" },
-  };
+  const implicit = cacheMode("implicit");
   const market: unknown = JSON.parse(
     await readFile(new URL("./fixtures/dashscope/market-prices.json", import.meta.url), "utf8"),
   );
@@ -507,11 +511,6 @@ it("publishes single-band models and TTL-specific cache tariffs through the real
     condition("operation", "non_thinking_and_thinking_modes"),
     context("1000000"),
   ];
-  const mode = (value: string): Selector => ({
-    kind: "categorical",
-    dimension: { namespace: "provider", provider_id: "dashscope", value: "cache_mode" },
-    value: { namespace: "provider", provider_id: "dashscope", value },
-  });
   const ttl = (value: string): Selector => ({
     kind: "decimal",
     dimension: { namespace: "kmodels", value: "cache_ttl_seconds" },
@@ -525,7 +524,7 @@ it("publishes single-band models and TTL-specific cache tariffs through the real
     const result = query({
       provider_id: "dashscope",
       model_id: "qwen4-max",
-      selectors: [...base, mode("explicit"), ttl(seconds)],
+      selectors: [...base, cacheMode("explicit"), ttl(seconds)],
     });
     expect(result.status, JSON.stringify(result.missing_conditions)).toBe("matched");
     const terms = result.candidates.flatMap(({ offer }) => offer.terms);
@@ -550,7 +549,7 @@ it("publishes single-band models and TTL-specific cache tariffs through the real
     query({
       provider_id: "dashscope",
       model_id: "qwen4-max",
-      selectors: [...base, mode("implicit")],
+      selectors: [...base, cacheMode("implicit")],
     }).status,
   ).toBe("matched");
 
@@ -558,7 +557,7 @@ it("publishes single-band models and TTL-specific cache tariffs through the real
   const retainedPrice = lookup(withoutAccounting)({
     provider_id: "dashscope",
     model_id: "qwen4-max",
-    selectors: [...base, mode("explicit"), ttl("3600")],
+    selectors: [...base, cacheMode("explicit"), ttl("3600")],
   });
   const unboundWrites = retainedPrice.candidates
     .flatMap(({ offer }) => offer.terms)
@@ -585,7 +584,8 @@ it("publishes single-band models and TTL-specific cache tariffs through the real
   expect(contextOption).toMatchObject({ kind: "decimal_buckets", values: [{ label: "≤ 1M" }] });
   const fixed = fixedPricingSelections(price.pricing_options);
   expect(
-    queryWebsiteInferencePrice(price, [...base.slice(0, 2), ...fixed, mode("implicit")], at).status,
+    queryWebsiteInferencePrice(price, [...base.slice(0, 2), ...fixed, cacheMode("implicit")], at)
+      .status,
   ).toBe("matched");
   const model = candidate.catalog.models.find(({ uid }) => uid === detail.model_ref);
   if (!model) throw new Error("Missing Qwen4 model");
@@ -598,4 +598,73 @@ it("publishes single-band models and TTL-specific cache tariffs through the real
   expect(html).not.toContain("Price scope");
   expect(html).not.toContain('placeholder="Enter value"');
   expect(html).not.toContain("Some prices are unresolved");
+}, 20000);
+
+it("replaces an accepted Beijing cache gap with its exact regional quote without inventing deployment scope", async () => {
+  const market: unknown = JSON.parse(
+    await readFile(new URL("./fixtures/dashscope/qwen4-market.json", import.meta.url), "utf8"),
+  );
+  const change = (bundles: Map<string, LinkedBundle>, withMarket: boolean) => {
+    const bundle = bundles.get("dashscope-pricing");
+    const cache = bundle?.documents.find(({ url }) => url.endsWith("/context-cache.md"));
+    if (!bundle || !cache) throw new Error("Missing fixture");
+    bundle.index.body += `<section><h4>China (Beijing)</h4><table><thead><tr>
+      <th>Model ID</th><th>Mode</th><th>Input tokens per request</th>
+      <th>Input price (per 1 million tokens)</th><th>Output price (per 1 million tokens)</th>
+      </tr></thead><tbody><tr><td>qwen4-max</td><td>Non-Thinking and Thinking modes</td>
+      <td>0&lt;Token≤1M</td><td>$1.413</td><td>$4.24</td></tr></tbody></table></section>`;
+    cache.body = `# Context cache
+Cache creation is billed at 125% of the standard input token price; reads at 10% of the standard input token price. Implicit reads cost 20% of the standard input token price.
+For qwen4-max, the unit price of cached_token is not 20% of the input_token unit price.
+## Explicit cache
+### Supported models
+#### China (Beijing)
+- qwen3.7-plus
+## Implicit cache
+### Supported models
+#### China (Beijing)
+- qwen4-max`;
+    if (withMarket) {
+      const updated = { ...bundle, market };
+      bundles.set("dashscope-pricing", updated);
+    }
+  };
+  const implicit = cacheMode("implicit");
+  const selectors = [
+    condition("region", "China (Beijing)"),
+    condition("operation", "non_thinking_and_thinking_modes"),
+    context("1000000"),
+    implicit,
+  ];
+  const query = { provider_id: "dashscope", model_id: "qwen4-max", selectors };
+  const missing = await collect((bundles) => change(bundles, false));
+  const unresolved = lookup(missing)(query);
+  expect(unresolved.status).toBe("candidates");
+  expect(JSON.stringify(unresolved.candidates)).toContain("unpublished_cache_read");
+  expect(
+    unresolved.candidates.flatMap(({ offer }) => offer.terms).some((term) => term.kind === "rate"),
+  ).toBe(true);
+
+  const candidate = await collect((bundles) => change(bundles, true), missing);
+  const result = lookup(candidate)(query);
+  expect(result.status).toBe("matched");
+  expect(JSON.stringify(result.candidates)).not.toContain("unpublished_cache_read");
+  const rates = result.candidates.flatMap(({ offer }) => offer.terms);
+  expect(
+    rates
+      .flatMap((term) =>
+        term.kind === "rate" && term.meter.value === "cache_read_text" ? term.variants : [],
+      )
+      .map(({ price }) => price.value),
+  ).toEqual([{ numerator: "71", denominator: "1000000000" }]);
+  expect(candidate.pricing.data.provider_snapshots[0]?.publication).toBe("fresh");
+  const modelRef = "dashscope/qwen4-max";
+  if (!candidate.inference) throw new Error("Missing Beijing ID mapping");
+  const price = websiteInferencePrices(
+    candidate.catalog,
+    candidate.pricing,
+    candidate.inference.mapping,
+  ).get(modelRef)?.[0];
+  if (!price) throw new Error("Missing Beijing UI price");
+  expect(queryWebsiteInferencePrice(price, selectors, at).status).toBe(result.status);
 }, 20000);

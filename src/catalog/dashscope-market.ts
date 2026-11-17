@@ -19,7 +19,8 @@ export const dashscopeMarketRegions = [
     label: "China (Beijing)",
     host: "bailian-cs.console.alibabacloud.com",
     consoleSite: "BAILIAN_ALIBABACLOUD",
-    scopes: [{ id: "asia-pacific-china", label: "Chinese mainland" }],
+    // This legacy routing bucket spans models with different physical deployment scopes.
+    scopes: [{ id: "asia-pacific-china" }],
   },
   {
     id: "ap-southeast-1",
@@ -360,6 +361,7 @@ export function parseDashscopeMarket(input: SourceParseInput, value: unknown) {
     if (region === undefined || scope === undefined)
       throw new Error("Unreviewed DashScope market context");
     const scopeKey = `${region.id}:${scope.id}`;
+    const deployment = "label" in scope ? scope.label : undefined;
     if (scopes.has(scopeKey)) throw new Error("Duplicate DashScope market context");
     scopes.add(scopeKey);
     const ids = new Set<string>();
@@ -380,7 +382,10 @@ export function parseDashscopeMarket(input: SourceParseInput, value: unknown) {
         sourceId: input.source.id,
         observedAt: input.observedAt,
       });
-      const conditions = { region: region.label, deployment_scope: scope.label };
+      const conditions = {
+        region: region.label,
+        ...(deployment === undefined ? {} : { deployment_scope: deployment }),
+      };
       const rates: SourcePriceFact[] = [];
       const raw: SourceRawPricingFact[] = [];
       const groups = [
@@ -541,7 +546,7 @@ export function parseDashscopeMarket(input: SourceParseInput, value: unknown) {
           resource_key: tool.type,
           model_refs: [model.uid],
           offer_key: `${scopeKey}:${tool.supportedApi}`,
-          offer_name: `${tool.name} in ${region.label} / ${scope.label}`,
+          offer_name: `${tool.name} in ${region.label}${deployment === undefined ? "" : ` / ${deployment}`}`,
           billing_mode: "usage",
           pricing_state: normalized.length > 0 ? "numeric" : "unknown",
           price_facts: normalized,

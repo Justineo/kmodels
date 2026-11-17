@@ -98,5 +98,55 @@
         ]
       }
     ]
+  },
+  {
+    "region": "cn-beijing",
+    "scope": "asia-pacific-china",
+    "models": [
+      {
+        "model": "qwen4-max",
+        "scope": "PUBLIC",
+        "serviceSites": ["asia-pacific-china"],
+        "supports": { "inference": true },
+        "prices": [
+          {
+            "type": "input_token",
+            "priceName": "Input",
+            "price": "1.413",
+            "priceUnit": "Per 1M tokens"
+          },
+          {
+            "type": "output_token",
+            "priceName": "Output",
+            "price": "4.24",
+            "priceUnit": "Per 1M tokens"
+          },
+          {
+            "type": "input_token_cache",
+            "priceName": "Input(Implicit Cache)",
+            "price": "0.071",
+            "priceUnit": "Per 1M tokens"
+          },
+          {
+            "type": "input_token_cache_creation_5m",
+            "priceName": "5-Minute Explicit Cache Creation",
+            "price": "1.767",
+            "priceUnit": "Per 1M tokens"
+          },
+          {
+            "type": "input_token_cache_creation_1h",
+            "priceName": "1-Hour Explicit Cache Creation",
+            "price": "2.827",
+            "priceUnit": "Per 1M tokens"
+          },
+          {
+            "type": "input_token_cache_read",
+            "priceName": "Explicit Cache Read",
+            "price": "0.071",
+            "priceUnit": "Per 1M tokens"
+          }
+        ]
+      }
+    ]
   }
 ]
