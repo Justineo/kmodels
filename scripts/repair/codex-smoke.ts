@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startRelay } from "./codex-relay.ts";
 import { startCodexGateway, codexRequest } from "./codex-gateway.ts";
-import { codexArguments, containerArguments } from "./codex-runner.ts";
+import { codexArguments, codexModelCatalog, containerArguments } from "./codex-runner.ts";
 
 // Protocol/isolation smoke with deterministic local Responses data, never paid inference.
 const local = process.argv.includes("--local");
@@ -86,7 +86,7 @@ const gateway = await startCodexGateway({
       object: "response",
       created_at: 1,
       status: "completed",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       output: [item],
       usage: { input_tokens: 10, output_tokens: 20, total_tokens: 30 },
     };
@@ -122,8 +122,10 @@ try {
   if (relay && !relay.listening)
     await new Promise<void>((resolve) => relay.once("listening", resolve));
   const address = relay?.address();
+  const modelCatalog = join(input, "codex-model.json");
+  await writeFile(modelCatalog, JSON.stringify(codexModelCatalog));
   const args = local
-    ? codexArguments().map((arg) =>
+    ? codexArguments(modelCatalog).map((arg) =>
         arg
           .replace(
             "127.0.0.1:8765",
@@ -179,7 +181,7 @@ try {
   )
     throw new Error("Codex protocol smoke did not complete with exact mocked usage");
   // Exercise ambiguous transport failure and contention against the same real Unix gateway.
-  const requestInput = { model: "gpt-6.1-sol", input: [] };
+  const requestInput = { model: "gpt-6.2-sol", input: [] };
   const post = () =>
     new Promise<number>((resolve, reject) => {
       const req = request(
