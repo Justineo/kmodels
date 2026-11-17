@@ -25,7 +25,7 @@ export function applyXaiLimitDetails(
   const markers = [...prose.matchAll(/^===([^=\r\n]+)===$/gm)];
   const candidates = new Map<
     ParsedProviderModel,
-    { path: string; table: string; values: Map<string, string>[] }[]
+    { path: string; table: string; values: Map<string, string>[]; description?: string }[]
   >();
   for (const [index, marker] of markers.entries()) {
     const path = marker[1];
@@ -44,7 +44,21 @@ export function applyXaiLimitDetails(
         limitDetailFinding(input, "card_limits/identity");
         continue;
       }
-      candidates.set(model, [...(candidates.get(model) ?? []), { path, table, values }]);
+      const headings = [...section.matchAll(/^# ([^\n]+)\n\s*\n([^\n]+)(?=\n|$)/gm)];
+      const heading = headings[0];
+      const summary = heading?.[2]?.trim();
+      const description =
+        id === model.model_id &&
+        headings.length === 1 &&
+        heading?.[1] &&
+        summary?.startsWith(heading[1].trim() + " is ") &&
+        summary.length <= 1024
+          ? summary
+          : undefined;
+      candidates.set(model, [
+        ...(candidates.get(model) ?? []),
+        { path, table, values, ...(description ? { description } : {}) },
+      ]);
     } catch {
       limitDetailFinding(input, "card_limits/table");
     }
@@ -55,6 +69,7 @@ export function applyXaiLimitDetails(
       limitDetailFinding(input, "card_limits/duplicate");
       continue;
     }
+    if (!model.description && entry.description) model.description = entry.description;
     const outputs = entry.values.filter((row) => row.get("Property") === "Output limit");
     const apis = entry.values.filter((row) => row.get("Property") === "APIs");
     if (outputs.length === 0) continue;

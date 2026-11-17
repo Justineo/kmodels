@@ -105,6 +105,9 @@ it("publishes the owned xAI no-cap state with exact document evidence and finite
   const bundle = await xaiBundle();
   const model = parse("xai", "xai-models", bundle).models.find((m) => m.model_id === "grok-4.7");
   expect(model?.limits.context_tokens).toBe(500000);
+  expect(model?.description).toBe(
+    "Grok 4.7 is SpaceXSI's frontier model built for coding, agentic tasks, and knowledge work.",
+  );
   expect(model?.price_facts.length).toBeGreaterThan(0);
   expect(model?.limit_details?.[0]?.statements).toContainEqual(
     expect.objectContaining({

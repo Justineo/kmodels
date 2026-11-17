@@ -335,3 +335,6 @@ formulas without executable expressions or a provider-specific calculation engin
 A downstream calculator must retain the offer, snapshot, accepted request, successful terminal
 result, and applicable quantity method. Kmodels does not own request lifecycle detection, stream
 completion, ledger persistence, or invoice settlement.
+An exact native model card may supply its own introductory product description when the title
+names the subject of the opening sentence and the identity table matches the model ID. An alias
+alone does not transfer that description.
