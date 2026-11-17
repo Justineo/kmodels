@@ -2513,7 +2513,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-catalog", minModels: 50, maxModels: 160 },
-        extractorVersion: "gemini-catalog-v15",
+        extractorVersion: "gemini-catalog-v16",
         fields: [
           "model_id",
           "name",

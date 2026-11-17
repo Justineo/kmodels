@@ -235,16 +235,40 @@ function token(value: string, pattern: RegExp): number | undefined {
 function modelLimits(cell: Selection | undefined): ProviderModel["limits"] {
   if (cell === undefined) return {};
   const value = text(cell.text());
-  const input = token(
-    value,
-    /(?:Input token limit|Input context window|Context window)\s*([\d,]+)/i,
+  const parts = value.split(
+    /\b(Input token limit|Input context window|Context window(?: \(unified input and output token limit\))?|Output token limit|Max output|Output dimension size|Output video|Recommended:)\s*/i,
   );
-  const output = token(value, /Output token limit\s*([\d,]+)/i);
+  const declarations = new Map<string, string[]>();
+  for (let index = 1; index < parts.length; index += 2) {
+    const label = parts[index]?.toLowerCase();
+    if (label === undefined) continue;
+    const values = declarations.get(label) ?? [];
+    values.push((parts[index + 1] ?? "").trim());
+    declarations.set(label, values);
+  }
+  const scalar = (...labels: string[]): number | undefined => {
+    const values = labels.flatMap((label) => declarations.get(label) ?? []);
+    const amounts = values.map((item) =>
+      token(
+        item,
+        /^([\d,]+)(?: tokens?)?(?: \(Gemini API serving limit\)| \(compacted at ~[\d,]+(?:\.\d+)?[km]?\))?$/i,
+      ),
+    );
+    const first = amounts[0];
+    return first !== undefined && amounts.every((amount) => amount === first) ? first : undefined;
+  };
+  const input = scalar("input token limit", "input context window");
+  const contextLabels = ["context window", "context window (unified input and output token limit)"];
+  const context = contextLabels.some((label) => declarations.has(label))
+    ? scalar(...contextLabels)
+    : input;
+  const output = scalar("output token limit");
   const range = value.match(/(?:Flexible,\s*)?supports:\s*([\d,]+)\s*-\s*([\d,]+)/i);
   const recommended = value.match(/Recommended:\s*([\d,\s]+)/i)?.[1];
   const exact = range === null ? token(value, /Output dimension size\s*([\d,]+)/i) : undefined;
   return {
-    ...(input === undefined ? {} : { context_tokens: input, max_input_tokens: input }),
+    ...(context === undefined ? {} : { context_tokens: context }),
+    ...(input === undefined ? {} : { max_input_tokens: input }),
     ...(output === undefined ? {} : { max_output_tokens: output }),
     ...(exact === undefined ? {} : { embedding_dimensions: [exact] }),
     ...(range?.[1] === undefined || range[2] === undefined
@@ -729,7 +753,6 @@ function applyGemma(
                 item.limits = {
                   ...item.limits,
                   context_tokens: context,
-                  max_input_tokens: context,
                 };
             }
             if (label === "Supported Modalities")

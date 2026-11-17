@@ -71,6 +71,18 @@ and legacy `Caching` labels establish the broad prompt-cache flag, without imply
 cache-object API. Capability-derived task evidence uses the same owning markers; unsupported
 Live API alone does not establish that all streaming is unsupported.
 
+Token-limit declarations keep their owned quantity: a bare or explicitly unified `Context window`
+establishes only `context_tokens`, as does the Gemma model card's `Context Length`.
+Separate `Input token limit` / `Input context window` declarations
+retain their input bounds, and an unqualified `Output token limit` retains its output bound.
+The reviewed `Gemini API serving limit` and `compacted at ~…` annotations retain the declared
+bound. Separately labeled output-video durations do not become token limits.
+Conditional output prose and conflicting declarations do not collapse to a first, minimum or
+maximum number. Embedding dimensions remain independent. The optional inventory may fill missing
+fields from its separately published input/output limits, but cannot replace a known public
+context or scalar bound. A shared context alone never supplies independent full-sized input and
+output grants; conditional output and per-hop distinctions remain outside the scalar contract.
+
 `gemini-pricing` independently reads the [Google AI Studio pricing page](https://aistudio.google.com/docs/pricing).
 Its Markdown model links, price tables and owned tier tabs feed the existing price parser.
 Native backslash and two-space hard breaks retain their clause boundaries, alongside legacy HTML
