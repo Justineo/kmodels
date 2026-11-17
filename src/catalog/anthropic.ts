@@ -16,6 +16,7 @@ import {
   anthropicPromptScope,
 } from "./anthropic-price-row.ts";
 import { anthropicCodeExecution } from "./anthropic-code-execution.ts";
+import { anthropicEffortUrl, applyAnthropicEffortDetails } from "./anthropic-effort-details.ts";
 import { applyAnthropicLimitDetails } from "./anthropic-limit-details.ts";
 import {
   anthropicAtLeastGeneration as atLeastGeneration,
@@ -2153,6 +2154,11 @@ export function parseAnthropicModelCards(input: Input): SourceParseResult {
   }
   if (cards.length === 0) throw new Error("Anthropic model cards contained no owned identities");
   applyAnthropicLimitDetails(input, cards, bundle);
+  const effort = bundle.documents.filter(({ url }) => url === anthropicEffortUrl);
+  if (effort.length > 0) {
+    const guide = effort.length === 1 ? effort[0] : undefined;
+    applyAnthropicEffortDetails(input, cards, guide, guide && listedModelIds(guide.body));
+  }
   return {
     models: [...models.values()],
     inference_prices: inferencePrices(

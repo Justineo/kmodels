@@ -131,6 +131,17 @@ Each group carries the actual supporting document URLs, individual body hashes, 
 and source observation time. Retention preserves that complete revision. Neither a bundle hash
 nor a newer source record may masquerade as an older document's evidence revision.
 
+The card source also owns optional `messages_reasoning_effort` in `capability_details`.
+The effort guide's direct Messages availability, named option cohorts and default exceptions
+must agree with the exact card title, Claude API ID and native default. These values describe
+top-level effort with the model's default thinking configuration. The separate Managed Agents
+and seller scopes require their own evidence. Missing or conflicting effort evidence withholds
+that claim independently of the card's limit and identity facts.
+
+Messages API automatic breakpoint placement and block-level breakpoints both require opt-in.
+The cache-mode contract describes implicit caching and explicit cache management, so Anthropic
+leaves the scoped mode unspecified. Its existing prompt-cache summary and pricing are independent.
+
 ## Identity and catalog mapping
 
 - IDs and aliases come from labeled official cells or exact API values. A display-name join is used
