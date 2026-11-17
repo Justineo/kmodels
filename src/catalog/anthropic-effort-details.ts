@@ -1,8 +1,11 @@
 import { markdownProse, markdownSection, markdownTableRows } from "./markdown.ts";
-import { capabilityDetailsSchema, type CapabilityStatement } from "./model-capability-details.ts";
+import type { CapabilityStatement } from "./model-capability-details.ts";
 import type { ParsedProviderModel } from "./pricing-source.ts";
 import { contractExtensionEvidence } from "./source-contract.ts";
-import { limitDocumentEvidence } from "./source-limit-details.ts";
+import {
+  addCapabilityDetailGroup,
+  capabilityDocumentEvidence,
+} from "./source-capability-details.ts";
 import type { SourceParseInput } from "./source-parse.ts";
 import { yamlBlock } from "./yaml.ts";
 
@@ -305,30 +308,24 @@ export function applyAnthropicEffortDetails(
           ...listed.map(([value, { text }]) => `${value} | ${text}`),
           ...recommendation,
         ].join("\n");
-        const result = capabilityDetailsSchema.safeParse([
-          ...(card.model.capability_details ?? []),
-          {
-            claim,
-            source_ref: input.source.id,
-            statements: [statement],
-            evidence: [
-              limitDocumentEvidence(
-                input,
-                card.document,
-                "Title; Model IDs / Claude API; Capabilities / Default effort",
-                cardExcerpt,
-              ),
-              limitDocumentEvidence(
-                input,
-                document,
-                "Availability / Messages API; How effort works / Effort levels",
-                guideExcerpt,
-              ),
-            ],
-          },
-        ]);
-        if (result.success) card.model.capability_details = result.data;
-        else signal(input, "bounds");
+        addCapabilityDetailGroup(input, card.model, {
+          claim,
+          statements: [statement],
+          evidence: [
+            capabilityDocumentEvidence(
+              input,
+              card.document,
+              "Title; Model IDs / Claude API; Capabilities / Default effort",
+              cardExcerpt,
+            ),
+            capabilityDocumentEvidence(
+              input,
+              document,
+              "Availability / Messages API; How effort works / Effort levels",
+              guideExcerpt,
+            ),
+          ],
+        });
       } catch {
         signal(input, "card");
       }
