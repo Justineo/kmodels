@@ -166,6 +166,7 @@ export type SourceField =
   | "modalities"
   | "capabilities"
   | "limits"
+  | "limit_details"
   | "release_date"
   | "updated_date"
   | "pricing"
