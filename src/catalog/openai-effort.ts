@@ -18,8 +18,8 @@ export function addOpenAiEffort(
       /^The API rejects requests that set reasoning effort to `([a-z][a-z0-9_-]*)`\.$/gim,
     ),
   ];
-  const rejected = rejections[0];
-  if (rejections.length && rejected?.[1]) {
+  const unsupported = rejections.flatMap((match) => match[1] ?? []);
+  if (unsupported.length) {
     const statements = (model.api_endpoints ?? []).flatMap(({ path }) => {
       const scope =
         path === "v1/responses"
@@ -32,7 +32,7 @@ export function addOpenAiEffort(
             {
               kind: "reasoning_effort" as const,
               scope,
-              unsupported_values: rejections.flatMap((match) => match[1] ?? []),
+              unsupported_values: unsupported,
             },
           ]
         : [];

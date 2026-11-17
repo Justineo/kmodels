@@ -21,10 +21,10 @@ export function addOpenAiCacheModes(
   bundle: LinkedBundle,
 ): void {
   const guides = bundle.documents.filter(({ url }) => url === openAiCacheGuide);
-  if (!guides.length) return;
   const guide = guides[0];
+  if (!guide) return;
   const claim = "responses_cache_breakpoints";
-  const how = markdownSection(guide?.body ?? "", 2, "How caching works") ?? "";
+  const how = markdownSection(guide.body, 2, "How caching works") ?? "";
   const modes =
     "Both implicit and explicit caching are supported, where explicit caching gives you more control over which context is written to cache.";
   const cohorts = [...how.matchAll(/^### ([^\n]+)$/gm)].filter(
@@ -33,7 +33,6 @@ export function addOpenAiCacheModes(
   const cohort = cohorts[0]?.[1];
   const section = cohort && markdownSection(how, 3, cohort);
   if (
-    !guide ||
     guides.length !== 1 ||
     !cohort ||
     cohorts.length !== 1 ||
@@ -69,9 +68,8 @@ export function addOpenAiCacheModes(
     /^Responses API request with [^\n]+\n\s*\n```json\n([\s\S]*?)\n```$/gm,
   )) {
     try {
-      const request = exampleRequest.safeParse(JSON.parse(match[1] ?? ""));
-      if (request.success) evidence.set(request.data.model, match[0]);
-      else capabilityDetailFinding(input, claim);
+      const request = exampleRequest.parse(JSON.parse(match[1] ?? ""));
+      evidence.set(request.model, match[0]);
     } catch {
       capabilityDetailFinding(input, claim);
     }
