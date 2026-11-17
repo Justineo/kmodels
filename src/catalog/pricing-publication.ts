@@ -14,6 +14,7 @@ import { assertCanonicalJson, canonicalJson, parseIJson, readIJson } from "./can
 import { assertIJsonValue, canonicalJsonChunksFromValidated } from "./canonical-value.ts";
 import { catalogJson } from "./endpoints.ts";
 import { legacyCatalog } from "./legacy-catalog.ts";
+import { validateLimitDetailSources } from "./model-limit-details.ts";
 import {
   atomicWrite,
   fileHandleMatchesCanonicalChunks,
@@ -45,7 +46,12 @@ import {
 } from "./pricing-validation-parallel.ts";
 import { validatePricingCatalog } from "./pricing-validation.ts";
 import { defaultProjectionPaths, type ProjectionPaths } from "./projection-paths.ts";
-import { projectCatalogPair, websiteDataVersion, type PairProjections } from "./projections.ts";
+import {
+  hasScopedLimitDetails,
+  projectCatalogPair,
+  websiteDataVersion,
+  type PairProjections,
+} from "./projections.ts";
 import { catalogSchema, migrateCatalogStorage, type Catalog } from "./schema.ts";
 import {
   inferencePricingPublication,
@@ -123,6 +129,7 @@ export function prepareCatalogPair(
   const catalogStorageSource = stableJson(catalogSchema.parse(catalog));
   const parsedCatalog = catalogSchema.parse(JSON.parse(catalogStorageSource));
   assertIJsonValue(parsedCatalog);
+  validateLimitDetailSources(parsedCatalog);
   const data = pricingData(pricing);
   validatePricingCatalog(data, parsedCatalog);
   const canonicalDataChunks = canonicalJsonChunksFromValidated(data);
@@ -169,6 +176,7 @@ async function prepareStructurallyValidatedPair(
   const catalogStorageSource = stableJson(catalogSchema.parse(catalog));
   const parsedCatalog = catalogSchema.parse(JSON.parse(catalogStorageSource));
   assertIJsonValue(parsedCatalog);
+  validateLimitDetailSources(parsedCatalog);
   const data = "pricing_data_version" in pricing ? pricing.data : pricing;
   const validation =
     mode === "recovery"
@@ -640,6 +648,7 @@ function validatePairProjections(
       candidate.catalog.catalog_version,
       candidate.pricing.pricing_data_version,
       candidate.inference?.source,
+      hasScopedLimitDetails(candidate.catalog),
     )
   )
     throw new Error("UI assets have an invalid data version");

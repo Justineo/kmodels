@@ -161,6 +161,29 @@ async function snapshotBytes(directory: string) {
 }
 
 describe("scoped limit publication compatibility", () => {
+  it.each(["foreign", "missing", "undeclared", "inventory"])(
+    "rejects %s detail ownership at both full-pair preparation boundaries",
+    async (failure) => {
+      const full = catalog(300);
+      if (failure === "foreign") {
+        const provider = full.providers[0];
+        if (provider === undefined) throw new Error("Missing fixture provider");
+        full.providers.push({ ...provider, id: "other", source_ids: ["test-source"] });
+        full.sources = full.sources.map((source) => ({ ...source, provider_id: "other" }));
+      } else if (failure === "missing") full.sources = [];
+      else if (failure === "undeclared")
+        full.sources = full.sources.map((source) => ({ ...source, field_paths: ["model_id"] }));
+      else full.sources = full.sources.map((source) => ({ ...source, role: "inventory" }));
+
+      expect(() => prepareCatalogPair(full, emptyPricingCatalog())).toThrow(
+        "Unowned limit detail source",
+      );
+      await expect(prepareCatalogPairInParallel(full, emptyPricingCatalog())).rejects.toThrow(
+        "Unowned limit detail source",
+      );
+    },
+  );
+
   it("omits only new detail from legacy audit and strict v1 profiles", () => {
     const full = catalog(300);
     const expected = {

@@ -30,9 +30,10 @@ an evidenced withdrawal receipt; an absent group is unobserved. Claims are indep
 and must not overwrite another source or claim. Evidence carries its original document URL,
 locator, observation time, SHA-256 and excerpt, so retained facts cannot acquire a newer source
 record's clock. The field is bounded to eight groups and 16 KiB of UTF-8 JSON. Invalid input is
-rejected without truncation. Source ownership and same-provider closure are collection-boundary
-requirements; schema acceptance alone does not establish those relationships or adoption in
-stored data.
+rejected without truncation. Collection and full catalog-pair preparation both require declared,
+same-provider source ownership. Serial preparation, parallel preparation, snapshot recovery and
+mirror bootstrap validate this relationship before projecting public assets. Schema acceptance
+alone does not establish those relationships or adoption in stored data.
 
 Collection replaces an observed `(source_ref, claim)` group atomically, including evidenced
 empty withdrawals. Missing groups retain their last verified revision independently of
