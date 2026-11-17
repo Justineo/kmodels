@@ -260,7 +260,7 @@ function conflictingPrices() {
     "quote-1",
     "quote-2",
   ]);
-  return { data, rate: term };
+  return { data, rate: term, accepted };
 }
 function profileRule(scope: "us" | "global") {
   const selectors: Selector[] = [
@@ -786,7 +786,7 @@ it("retains conflicting prices instead of choosing the first rate", () => {
   ).toContainEqual({ numerator: "1", denominator: "1" });
 });
 it("reports canonical raw conflicts through public model/resource lookup and website explanations", () => {
-  const { data } = conflictingPrices();
+  const { data, accepted } = conflictingPrices();
   const association = typesafeRule();
   const associations = mapping(data, [association]);
   const args = { provider_id: association.provider_id, model_id: association.model_id };
@@ -822,12 +822,19 @@ it("reports canonical raw conflicts through public model/resource lookup and web
     expect(selected).toEqual(data.providers[0]?.books[0]?.offers[0]?.terms);
     expect(inferencePriceExplanation(query)).toContain("Published prices conflict");
   }
-  const price = {
-    ...websiteInferencePrice(result, new Map()),
-    matching: inferenceMatchData(createPricingSnapshot(data), [association]),
-  };
-  const restored = restoreInferencePrices(storeInferencePrices([price]))[0];
+  const price = websiteInferencePrice(result, new Map());
+  const projected = websiteInferencePrices(accepted.catalog, accepted.pricing, associations).get(
+    association.model_ref,
+  );
+  const restored = restoreInferencePrices(storeInferencePrices(projected ?? [])).find(
+    ({ model_id }) => model_id === association.model_id,
+  );
   if (!restored) throw new Error("Missing website conflict");
+  expect(restored).toMatchObject({
+    status: "unknown",
+    reason: "unresolved_price",
+    explanation: "The ID mapping is known, but the available price evidence is incomplete.",
+  });
   const interactive = queryWebsiteInferencePrice(restored, [], at);
   expect(price.explanation).toContain("Published prices conflict");
   expect(interactive.status).toBe(result.status);

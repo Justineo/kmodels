@@ -7,14 +7,17 @@ import type { PricingSelection } from "./pricing-applicability.ts";
 import { formatDimension } from "./pricing-presentation.ts";
 import type { WebsiteInferencePrice } from "./website-schema.ts";
 
-export function inferencePriceExplanation(result: {
-  status: InferenceMatchResult["status"];
-  reason?: InferencePriceReason;
-  candidates: ReadonlyArray<{ gaps: ReadonlyArray<{ code: string }> }>;
-  missing_conditions?: readonly PriceDimension[];
-  requires_offer_choice?: boolean;
-  requires_execution_mode_choice?: boolean;
-}): string {
+export function inferencePriceExplanation(
+  result: {
+    status: InferenceMatchResult["status"];
+    reason?: InferencePriceReason;
+    candidates: ReadonlyArray<{ gaps: ReadonlyArray<{ code: string; reason?: string }> }>;
+    missing_conditions?: readonly PriceDimension[];
+    requires_offer_choice?: boolean;
+    requires_execution_mode_choice?: boolean;
+  },
+  context: "interactive" | "publication" = "interactive",
+): string {
   const explanations: Record<InferencePriceReason, string> = {
     unreviewed_id: "No verified inference price mapping is available for this identifier.",
     ambiguous_identity:
@@ -28,11 +31,17 @@ export function inferencePriceExplanation(result: {
     unreviewed_commercial_choice:
       "The available evidence does not establish this commercial choice for every eligible offer.",
   };
-  if (result.reason !== undefined && result.reason !== "unresolved_price")
+  const published = context === "publication";
+  if (result.reason !== undefined && (published || result.reason !== "unresolved_price"))
     return explanations[result.reason];
   if (
-    !result.missing_conditions?.length &&
-    result.candidates.some(({ gaps }) => gaps.some(({ code }) => code === "conflicting_variants"))
+    (published || !result.missing_conditions?.length) &&
+    result.candidates.some(({ gaps }) =>
+      gaps.some(
+        ({ code, reason }) =>
+          code === "conflicting_variants" && (!published || reason !== "conflicting_values"),
+      ),
+    )
   )
     return "Published prices conflict under these conditions. No single price has been selected.";
   if (

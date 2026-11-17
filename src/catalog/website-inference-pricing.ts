@@ -84,7 +84,14 @@ export function websiteInferencePrices(
             }),
             pricing.data,
           );
-          return { ...websiteInferencePrice(result, sourceUrls), matching, pricing_options };
+          // Keep the stored explanation stable for precomputed packs. The inspector can
+          // explain current conflicts and validity from the complete matcher.
+          const explanation = inferencePriceExplanation(result, "publication");
+          return {
+            ...websiteInferencePrice(result, sourceUrls, explanation),
+            matching,
+            pricing_options,
+          };
         }),
       );
     }
@@ -105,12 +112,13 @@ function groupRules(rules: readonly InferencePriceRule[], key: "model_ref" | "mo
 export function websiteInferencePrice(
   result: InferencePriceResult,
   sourceUrls: ReadonlyMap<string, string>,
+  explanation = inferencePriceExplanation(result),
 ): WebsiteInferencePrice {
   return {
     model_id: result.query.model_id,
     status: result.status,
     ...(result.reason === undefined ? {} : { reason: result.reason }),
-    explanation: inferencePriceExplanation(result),
+    explanation,
     missing_conditions: result.missing_conditions.map(formatDimension),
     evidence_urls: [
       ...new Set(

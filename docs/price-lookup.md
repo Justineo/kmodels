@@ -41,10 +41,12 @@ Neither missing prices nor missing usage implies zero. No cheapest/default offer
 
 Applicable raw `conflicting_values` evidence and competing numeric prices both report the existing
 `conflicting_variants` gap. Raw reasons and evidence remain on their selected terms; unsupported
-structures remain distinct. Website explanations show a conflict only after its conditions are
-resolved, and specific conflict or validity gaps take precedence over generic `unresolved_price`.
-Identity and scope failures retain their own explanations. This diagnosis never selects a winner
-or changes tariff applicability, validity or amounts.
+structures remain distinct. Interactive website explanations show a conflict only after its
+conditions are resolved, and specific conflict or validity gaps take precedence over generic
+`unresolved_price`. Identity and scope failures retain their own explanations. Precomputed
+website assets preserve their established fallback wording for the same publication identity.
+The inspector uses the stored matching data to explain the current selection. These diagnoses
+leave tariff selection, applicability, validity and amounts unchanged.
 
 Evaluation uses exact datetime boundaries directly. Calendar-only boundaries can exclude clearly
 future or expired rates, while the whole published period and adjacent UTC dates remain an
