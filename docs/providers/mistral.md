@@ -73,6 +73,11 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
   A row may mix units, as `Voxtral Small` does: per-minute audio input cells beside a `$0.4 /M
   Tokens` output cell. Each cell's own suffix owns its meter and quantity, so the output cell
   becomes an ordinary `output_text`/million-token rate instead of an unsupported price shape.
+  A priced table outside that reviewed header shape is never read as a model rate. The current
+  page also prices conversation minutes for its Voice Agents API in a separate `Model`/`Price`
+  table; those published amounts are signaled as an unsupported price shape so the section is
+  visible evidence instead of a silent omission. No reviewed meter exists for a conversation
+  minute, so the amounts do not become price facts.
   The page's model tables
   alone do not establish current request-service rates or prove those rates were withdrawn.
   Current first-party tool guides establish the five independent request services even though the

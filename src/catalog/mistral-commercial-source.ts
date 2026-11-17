@@ -133,13 +133,7 @@ export function parseMistralPricingCards(
         .find("th")
         .toArray()
         .map((cell) => compact($(cell).text()));
-      if (
-        headers.length !== 4 ||
-        !headers.every(
-          (header, index) => header === ["Model", "Input", "Cached input", "Output"][index],
-        )
-      )
-        continue;
+      if (!reviewedPriceTable(headers)) continue;
       // The current page declares the row unit in the table's section heading instead of in
       // every cell, so a bare amount would otherwise inherit the token default.
       const sectionUnit = $(table)
@@ -230,9 +224,43 @@ export function parseMistralPricingCards(
       }
     }
   }
+  // The page can price a section outside the reviewed Model/Input/Cached input/Output shape,
+  // such as the Voice Agents API table that bills conversation minutes. Signal those published
+  // amounts instead of dropping them silently; no reviewed meter exists for their quantity.
+  for (const table of $("table").toArray()) {
+    const headers = $(table)
+      .find("tr")
+      .first()
+      .find("th")
+      .toArray()
+      .map((cell) => compact($(cell).text()));
+    if (reviewedPriceTable(headers)) continue;
+    for (const row of $(table).find("tr").slice(1).toArray()) {
+      const [title, ...amounts] = $(row)
+        .find("td")
+        .toArray()
+        .map((cell) => compact($(cell).text()));
+      const priced = amounts.filter((amount) => /(?:[$€£]\s*\d|^free$)/iu.test(amount));
+      if (title === undefined || title === "" || priced.length === 0) continue;
+      reconcile?.({
+        disposition: "unsupported",
+        reason_code: "public_price_shape_unsupported",
+        sample: `${title}: ${priced.join(" ")}`,
+      });
+    }
+  }
   if (cards.length === 0)
     reconcile?.({ disposition: "unbound", reason_code: "commercial_companion_drift" });
   return cards;
+}
+
+const reviewedPriceHeaders = ["Model", "Input", "Cached input", "Output"] as const;
+
+function reviewedPriceTable(headers: readonly string[]): boolean {
+  return (
+    headers.length === reviewedPriceHeaders.length &&
+    headers.every((header, index) => header === reviewedPriceHeaders[index])
+  );
 }
 
 export function extractMistralCommercialFacts(

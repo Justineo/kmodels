@@ -461,6 +461,43 @@ describe("Mistral adapters", () => {
       ]),
     );
   });
+  it("signals a priced section outside the reviewed table shape instead of dropping it", async () => {
+    const baseline = await mistralSource({ pricing: await fixture("mistral/pricing-table.html") });
+    const items: PricingReconciliationItem[] = [];
+    const result = await mistralSource(
+      {
+        pricing: (await fixture("mistral/pricing-table.html")).replace(
+          "</main>",
+          [
+            "<section><h2>Voice agents</h2>",
+            "<p>Pricing for the Voice Agents API, billed per minute of conversation.</p>",
+            "<table><thead><tr><th>Model</th><th>Price</th></tr></thead><tbody>",
+            "<tr><td>Mistral Medium 3.5</td><td>$0.04/min</td></tr>",
+            "<tr><td>Larger models</td><td>$0.08/min</td></tr>",
+            "</tbody></table></section></main>",
+          ].join(""),
+        ),
+      },
+      (item) => items.push(item),
+    );
+    // A conversation-minute table has no reviewed meter, so its published amounts must surface
+    // as unsupported evidence instead of disappearing from reconciliation.
+    expect(items.filter(({ disposition }) => disposition === "unsupported")).toEqual([
+      {
+        disposition: "unsupported",
+        reason_code: "public_price_shape_unsupported",
+        sample: "Mistral Medium 3.5: $0.04/min",
+      },
+      {
+        disposition: "unsupported",
+        reason_code: "public_price_shape_unsupported",
+        sample: "Larger models: $0.08/min",
+      },
+    ]);
+    expect(result.models.map(({ uid, price_facts }) => ({ uid, price_facts }))).toEqual(
+      baseline.models.map(({ uid, price_facts }) => ({ uid, price_facts })),
+    );
+  });
   it("counts only the currencies published for a library retrieval price", () => {
     const model = baseModel({
       providerId: "mistral",
@@ -2227,7 +2264,7 @@ describe("Mistral adapters", () => {
         id: "mistral-pricing",
         url: "https://docs.mistral.ai/inference/pricing",
         extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v13",
+        extractorVersion: "mistral-pricing-v14",
         fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
         type: "website",
         scope: "global",
