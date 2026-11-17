@@ -75,10 +75,10 @@ export function modelClaimGroupSchema<Statement extends z.ZodType>(statement: St
 
 export function modelClaimGroupsSchema<
   Group extends z.ZodType<{ source_ref: string; claim: string }>,
->(group: Group) {
+>(group: Group, maxGroups: number) {
   return z
     .array(group)
-    .max(8)
+    .max(maxGroups)
     .superRefine((groups, context) => {
       const keys = new Set<string>();
       for (const [index, { source_ref, claim }] of groups.entries()) {

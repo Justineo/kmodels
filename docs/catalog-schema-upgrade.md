@@ -50,6 +50,9 @@ record has been refreshed.
 
 The optional internal `capability_details` field uses the same bounded, source-owned claim and
 document revision structure as `limit_details`. Each field has independent bounds and claims.
+Capability details allow ten groups within the same 16 KiB limit. This accommodates three
+operation-specific effort claims and two independently retained cache claims in each of Kimi's
+two documented markets.
 Prompt-cache observations give the implicit or explicit mode and an evidenced support state for
 one API scope. Reasoning-effort observations preserve documented native option spellings,
 explicit exclusions and an independently evidenced default. A documented default can establish

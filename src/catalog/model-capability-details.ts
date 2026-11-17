@@ -54,7 +54,7 @@ export const capabilityStatementSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const capabilityDetailGroupSchema = modelClaimGroupSchema(capabilityStatementSchema);
-export const capabilityDetailsSchema = modelClaimGroupsSchema(capabilityDetailGroupSchema);
+export const capabilityDetailsSchema = modelClaimGroupsSchema(capabilityDetailGroupSchema, 10);
 
 export type CapabilityStatement = z.infer<typeof capabilityStatementSchema>;
 export type CapabilityDetailGroup = z.infer<typeof capabilityDetailGroupSchema>;
