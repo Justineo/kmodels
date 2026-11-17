@@ -46,7 +46,7 @@ function statementValue(statement: LimitStatement): string {
             {{ statementValue(statement) }}
           </dt>
           <dd>{{ measurements[statement.measurement] }}</dd>
-          <dd>{{ statement.scope }}</dd>
+          <dd class="limit-scope">{{ statement.scope }}</dd>
         </div>
       </dl>
       <p
@@ -97,5 +97,8 @@ function statementValue(statement: LimitStatement): string {
 }
 .limit-group + .limit-group {
   margin-top: var(--space-4);
+}
+.limit-scope {
+  grid-column: 1 / -1;
 }
 </style>
