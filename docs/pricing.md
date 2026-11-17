@@ -48,8 +48,12 @@ They advance as one accepted pair. The canonical pricing endpoint is
 
 Pair publication also refreshes the derived UI and export packs described in
 [Collection](collection.md). They are delivery artifacts, not canonical pricing
-resources; the export-pack pricing entry decodes to the exact canonical
-envelope. A separate [unit-price export and pure package](price-lookup.md) preserve the
+resources; the export-pack pricing entry contains the public envelope bound to the exact
+public catalog core. Internal storage retains the full core binding, including optional scoped
+model details omitted by legacy public catalog profiles. Both envelopes share identical canonical
+pricing data, pricing-data version, catalog version and generation time; only their core-data
+hash differs when that projection removes internal details. Without those details their bytes
+remain identical. A separate [unit-price export and pure package](price-lookup.md) preserve the
 commercial semantics without observation fragments. Their versioned portable schema is independent
 of canonical audit delivery and price refreshes do not require npm releases.
 
@@ -378,6 +382,13 @@ The pricing envelope binds:
 - the exact catalog version and core-data hash;
 - the joint generation time;
 - the canonical pricing data.
+
+`core_data_sha256` always hashes the complete corresponding core: providers, models, sources
+and coverage. The public envelope binds the legacy public catalog projection; the internal
+envelope binds the full durable catalog. Internal compilation/replay keeps that full binding.
+Neither validator accepts a public envelope against a differing internal core or vice versa.
+Projection reuses the validated pricing-data chunks with separate small envelope headers;
+it does not serialize or clone the pricing graph a second time or change provider evidence clocks.
 
 Each represented provider owns exactly one vocabulary and one snapshot.
 Snapshots are `fresh` or `retained`; retention preserves the original
@@ -1392,6 +1403,20 @@ not repeat validation before staging snapshots and atomically advancing one
 pair manifest. Mirrors are repairable from that pointer after interruption.
 Consumers therefore observe one accepted old pair or one accepted new pair,
 never a mixed pair.
+
+The public pair identity continues hashing the exact public catalog, pricing and optional inference
+assets. Private snapshots store the complete catalog and internal pricing envelope independently
+of those projections. When internal and public cores differ, private accepted manifest v2 also
+commits the full internal `core_data_sha256`; recovery checks it before repairing projections or
+mirrors. This prevents a hidden detail and a matching replacement internal envelope from escaping
+the accepted-state binding. Existing v1 snapshots and compressed mirrors without scoped details
+retain their format and bytes. New divergent cores cannot use v1. Before staging any files,
+commit rejects reuse of the current public pair ID with a different full core, protecting the
+current snapshot directory before the atomic pointer advances. Valid model-detail updates must
+advance the provider/catalog commitment normally. Recovery compares private pricing bytes with
+their own canonical chunks, and public export bytes with the public asset hashes. The compressed
+durable pricing mirror contains the internal envelope; it can reuse public pack compression only
+when both envelopes are identical.
 
 ## Maintenance
 

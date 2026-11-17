@@ -5,6 +5,7 @@ import { gunzipSync } from "node:zlib";
 import { z } from "zod";
 import {
   compressedAsset,
+  createAssetPack,
   decodeAssetPack,
   type AssetPackManifest,
   type EncodedAssetPack,
@@ -12,6 +13,7 @@ import {
 import { assertCanonicalJson, canonicalJson, parseIJson, readIJson } from "./canonical-json.ts";
 import { assertIJsonValue, canonicalJsonChunksFromValidated } from "./canonical-value.ts";
 import { catalogJson } from "./endpoints.ts";
+import { legacyCatalog } from "./legacy-catalog.ts";
 import {
   atomicWrite,
   fileHandleMatchesCanonicalChunks,
@@ -54,13 +56,20 @@ import {
 
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 const utf8 = new TextEncoder();
-const acceptedPairManifestSchema = z.strictObject({
-  version: z.literal(1),
+const acceptedPairIdentityShape = {
   pair_id: hashSchema,
   catalog_asset_sha256: hashSchema,
   pricing_asset_sha256: hashSchema,
   inference_asset_sha256: hashSchema.optional(),
-});
+};
+const acceptedPairManifestSchema = z.discriminatedUnion("version", [
+  z.strictObject({ version: z.literal(1), ...acceptedPairIdentityShape }),
+  z.strictObject({
+    version: z.literal(2),
+    ...acceptedPairIdentityShape,
+    core_data_sha256: hashSchema,
+  }),
+]);
 
 type AcceptedPairManifest = z.infer<typeof acceptedPairManifestSchema>;
 
@@ -85,6 +94,7 @@ export interface CatalogPairCandidate extends CatalogPairData {
   catalogAssetSource: string;
   pricingAssetSource: string;
   pricingAssetChunks: readonly string[];
+  pricingStorageChunks: readonly string[];
   identity: CatalogPairIdentity;
   pairId: string;
 }
@@ -221,8 +231,20 @@ function catalogPairCandidate(
     inferenceInput === undefined
       ? undefined
       : inferencePricingPublication(parsedCatalog, envelope, inferenceInput);
-  const catalogAssetSource = catalogJson(parsedCatalog);
-  const pricingChunks = pricingCatalogJsonChunks(envelope, canonicalDataChunks);
+  const publicCatalog = legacyCatalog(parsedCatalog);
+  const catalogAssetSource = catalogJson(publicCatalog);
+  const pricingStorageChunks = pricingCatalogJsonChunks(envelope, canonicalDataChunks);
+  const pricingChunks =
+    publicCatalog === parsedCatalog
+      ? pricingStorageChunks
+      : pricingCatalogJsonChunks(
+          createPricingCatalogEnvelopeFromValidatedData(
+            envelope.data,
+            publicCatalog,
+            envelope.pricing_data_version,
+          ),
+          canonicalDataChunks,
+        );
   // Keep the full source as a rope; joining the chunks or passing the source to
   // Buffer.byteLength would flatten a catalog-sized string. Measure and hash chunks.
   let pricingAssetSource = "";
@@ -250,6 +272,7 @@ function catalogPairCandidate(
     catalogAssetSource,
     pricingAssetSource,
     pricingAssetChunks: pricingChunks,
+    pricingStorageChunks,
     identity,
     pairId: catalogPairId(identity),
     ...(inference === undefined ? {} : { inference }),
@@ -309,6 +332,10 @@ async function readSnapshotCandidate(
       inference,
       "recovery",
     );
+    if (manifest.version === 1 && candidate.pricingStorageChunks !== candidate.pricingAssetChunks)
+      throw new Error("Legacy accepted manifest cannot bind private catalog details");
+    if (manifest.version === 2 && manifest.core_data_sha256 !== candidate.pricing.core_data_sha256)
+      throw new Error("Accepted catalog pair complete core does not match its manifest");
     if (
       candidate.pairId !== manifest.pair_id ||
       candidate.identity.catalog_asset_sha256 !== manifest.catalog_asset_sha256 ||
@@ -317,7 +344,7 @@ async function readSnapshotCandidate(
       throw new Error("Accepted catalog pair snapshot does not match its manifest");
     if (!bytesEqual(catalogAssetBytes, utf8.encode(candidate.catalogAssetSource)))
       throw new Error("Accepted catalog asset bytes do not match the snapshot catalog");
-    if (!(await fileHandleMatchesCanonicalChunks(pricingFile, candidate.pricingAssetChunks)))
+    if (!(await fileHandleMatchesCanonicalChunks(pricingFile, candidate.pricingStorageChunks)))
       throw new Error("Accepted canonical pricing asset bytes do not match the snapshot envelope");
     return candidate;
   } finally {
@@ -356,28 +383,54 @@ export async function commitCatalogPair(
   if (!preparedCandidates.has(candidate))
     throw new Error("Catalog pair candidate was not prepared");
 
+  await assertAcceptedCore(candidate, paths);
   const projections = await projectCatalogPair(candidate);
   const snapshot = snapshotDirectory(paths, candidate.pairId);
   await mkdir(snapshot, { recursive: true });
   await Promise.all([
     writeIfChanged(join(snapshot, "catalog.json"), candidate.catalogStorageSource),
     writeIfChanged(join(snapshot, "catalog-asset.json"), candidate.catalogAssetSource),
-    writeCanonicalChunksIfChanged(join(snapshot, "pricing.json"), candidate.pricingAssetChunks),
+    writeCanonicalChunksIfChanged(join(snapshot, "pricing.json"), candidate.pricingStorageChunks),
     ...(candidate.inference === undefined
       ? []
       : [writeIfChanged(join(snapshot, "inference-pricing.json"), candidate.inference.source)]),
     writePairProjections(snapshotProjectionPaths(snapshot), projections),
   ]);
 
-  const manifest: AcceptedPairManifest = {
-    version: 1,
-    pair_id: candidate.pairId,
-    ...candidate.identity,
-  };
+  const manifest: AcceptedPairManifest =
+    candidate.pricingStorageChunks === candidate.pricingAssetChunks
+      ? { version: 1, pair_id: candidate.pairId, ...candidate.identity }
+      : {
+          version: 2,
+          pair_id: candidate.pairId,
+          ...candidate.identity,
+          core_data_sha256: candidate.pricing.core_data_sha256,
+        };
   await atomicWrite(manifestPath(paths), canonicalJson(manifest));
 
   await writePairMirrors(candidate, projections, paths);
   await pruneSnapshots(paths, candidate.pairId);
+}
+
+async function assertAcceptedCore(
+  candidate: CatalogPairCandidate,
+  paths: CatalogPairPaths,
+): Promise<void> {
+  const bytes = await optionalRead(manifestPath(paths));
+  if (bytes === undefined) return;
+  const manifest = acceptedPairManifestSchema.parse(
+    assertCanonicalJson(bytes, pricingLimits.semanticStringBytes * 4),
+  );
+  if (manifest.pair_id !== catalogPairId(manifest))
+    throw new Error("Accepted catalog pair manifest identity is invalid");
+  if (manifest.pair_id !== candidate.pairId) return;
+  // Reusing this directory must not overwrite the current full core before the
+  // atomic pointer advances. A v1 pair binds its entire core through public bytes.
+  const changed =
+    manifest.version === 2
+      ? manifest.core_data_sha256 !== candidate.pricing.core_data_sha256
+      : candidate.pricingStorageChunks !== candidate.pricingAssetChunks;
+  if (changed) throw new Error("Accepted public pair identity has a different complete core");
 }
 
 export async function readCatalogPairMirrors(
@@ -529,9 +582,17 @@ async function writePairMirrors(
   projections: PairProjections,
   paths: CatalogPairPaths,
 ): Promise<void> {
+  const pricingMirror =
+    candidate.pricingStorageChunks === candidate.pricingAssetChunks
+      ? compressedPricingProjection(projections.exports)
+      : compressedPricingProjection(
+          await createAssetPack("exports", candidate.pairId, candidate.pairId, [
+            { fileName: "pricing/index.json", sourceChunks: candidate.pricingStorageChunks },
+          ]),
+        );
   await Promise.all([
     writeIfChanged(paths.catalogMirror, candidate.catalogStorageSource),
-    writeBytesIfChanged(paths.pricingMirrorGzip, compressedPricingProjection(projections.exports)),
+    writeBytesIfChanged(paths.pricingMirrorGzip, pricingMirror),
     writePairProjections(paths.projections, projections),
     ...(paths.inferenceMirror === undefined
       ? []

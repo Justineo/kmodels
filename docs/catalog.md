@@ -59,9 +59,10 @@ catalog. Consumer profiles use `schema_version` for their contract, while
   collection evidence, raw source fields, observation timestamps, routes with
   source provenance, and diagnostics. Do not invent a common-field/override
   encoding.
-- `/catalog/index.json` remains the audit-rich canonical envelope with flat,
+- `/catalog/index.json` remains the audit-rich legacy envelope with flat,
   exact `(provider_id, model_id, version)` rows, source records, coverage, and
-  warnings.
+  warnings. It and the v1 semantic profiles omit optional internal `limit_details`;
+  this omission does not apply to durable catalog storage or its full core hash.
 - `/providers/index.json` is provider metadata and provider-scoped coverage
   only. `/providers/<provider>/index.json` selects one such record, and
   `/providers/<provider>/models/index.json` contains only that provider's
@@ -74,8 +75,11 @@ Only an explicit provider fact may establish a preferred version. Pricing
 remains a separately bound resource. Do not publish upstream response bodies or
 collector mirrors as another profile: they are unstable, provider-specific, and
 may contain data outside the reviewed public contract. The canonical audit
-envelope is the deepest public level and contains only validated, bounded facts
-with provenance.
+envelope is the deepest public catalog profile and contains only validated, bounded facts
+with provenance. Its separately bound public pricing envelope hashes this exact public core;
+internal pricing storage hashes the complete internal core. Both retain the same catalog version,
+pricing data and pricing-data version. Internal scoped details do not silently extend the legacy
+public profiles.
 
 ## Identity and merging
 

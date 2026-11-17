@@ -1,5 +1,6 @@
 import type { AssetSource } from "./asset-pack.ts";
 import { stableCompactJson, stableJson } from "./io.ts";
+import { legacyCatalog } from "./legacy-catalog.ts";
 import { catalogIdentifiers, catalogIds, catalogModels, catalogSummary } from "./publication.ts";
 import { catalogProvidersSchema } from "./publication-schema.ts";
 import type { PricingCatalog } from "./pricing-schema.ts";
@@ -25,7 +26,7 @@ function catalogEnvelope(catalog: Catalog): CatalogEnvelope {
 }
 
 export function catalogJson(catalog: Catalog): string {
-  return stableJson(catalogEnvelope(catalog));
+  return stableJson(catalogEnvelope(legacyCatalog(catalog)));
 }
 
 export function catalogExportAssets(

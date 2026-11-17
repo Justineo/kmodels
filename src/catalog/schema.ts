@@ -201,7 +201,7 @@ export const catalogEnvelopeSchema = z.object({
   generated_at: dateTime,
   data: z.object({
     providers: z.array(providerSchema),
-    models: z.array(providerModelSchema),
+    models: z.array(providerModelSchema.omit({ limit_details: true })),
     sources: z.array(sourceRecordSchema),
     coverage: z.array(coverageSchema),
   }),
