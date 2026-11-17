@@ -51,6 +51,16 @@ dynamic product documentation as a refresh dependency.
 - The public Models page embeds `globalThis.__XAI_PUBLIC_MODELS__`. Statically extract
   this first-party payload; never execute it. It supplies public model/service identity,
   version, aliases, regions, capabilities, and exact fixed-point rates.
+- The Models page's own navigation derives language model cards from each registry entry's
+  native name. Fetch the Markdown cards under `/developers/models/` as bounded optional
+  companions. Require the card's explicit model name to match its requested ID. An exact
+  card lead supplies a missing description. A card title that maps to the same native ID
+  can bind the exact title of a prose API launch announcement to the release notes' month.
+  Fenced examples and sibling titles supply no release evidence. Card
+  acquisition and extraction leave required-source evidence independent. When the registry
+  exceeds the card request budget, skip card discovery for that observation.
+  A fresh observation can omit a card-only description when its card is unavailable.
+  Historical release dates follow the shared catalog reconciliation rules.
 - The fixed `llms-full.txt` companion supplies the dedicated pricing section, release notes,
   lifecycle redirects, Batch and Priority terms, endpoint examples, Voice model IDs,
   and paid-tool semantics. `llms.txt` is only a link index and cannot replace the complete

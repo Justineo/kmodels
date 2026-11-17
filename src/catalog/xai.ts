@@ -444,7 +444,7 @@ function mediaRate(
   return exactRate(meter, raw, 10, unit, sourceId, "USD ticks", conditions);
 }
 
-function embeddedModels(input: ParseInput, body: string): PublicModels {
+function embeddedModelsPayload(body: string): unknown {
   const $ = load(body);
   const prefix = "globalThis.__XAI_PUBLIC_MODELS__=";
   const scripts = $("script")
@@ -455,7 +455,40 @@ function embeddedModels(input: ParseInput, body: string): PublicModels {
   const script = scripts[0];
   if (script === undefined || !script.endsWith(";"))
     throw new Error("xAI public models payload was malformed");
-  const value: unknown = JSON.parse(script.slice(prefix.length, -1));
+  return JSON.parse(script.slice(prefix.length, -1));
+}
+
+const languageCardNameSchema = z
+  .string()
+  .max(256)
+  .regex(/^[a-z0-9][a-z0-9._-]*$/);
+const languageCardClusterSchema = z.object({
+  clusterName: z.string().min(1),
+  languageModels: z.array(z.unknown()),
+});
+const languageCardRowSchema = z.object({ name: languageCardNameSchema });
+const languageCardPath = "/developers/models/";
+
+export function xaiLanguageCardPaths(body: string): string[] {
+  try {
+    const registry = publicModelsEnvelopeSchema.parse(embeddedModelsPayload(body));
+    const ids = new Set<string>();
+    for (const entry of registry.clusterConfigs) {
+      const cluster = languageCardClusterSchema.safeParse(entry);
+      if (!cluster.success) continue;
+      for (const row of cluster.data.languageModels) {
+        const model = languageCardRowSchema.safeParse(row);
+        if (model.success) ids.add(model.data.name);
+      }
+    }
+    return [...ids].map((id) => `${languageCardPath}${id}.md`);
+  } catch {
+    return [];
+  }
+}
+
+function embeddedModels(input: ParseInput, body: string): PublicModels {
+  const value = embeddedModelsPayload(body);
   const envelope = publicModelsEnvelopeSchema.parse(value);
   const root = z.record(z.string(), z.unknown()).parse(value);
   const unknownCategories = unique(
@@ -1126,8 +1159,9 @@ const monthNumber = new Map([
 ]);
 
 function releaseSections(notes: string): ReleaseSection[] {
+  const prose = markdownProse(notes);
   const headings = [
-    ...notes.matchAll(
+    ...prose.matchAll(
       /^## (January|February|March|April|May|June|July|August|September|October|November|December)(?: (\d{4}))?$/gim,
     ),
   ].map((match) => ({
@@ -1146,10 +1180,10 @@ function releaseSections(notes: string): ReleaseSection[] {
     if (heading.explicitYear !== undefined) year = heading.explicitYear;
     else if (year !== undefined && heading.month < nextMonth) year += 1;
     if (year === undefined) throw new Error("xAI release notes omitted a year anchor");
-    const end = headings[index + 1]?.index ?? notes.length;
+    const end = headings[index + 1]?.index ?? prose.length;
     dated.push({
       date: `${year}-${String(heading.month).padStart(2, "0")}`,
-      body: notes.slice(heading.index, end),
+      body: prose.slice(heading.index, end),
     });
     nextMonth = heading.month;
   }
@@ -1187,6 +1221,58 @@ function releaseDate(
       }),
   );
   return matches.map(({ date }) => date).sort()[0];
+}
+
+function languageCardMetadata(
+  models: ProviderModel[],
+  language: ReadonlySet<string>,
+  documents: LinkedBundle["documents"],
+  releases: ReleaseSection[],
+): void {
+  for (const model of models) {
+    const id = model.model_id;
+    if (!language.has(id) || !languageCardNameSchema.safeParse(id).success) continue;
+    const matches = documents.filter(
+      ({ url }) => url === `https://docs.x.ai${languageCardPath}${id}.md`,
+    );
+    const document = matches[0];
+    if (matches.length !== 1 || document === undefined) continue;
+    const prose = markdownProse(document.body).trim();
+    const headings = [...prose.matchAll(/^# ([^\n]+)$/gm)];
+    const title = headings[0]?.[1]?.trim();
+    if (
+      headings.length !== 1 ||
+      headings[0]?.index !== 0 ||
+      !title ||
+      (model.name !== id && model.name !== title)
+    )
+      continue;
+    const titleId = title.toLowerCase().replaceAll(" ", "-");
+    if (titleId !== id && language.has(titleId)) continue;
+    const overview = markdownSection(prose, 2, "At a glance");
+    const names = [...(overview ?? "").matchAll(/^- \*\*Model name:\*\* `([^`]+)`$/gm)];
+    if (names.length !== 1 || names[0]?.[1] !== id) continue;
+    const description = /^# [^\n]+\n\n([^\n]+)\n\n## At a glance$/m.exec(prose)?.[1]?.trim();
+    if (model.description === undefined && description && description.length <= 1024)
+      model.description = description;
+    if (model.release_date !== undefined || titleId !== id) continue;
+    const dates = releases.flatMap(({ date, body }) =>
+      body
+        .split(/^### /m)
+        .slice(1)
+        .filter((entry) => {
+          const [heading, launch] = entry.trim().split("\n\n", 2);
+          return (
+            heading === title &&
+            launch?.startsWith(title + ", ") &&
+            /^[^\n]+, is now available on the xAI API\./.test(launch)
+          );
+        })
+        .map(() => date),
+    );
+    const date = dates[0];
+    if (dates.length === 1 && date !== undefined) model.release_date = date;
+  }
 }
 
 function updatedDate(aliases: string[]): string | undefined {
@@ -1861,7 +1947,12 @@ function currentModels(
   catalog: PublicModels,
   html: string,
   llms: string,
-): { evidence: XaiCommercialEvidence; models: ProviderModel[] } {
+): {
+  evidence: XaiCommercialEvidence;
+  models: ProviderModel[];
+  language: ReadonlySet<string>;
+  releases: ReleaseSection[];
+} {
   const language = distinct(
     catalog.clusterConfigs.flatMap(({ languageModels }) => languageModels),
     "language",
@@ -2229,6 +2320,8 @@ function currentModels(
   return {
     evidence: commercialEvidence(input, llms, pricing ?? "", prices),
     models: mediaModels ?? scopedModels,
+    language: new Set(language.map(({ name }) => name)),
+    releases,
   };
 }
 
@@ -2696,6 +2789,7 @@ export function parseXaiCatalog(input: ParseInput): SourceParseResult {
   applyXaiLimitDetails(input, models, bundle);
   applyXaiEffortDetails(input, catalog, bundle, models);
   applyXaiCacheDetails(input, catalog, bundle, models);
+  languageCardMetadata(models, current.language, bundle.documents, current.releases);
   const pricingInputs = extractXaiPricingInputs(
     llms,
     input.source.id,

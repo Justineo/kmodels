@@ -1,6 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { z } from "zod";
 import {
   fetchSource,
   linkedDocumentUrls,
@@ -14,6 +15,7 @@ import { fireworksBundle } from "./fireworks-fixture.ts";
 import { nvidiaBuildUrl } from "../src/catalog/nvidia-build.ts";
 import { linkedBundleSchema } from "../src/catalog/bundle.ts";
 import { parseSource } from "../src/catalog/adapters.ts";
+import { xaiInferenceBundle } from "./xai-inference-fixture.ts";
 
 const transport = vi.hoisted(() => {
   const failures = new Map<string, { code: number | string; stderr: string }>();
@@ -40,6 +42,93 @@ it.each([
     ]);
     await expect(fetchSource(source)).rejects.toThrow("reviewed host allowlist");
     expect(transport.calls).not.toContain("https://unreviewed.test/gemma");
+  },
+);
+
+it.each([2, 43])(
+  "keeps xAI card discovery optional after %i additional registry rows",
+  async (extra) => {
+    const manifest = manifests.find(({ provider }) => provider.id === "xai");
+    const configured = reviewedPublicSource("xai-models");
+    if (!manifest || configured.extractor.kind !== "xai-catalog")
+      throw new Error("Missing xAI manifest");
+    const source = { ...configured, extractor: { ...configured.extractor, maxModels: 100 } };
+    const bundle = await xaiInferenceBundle();
+    const registry = z.looseObject({
+      clusterConfigs: z.array(
+        z.looseObject({
+          languageModels: z.array(z.record(z.string(), z.unknown())).optional(),
+        }),
+      ),
+    });
+    bundle.index.body = bundle.index.body.replace(
+      /(?<=globalThis\.__XAI_PUBLIC_MODELS__=)\{.*?\}(?=;\s*<\/script>)/s,
+      (value) => {
+        const models = registry.parse(JSON.parse(value));
+        const language = models.clusterConfigs.find(
+          ({ languageModels }) => languageModels?.length,
+        )?.languageModels;
+        const model = language?.[0];
+        if (!language || !model) throw new Error("Missing xAI language registry");
+        language.push(
+          ...Array.from({ length: extra }, (_, index) => ({
+            ...model,
+            name: ["llms", "index"][index] ?? `grok-card-test-${index}`,
+            aliases: [],
+            version: "1",
+          })),
+        );
+        language.push({});
+        return JSON.stringify(models);
+      },
+    );
+    transport.responses.set(source.url, [`HTTP/1.1 200 OK\r\n\r\n${bundle.index.body}`]);
+    for (const { url, body } of bundle.documents)
+      transport.responses.set(url, [`HTTP/1.1 200 OK\r\n\r\n${body}`]);
+    if (extra === 2)
+      for (const { href } of linkedDocumentUrls(bundle.index.body, source))
+        transport.responses.set(href, ["HTTP/1.1 404 Not Found\r\n\r\nmissing"]);
+
+    const fetched = await fetchSource(source);
+    const requestedCards = transport.calls.filter((url) => url.endsWith(".md"));
+    expect(requestedCards).toHaveLength(extra === 2 ? 10 : 0);
+    expect(fetched.dependencies.map(({ key }) => key)).toEqual([
+      "xai-models/index",
+      "xai-models/llms",
+    ]);
+    expect(fetched.dependencyFailures).toContainEqual(
+      extra === 2
+        ? {
+            dependency_id: "xai-models/model-card/llms",
+            impact: "claim",
+            outcome: "fetch_failed",
+            http_status: 404,
+            message: "HTTP 404",
+          }
+        : {
+            dependency_id: "xai-models/model-cards",
+            impact: "claim",
+            outcome: "fetch_failed",
+            message: "xAI language model cards exceeded discovery limit (51 > 50)",
+          },
+    );
+    if (extra === 2)
+      expect(fetched.dependencyFailures).toContainEqual({
+        dependency_id: "xai-models/model-card/index",
+        impact: "claim",
+        outcome: "fetch_failed",
+        http_status: 404,
+        message: "HTTP 404",
+      });
+    const result = parseSource({
+      provider: { ...manifest.provider, source_ids: [source.id] },
+      source,
+      observedAt: "2026-11-17T00:00:00.000Z",
+      body: fetched.body,
+    });
+    expect(
+      result.models.find(({ model_id }) => model_id === "grok-4.5")?.price_facts.length,
+    ).toBeGreaterThan(0);
   },
 );
 
@@ -80,6 +169,97 @@ it.each([false, true])(
         body: fetched.body,
       }).models.length,
     ).toBeGreaterThan(0);
+  },
+);
+
+it.each(["native", "aggregate limit", "sibling heading", "fenced example"])(
+  "fetches xAI cards independently of pricing with %s evidence",
+  async (scenario) => {
+    const manifest = manifests.find(({ provider }) => provider.id === "xai");
+    if (!manifest) throw new Error("Missing xAI manifest");
+    const bundle = await xaiInferenceBundle();
+    bundle.index.body += `<!--${" ".repeat(64 * 1024)}-->`;
+    if (scenario === "fenced example") {
+      const document = bundle.documents.find(({ url }) => url.endsWith("/llms-full.txt"));
+      if (!document) throw new Error("Missing xAI release notes");
+      document.body = document.body.replace(
+        /^### Grok 4\.6\n\n[^\n]+/m,
+        (launch) => `~~~markdown\n## May 2026\n\n${launch}\n~~~`,
+      );
+    }
+    const limited = scenario === "aggregate limit";
+    const configured = reviewedPublicSource("xai-models");
+    const source = limited
+      ? { ...configured, maxResponseBytes: Buffer.byteLength(JSON.stringify(bundle)) }
+      : configured;
+    transport.responses.set(source.url, [`HTTP/1.1 200 OK\r\n\r\n${bundle.index.body}`]);
+    for (const { url, body } of bundle.documents)
+      transport.responses.set(url, [`HTTP/1.1 200 OK\r\n\r\n${body}`]);
+    const cards = linkedDocumentUrls(bundle.index.body, source);
+    const pathFor = (id: string) => `https://docs.x.ai/developers/models/${id}.md`;
+    const card = (id: string, title: string, description: string) =>
+      `HTTP/1.1 200 OK\r\n\r\n# ${title}\n\n${description}\n\n## At a glance\n\n- **Model name:** \`${id}\`\n`;
+    expect(cards.map(({ href }) => href)).toEqual(
+      [
+        "grok-4.20-0309-non-reasoning",
+        "grok-4.20-0309-reasoning",
+        "grok-4.20-multi-agent-0309",
+        "grok-4.3",
+        "grok-4.5",
+        "grok-4.6",
+        "grok-4.7",
+        "grok-build-0.1",
+      ].map(pathFor),
+    );
+    for (const { href } of cards)
+      transport.responses.set(href, ["HTTP/1.1 404 Not Found\r\n\r\nmissing"]);
+    transport.responses.set(pathFor("grok-4.5"), [card("grok-4.5", "Grok 4.5", "Coding model.")]);
+    transport.responses.set(pathFor("grok-4.6"), [
+      card("grok-4.6", scenario === "sibling heading" ? "Grok 4.5" : "Grok 4.6", "Frontier model."),
+    ]);
+    transport.responses.set(pathFor("grok-4.3"), [card("grok-4.6", "Grok 4.6", "Sibling card.")]);
+
+    const fetched = await fetchSource(source);
+    if (limited) {
+      expect(JSON.parse(fetched.body)).toEqual(bundle);
+      expect(fetched.dependencyFailures).toContainEqual({
+        dependency_id: "xai-models/model-cards",
+        impact: "claim",
+        outcome: "fetch_failed",
+        message: "xAI language model cards exceeded aggregate byte limit",
+      });
+      return;
+    }
+    const parse = (body: string) =>
+      parseSource({
+        provider: { ...manifest.provider, source_ids: [source.id] },
+        source,
+        observedAt: "2026-11-17T00:00:00.000Z",
+        body,
+      });
+    const prior = parse(JSON.stringify(bundle));
+    const result = parse(fetched.body);
+    const selected = (id: string) => result.models.find(({ model_id }) => model_id === id);
+    expect(selected("grok-4.5")).toMatchObject({
+      description: "Coding model.",
+      release_date: "2026-07",
+    });
+    expect(selected("grok-4.6")?.description).toBe(
+      scenario === "sibling heading" ? undefined : "Frontier model.",
+    );
+    expect(selected("grok-4.6")?.release_date).toBe(scenario === "native" ? "2026-08" : undefined);
+    expect(selected("grok-4.3")).toEqual(
+      prior.models.find(({ model_id }) => model_id === "grok-4.3"),
+    );
+    expect(selected("grok-4.7")).toEqual(
+      prior.models.find(({ model_id }) => model_id === "grok-4.7"),
+    );
+    expect(result.models.map(({ price_facts }) => price_facts)).toEqual(
+      prior.models.map(({ price_facts }) => price_facts),
+    );
+    expect(result.commercial_facts).toEqual(prior.commercial_facts);
+    expect(fetched.dependencyFailures).toHaveLength(5);
+    expect(fetched.dependencyFailures?.every(({ impact }) => impact === "claim")).toBe(true);
   },
 );
 

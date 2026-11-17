@@ -53,6 +53,7 @@ import {
   dashscopeMarketIdentity,
 } from "./dashscope-market.ts";
 import { linkedBundleSchema } from "./bundle.ts";
+import { xaiLanguageCardPaths } from "./xai.ts";
 
 const execute = promisify(execFile);
 
@@ -1172,6 +1173,10 @@ function linkedUrls(body: string, source: SourceManifest, pathPattern: RegExp): 
     }
   };
   const indexFormat = crawl.indexFormat ?? source.format;
+  if (source.extractor.kind === "xai-catalog") {
+    for (const path of xaiLanguageCardPaths(body)) add(path);
+    return [...urls.values()].sort((left, right) => left.href.localeCompare(right.href));
+  }
   if (source.extractor.kind === "cohere-catalog")
     for (const url of cohereModelDocumentUrls(body, source.url)) add(url.href);
   else if (indexFormat === "markdown" || indexFormat === "mixed")
@@ -2972,7 +2977,12 @@ export async function fetchSource(
   }
 
   const indexKey = `${source.id}/index`;
-  const indexSource = linkedSource(source, indexKey, new URL(source.url));
+  const indexSource = linkedSource(
+    source,
+    indexKey,
+    new URL(source.url),
+    source.extractor.kind === "xai-catalog" ? source.maxResponseBytes : undefined,
+  );
   const configured = (crawl.documents ?? []).map((document) => documentEntry(source, document));
   if (
     configured.some(
@@ -3048,13 +3058,15 @@ export async function fetchSource(
   const discoveredUrls = [...urls.values()].sort((left, right) =>
     left.href.localeCompare(right.href),
   );
-  assertItemCount(
-    "Linked documents",
-    discoveredUrls.length,
-    crawl.minDocuments,
-    crawl.maxDocuments,
-  );
-  const discovered = discoveredUrls.map((url): DocumentEntry => {
+  const xaiCards = source.extractor.kind === "xai-catalog";
+  let cardFailure =
+    xaiCards && discoveredUrls.length > crawl.maxDocuments
+      ? `xAI language model cards exceeded discovery limit (${discoveredUrls.length} > ${crawl.maxDocuments})`
+      : undefined;
+  const boundedUrls = cardFailure === undefined ? discoveredUrls : [];
+  if (cardFailure === undefined)
+    assertItemCount("Linked documents", boundedUrls.length, crawl.minDocuments, crawl.maxDocuments);
+  const discovered = boundedUrls.map((url): DocumentEntry => {
     const filename = url.pathname.split("/").filter(Boolean).at(-1);
     if (filename === undefined) throw new Error("Linked document URL omitted a filename");
     const stem =
@@ -3063,7 +3075,7 @@ export async function fetchSource(
         ? url.pathname.slice(1)
         : filename.replace(/\.(?:md|ts)$/, "");
     return {
-      key: `${source.id}/${stem}`,
+      key: `${source.id}/${xaiCards ? `model-card/${stem}` : stem}`,
       url,
       format: source.format,
       maxResponseBytes: crawl.maxDocumentBytes ?? source.maxResponseBytes,
@@ -3077,21 +3089,35 @@ export async function fetchSource(
   const discoveredDocuments = await mapConcurrent(discovered, crawl.concurrency, (entry) =>
     fetchDocumentEntry(source, entry),
   );
-  const documents = [...discoveredDocuments, ...configuredDocuments].filter(
-    (document): document is FetchedDocument => "payload" in document,
-  );
-  const body = JSON.stringify({
-    index: { url: source.url, body: index.body },
-    documents: [...nestedIndexes, ...documents].map((document) => ({
-      url: document.url,
-      body: document.payload.body,
-    })),
-  });
-  if (Buffer.byteLength(body) > source.maxResponseBytes)
-    throw new Error("Linked documents exceeded aggregate byte limit");
   const dependencyFailures = [...discoveredDocuments, ...configuredDocuments].filter(
     (document): document is DependencyFailure => "dependency_id" in document,
   );
+  const fetched = (documents: (FetchedDocument | DependencyFailure)[]) =>
+    documents.filter((document): document is FetchedDocument => "payload" in document);
+  let documents = fetched([...discoveredDocuments, ...configuredDocuments]);
+  const bundleBody = (documents: FetchedDocument[]) =>
+    JSON.stringify({
+      index: { url: source.url, body: index.body },
+      documents: [...nestedIndexes, ...documents].map((document) => ({
+        url: document.url,
+        body: document.payload.body,
+      })),
+    });
+  let body = bundleBody(documents);
+  if (Buffer.byteLength(body) > source.maxResponseBytes && xaiCards) {
+    documents = fetched(configuredDocuments);
+    body = bundleBody(documents);
+    cardFailure ??= "xAI language model cards exceeded aggregate byte limit";
+  }
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("Linked documents exceeded aggregate byte limit");
+  if (cardFailure !== undefined)
+    dependencyFailures.push({
+      dependency_id: `${source.id}/model-cards`,
+      impact: "claim",
+      outcome: "fetch_failed",
+      message: cardFailure,
+    });
   return {
     body,
     contentHash: sha256(body),
