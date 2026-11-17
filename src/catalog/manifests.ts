@@ -889,7 +889,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-changelog" },
-        extractorVersion: "openai-changelog-v2",
+        extractorVersion: "openai-changelog-v3",
         fields: ["release_date"],
         allowedHosts: ["developers.openai.com"],
         maxResponseBytes: mebibytes(8),

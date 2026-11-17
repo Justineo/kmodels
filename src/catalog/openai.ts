@@ -2081,6 +2081,21 @@ const openAiAbbreviatedMonths = new Map(
   [...openAiMonths].map(([month, number]) => [month.slice(0, 3), number]),
 );
 
+function openAiReleasedFamily(line: string): string[] {
+  const list = /^Released [\w.-]+ family of models in the API, including (.+)\.$/.exec(line)?.[1];
+  if (!list) return [];
+  const ids: string[] = [];
+  for (const member of list.split(/, (?:and )?| and /)) {
+    const id =
+      /^\[\x60([a-z0-9._-]+)\x60\]\(https:\/\/developers\.openai\.com\/api\/docs\/models\/\1\)$/.exec(
+        member,
+      )?.[1];
+    if (!id) return [];
+    ids.push(id);
+  }
+  return ids;
+}
+
 export function parseOpenAiChangelog(input: ParseInput): ProviderModel[] {
   if (input.catalogModels === undefined)
     throw new Error("OpenAI changelog requires the collected catalog");
@@ -2089,8 +2104,12 @@ export function parseOpenAiChangelog(input: ParseInput): ProviderModel[] {
   let year: string | undefined;
   let month: number | undefined;
   let date: string | undefined;
-  for (const rawLine of input.body.split(/\r?\n/)) {
+  let featureLead = false;
+  for (const rawLine of markdownProse(input.body).split(/\r?\n/)) {
     const line = normalizedText(rawLine);
+    if (!line) continue;
+    const followsFeature = featureLead;
+    featureLead = /^Feature(?: ·|$)/.test(line);
     const monthHeading = line.match(/^## ([A-Z][a-z]+), (\d{4})$/);
     if (line.startsWith("## ")) {
       month = monthHeading?.[1] === undefined ? undefined : openAiMonths.get(monthHeading[1]);
@@ -2119,10 +2138,14 @@ export function parseOpenAiChangelog(input: ParseInput): ProviderModel[] {
         input.onContractFinding?.(contractExtensionEvidence(["/changelog/day"]));
       continue;
     }
-    if (date === undefined || !line.startsWith("Feature ·")) continue;
-    for (const match of line.matchAll(/(?:^| · )Model: ([a-z0-9._-]+)/g)) {
-      const modelId = match[1];
-      if (modelId === undefined || !known.has(modelId)) continue;
+    if (date === undefined) continue;
+    const ids = featureLead
+      ? [...line.matchAll(/(?:^| · )Model: ([a-z0-9._-]+)(?= · |$)/g)].map((match) => match[1])
+      : followsFeature
+        ? openAiReleasedFamily(line)
+        : [];
+    for (const modelId of ids) {
+      if (!modelId || !known.has(modelId)) continue;
       const current = releases.get(modelId);
       if (current === undefined || date < current) releases.set(modelId, date);
     }

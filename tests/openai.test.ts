@@ -896,6 +896,39 @@ describe("OpenAI adapters", () => {
       { model_id: "gpt-image-2", release_date: "2026-04-21" },
     ]);
   });
+  it("dates the complete explicit family launch list under its own Feature entry", () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-changelog");
+    if (!source) throw new Error("Missing OpenAI changelog");
+    const link = (id: string) => `[\`${id}\`](https://developers.openai.com/api/docs/models/${id})`;
+    const launch = `Released Example family of models in the API, including ${link("a")}, and ${link("b")}.`;
+    const ids = ["a", "b", "anchor"];
+    const parse = (header: string, paragraph: string) =>
+      parseSource({
+        provider: provider(value),
+        source,
+        observedAt,
+        catalogModels: ids.map((id) => openAiModel(id, [])),
+        body: [
+          "## August, 2025",
+          "### Aug 8",
+          "Feature · Model: anchor",
+          "### Aug 7",
+          header,
+          "",
+          paragraph,
+        ].join("\n"),
+      }).models.map(({ model_id, release_date }) => [model_id, release_date]);
+    expect(parse("Feature · API: v1/responses", launch)).toEqual([
+      ["a", "2025-08-07"],
+      ["anchor", "2025-08-08"],
+      ["b", "2025-08-07"],
+    ]);
+    expect(parse("Update", launch)).toEqual([["anchor", "2025-08-08"]]);
+    expect(parse("Feature", launch.replace("/models/b)", "/models/other)"))).toEqual([
+      ["anchor", "2025-08-08"],
+    ]);
+  });
   it.each(["### Feb 30", "### Feb 0", "## Unreviewed date"])(
     "rejects changelog date drift without inheriting an older date (%s)",
     (heading) => {

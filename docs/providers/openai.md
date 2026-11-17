@@ -113,6 +113,8 @@ is inferred from an API path, and no snapshot or alias borrows a price by name s
   capabilities, and tool support are parsed independently where possible.
 - Changelog `Feature` entries provide the earliest exact release date for catalog identities; later
   updates do not move that date and unknown changelog identities cannot create catalog rows.
+  A family launch can identify its members in the opening release sentence. Each listed literal
+  ID must agree with its official model link before the sentence contributes release dates.
   Month/day headings must establish a real calendar date. An unreadable heading clears the
   previous date so later entries cannot inherit it. An irregular deprecation row is signaled and
   skipped locally. A readable `at earliest` shutdown bound is a reviewed source form rather than
