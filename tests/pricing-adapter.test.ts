@@ -568,6 +568,83 @@ describe("parsed-source canonical pricing adapter", () => {
       invalidValidity?.kind === "rate" ? invalidValidity.raw_variants[0]?.reason : undefined,
     ).toBe("unsupported_structure");
   });
+  it.each([
+    {
+      meter: "input_text" as const,
+      unit: "million_tokens" as const,
+      conditions: { cache_ttl_seconds: 7200 },
+      dimension: "cache_ttl_seconds",
+    },
+    {
+      meter: "image_generation" as const,
+      unit: "image" as const,
+      conditions: { resolution: "4K", quality: "high" },
+      dimension: "resolution",
+    },
+  ])(
+    "preserves known $dimension scope when a $meter rate has invalid validity",
+    ({ meter, unit, conditions, dimension }) => {
+      const { source: pricingSource } = pricingManifest();
+      const parsedModel = model();
+      parsedModel.price_facts = [
+        {
+          meter,
+          unit,
+          conditions: { ...conditions, effective_from: "not-a-date" },
+          price: "2",
+          currency: "USD",
+          source_ref: sourceRef,
+          derived: false,
+        },
+      ];
+      const partition = assembleParsedProviderPricing(
+        providerId,
+        observedAt,
+        [{ source: pricingSource, models: [parsedModel] }],
+        [parsedModel],
+      );
+      if (!partition) throw new Error("Missing raw pricing partition");
+      const raw = partition.books.flatMap((b) =>
+        b.offers.flatMap((o) => o.terms.flatMap((t) => (t.kind === "rate" ? t.raw_variants : []))),
+      );
+      expect(raw).toHaveLength(1);
+      expect(raw[0]?.reason).toBe("unsupported_structure");
+      expect(raw[0]?.possible_scope?.any_of.flatMap((clause) => clause.all_of)).toContainEqual(
+        expect.objectContaining({ dimension: { namespace: "kmodels", value: dimension } }),
+      );
+      expect(raw[0]?.observations[0]?.raw).toMatchObject({ amount: "2", validity: "not-a-date" });
+      expect(
+        partition.books.flatMap((b) =>
+          b.offers.flatMap((o) => o.terms.flatMap((t) => (t.kind === "rate" ? t.variants : []))),
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it("does not swallow source-scope validation failures behind invalid validity", () => {
+    const { source: pricingSource } = pricingManifest();
+    const parsedModel = model();
+    parsedModel.price_facts = [
+      {
+        meter: "cache_write_text",
+        unit: "million_tokens",
+        conditions: { effective_from: "not-a-date", cache_ttl_seconds: -1 },
+        price: "2",
+        currency: "USD",
+        source_ref: sourceRef,
+        derived: false,
+      },
+    ];
+    expect(() =>
+      assembleParsedProviderPricing(
+        providerId,
+        observedAt,
+        [{ source: pricingSource, models: [parsedModel] }],
+        [parsedModel],
+      ),
+    ).toThrow(/cache_ttl_seconds/);
+  });
+
   it("preserves source-native pricing formulas as raw terms", () => {
     const { source: pricingSource } = pricingManifest();
     const parsedModel = model();

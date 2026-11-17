@@ -928,6 +928,7 @@ describe("Azure adapters", () => {
         conditions: {
           region: "eastus",
           deployment_scope: "GlobalStandard",
+          effective_from: "2026-01-01T00:00:00Z",
         },
         source_ref: "azure-api",
         source_locator: {
@@ -1156,7 +1157,12 @@ describe("Azure adapters", () => {
         meter: "input_text",
         price: "0.0022",
         unit: "thousand_tokens",
-        conditions: { region: "eastus", deployment_scope: "Standard", service_tier: "standard" },
+        conditions: {
+          region: "eastus",
+          deployment_scope: "Standard",
+          service_tier: "standard",
+          effective_from: "2025-11-01T00:00:00Z",
+        },
         raw_validity: "2025-11-01T00:00:00Z",
       }),
       expect.objectContaining({ meter: "output_text", price: "0.0088" }),
@@ -1170,6 +1176,7 @@ describe("Azure adapters", () => {
           deployment_scope: "GlobalStandard",
           service_tier: "standard",
           context_tier: "short_context",
+          effective_from: "2026-07-01T00:00:00Z",
         },
         raw_validity: "2026-07-01T00:00:00Z – 2026-08-31T23:59:00Z",
       }),
@@ -1180,6 +1187,7 @@ describe("Azure adapters", () => {
           deployment_scope: "GlobalStandard",
           service_tier: "priority",
           context_tier: "short_context",
+          effective_from: "2026-07-01T00:00:00Z",
         },
       }),
       expect.objectContaining({ meter: "cache_write_text" }),

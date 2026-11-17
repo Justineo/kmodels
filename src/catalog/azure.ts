@@ -2222,7 +2222,12 @@ function retailPriceFact(
     price: price.retailPrice,
     currency: price.currencyCode,
     unit,
-    conditions,
+    conditions: {
+      ...conditions,
+      ...(price.effectiveStartDate === undefined
+        ? {}
+        : { effective_from: price.effectiveStartDate }),
+    },
     source_ref: sourceRef,
     source_locator: { kind: "meter", value: price.meterId },
     derived: false,

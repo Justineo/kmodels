@@ -784,6 +784,9 @@ Recurring schedules and published validity are independent: the schedule says wh
 value applies within a day or week, while validity says when that published rule starts or stops
 being offered.
 
+An invalid validity declaration keeps the rate raw with its other known applicability predicates.
+It does not broaden that evidence to unrelated regions, tiers or other disjoint price scopes.
+
 Kmodels does not turn collection time into validity. Exact datetime boundaries retain their
 published inclusivity. A year, month or date locates an effective boundary within that calendar
 period without establishing an instant or time zone. Lookup resolves it only when the evaluation

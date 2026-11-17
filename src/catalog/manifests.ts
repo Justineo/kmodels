@@ -2277,7 +2277,7 @@ export const manifests = [
           maxModels: 200,
           minHandledRatio: 0.7,
         },
-        extractorVersion: "azure-retail-prices-v9",
+        extractorVersion: "azure-retail-prices-v10",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -2437,7 +2437,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "azure-api" },
-        extractorVersion: "azure-api-v6",
+        extractorVersion: "azure-api-v7",
         fields: [
           "model_id",
           "version",

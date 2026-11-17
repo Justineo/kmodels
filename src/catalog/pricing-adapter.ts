@@ -968,11 +968,9 @@ type NormalizedRate =
     };
 
 function normalizeRate(context: AdapterContext, rate: SourcePriceFact): NormalizedRate {
-  const modelScope = unconditionalApplicability;
-  const validity = publishedValidity(rate.conditions);
-  if (validity === false)
-    return { kind: "raw", reason: "unsupported_structure", applicability: modelScope };
   const applicability = rateApplicability(context, rate.conditions);
+  const validity = publishedValidity(rate.conditions);
+  if (validity === false) return { kind: "raw", reason: "unsupported_structure", applicability };
   const unit = normalizedUnit(context, rate);
   if (unit === undefined)
     return {

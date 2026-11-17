@@ -219,6 +219,15 @@ region, deployment scope, served service tier, context tier, modality, operation
 resolution and validity when first-party evidence supplies them. Equal prices are not
 expanded into a synthetic Cartesian product.
 
+Retail `effectiveStartDate` owns the tariff start independently of model release and observation
+time, including historical exact ARM meter joins. Preserve its literal text in `raw_validity`
+and map it to `effective_from`: dates retain date precision, and exact RFC 3339 datetimes normalize
+to UTC through the shared validity contract. Missing starts remain absent; invalid non-empty
+strings keep the affected quote raw with its known scope and amount. Structurally invalid rows
+retain the existing row-local contract diagnostics. No end is inferred from another row, an
+omission or snapshot replacement. `effectiveEndDate` remains raw evidence until its boundary
+semantics are independently established.
+
 Exact cache-write TTL columns qualify variants of `cache_write_text`. Preserve 300/3600-second
 conditions alongside region, deployment and context. No usage quantity is required for their unit
 prices. Reviewed Azure accounting sources do not establish per-TTL response counters; this optional
