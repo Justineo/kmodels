@@ -23,14 +23,7 @@ export function addCapabilityDetailGroup(
     group.evidence.some(({ document_url }) => {
       const url = new URL(document_url);
       return url.protocol !== "https:" || !input.source.allowedHosts.includes(url.hostname);
-    }) ||
-    group.statements.some(
-      (statement) =>
-        statement.kind === "reasoning_effort" &&
-        statement.default_value !== undefined &&
-        statement.supported_values !== undefined &&
-        !statement.supported_values.includes(statement.default_value),
-    )
+    })
   ) {
     capabilityDetailFinding(input, group.claim);
     return;
