@@ -115,6 +115,10 @@ is inferred from an API path, and no snapshot or alias borrows a price by name s
   updates do not move that date and unknown changelog identities cannot create catalog rows.
   A family launch can identify its members in the opening release sentence. Each listed literal
   ID must agree with its official model link before the sentence contributes release dates.
+  Explicit model additions under a Feature entry also admit exact quoted model IDs. A snapshot
+  announcement that names the release as the newest model in its series can also appear under
+  Update. The named series, official family card, full snapshot ID and dated heading must agree.
+  A family reference, feature launch or snapshot spelling alone supplies no date.
   Month/day headings must establish a real calendar date. An unreadable heading clears the
   previous date so later entries cannot inherit it. An irregular deprecation row is signaled and
   skipped locally. A readable `at earliest` shutdown bound is a reviewed source form rather than

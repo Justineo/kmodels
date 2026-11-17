@@ -2083,17 +2083,28 @@ const openAiAbbreviatedMonths = new Map(
   [...openAiMonths].map(([month, number]) => [month.slice(0, 3), number]),
 );
 
-function openAiReleasedFamily(line: string): string[] {
+function openAiReleasedModels(line: string, date: string, followsFeature: boolean): string[] {
+  const direct =
+    /^Released \[([a-z0-9._-]+)\]\(https:\/\/developers\.openai\.com\/api\/docs\/models\/([a-z0-9._-]+)\), our newest model in the \2 series\.$/.exec(
+      line,
+    );
+  const id = direct?.[1];
+  const card = direct?.[2];
+  if (card !== undefined && id === `${card}-${date}`) return [id];
+  if (!followsFeature) return [];
+  const pair =
+    /^Added two new [\w -]+ models, \x60([a-z0-9._-]+)\x60 and \x60([a-z0-9._-]+)\x60\./.exec(line);
+  if (pair?.[1] !== undefined && pair[2] !== undefined) return [pair[1], pair[2]];
   const list = /^Released [\w.-]+ family of models in the API, including (.+)\.$/.exec(line)?.[1];
   if (!list) return [];
   const ids: string[] = [];
   for (const member of list.split(/, (?:and )?| and /)) {
-    const id =
+    const memberId =
       /^\[\x60([a-z0-9._-]+)\x60\]\(https:\/\/developers\.openai\.com\/api\/docs\/models\/\1\)$/.exec(
         member,
       )?.[1];
-    if (!id) return [];
-    ids.push(id);
+    if (!memberId) return [];
+    ids.push(memberId);
   }
   return ids;
 }
@@ -2143,9 +2154,7 @@ export function parseOpenAiChangelog(input: ParseInput): ProviderModel[] {
     if (date === undefined) continue;
     const ids = featureLead
       ? [...line.matchAll(/(?:^| · )Model: ([a-z0-9._-]+)(?= · |$)/g)].map((match) => match[1])
-      : followsFeature
-        ? openAiReleasedFamily(line)
-        : [];
+      : openAiReleasedModels(line, date, followsFeature);
     for (const modelId of ids) {
       if (!modelId || !known.has(modelId)) continue;
       const current = releases.get(modelId);

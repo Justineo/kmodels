@@ -985,6 +985,48 @@ describe("OpenAI adapters", () => {
       ["anchor", "2025-08-08"],
     ]);
   });
+  it("dates exact model launches from release statements without inheriting family or feature dates", () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-changelog");
+    if (!source) throw new Error("Missing OpenAI changelog");
+    const ids = [
+      "gpt-4o",
+      "gpt-4o-2024-08-06",
+      "o3",
+      "o4-mini",
+      "not-a-release",
+      "wrong-family-2024-08-06",
+      "regional-2024-08-06",
+      "wrong-series-2024-08-06",
+    ];
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      catalogModels: ids.map((id) => openAiModel(id, [])),
+      body: [
+        "## April, 2025",
+        "### Apr 16",
+        "Feature · API: v1/chat/completions · API: v1/responses",
+        "",
+        "Added two new o-series reasoning models, `o3` and `o4-mini`. They support tool use.",
+        "## August, 2024",
+        "### Aug 6",
+        "Update",
+        "Launched Structured Outputs.",
+        "Released [gpt-4o-2024-08-06](https://developers.openai.com/api/docs/models/gpt-4o), our newest model in the gpt-4o series.",
+        "Released [wrong-family-2024-08-06](https://developers.openai.com/api/docs/models/gpt-4o), our newest model in the gpt-4o series.",
+        "Released [regional-2024-08-06](https://developers.openai.com/api/docs/models/regional), now available in Europe.",
+        "Released [wrong-series-2024-08-06](https://developers.openai.com/api/docs/models/wrong-series), our newest model in the other series.",
+        "GA release for [not-a-release](https://developers.openai.com/api/docs/models/not-a-release) fine-tuning.",
+      ].join("\n"),
+    }).models;
+    expect(models.map(({ model_id, release_date }) => [model_id, release_date])).toEqual([
+      ["gpt-4o-2024-08-06", "2024-08-06"],
+      ["o3", "2025-04-16"],
+      ["o4-mini", "2025-04-16"],
+    ]);
+  });
   it.each(["### Feb 30", "### Feb 0", "## Unreviewed date"])(
     "rejects changelog date drift without inheriting an older date (%s)",
     (heading) => {
