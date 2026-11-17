@@ -126,6 +126,76 @@ it.each([
   },
 );
 
+it("normalizes the published per-page tool quote and keeps unknown tool units raw", () => {
+  const items: PricingReconciliationItem[] = [];
+  const parsed = parseDashscopeMarket(
+    { ...input, onPricingReconciliation: (item) => items.push(item) },
+    {
+      market: [
+        {
+          region: "ap-southeast-1",
+          scope: "international",
+          models: [
+            {
+              model: "qwen3.8-max",
+              scope: "PUBLIC",
+              serviceSites: ["international"],
+              supports: { inference: true },
+              prices: [
+                {
+                  type: "input_token",
+                  priceName: "Input",
+                  price: "1.65",
+                  priceUnit: "Per 1M tokens",
+                },
+              ],
+              builtInToolMultiPrices: [
+                {
+                  type: "pdf_parsing",
+                  name: "Document parsing",
+                  supportedApi: "Completions API",
+                  prices: [{ price: "0.003", priceUnit: "Per page", currency: "USD" }],
+                },
+                {
+                  type: "new_service",
+                  name: "Unreviewed tool",
+                  supportedApi: "Completions API",
+                  prices: [{ price: "0.75", priceUnit: "Per new service unit", currency: "USD" }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  );
+  const [service, unreviewed] = parsed.commercial;
+  expect(service).toMatchObject({
+    book_key: "service:market:pdf_parsing",
+    pricing_state: "numeric",
+    price_facts: [{ meter: "tool_call", price: "0.003", unit: "page", currency: "USD" }],
+    raw_price_facts: [],
+  });
+  expect(unreviewed).toMatchObject({
+    book_key: "service:market:new_service",
+    pricing_state: "unknown",
+    price_facts: [],
+    raw_price_facts: [{ reason: "unknown_unit", raw: { unit: "Per new service unit" } }],
+  });
+  expect(items.filter(({ sample }) => sample?.endsWith(":input_token") !== true)).toMatchObject([
+    {
+      disposition: "normalized",
+      reason_code: "market_tool_price",
+      sample: expect.stringContaining("pdf_parsing"),
+    },
+    {
+      disposition: "raw",
+      reason_code: "unsupported_pricing_cell_preserved",
+      sample: expect.stringContaining("new_service"),
+    },
+  ]);
+});
+
 it("normalizes each published cache TTL and keeps reads independent of creation TTL", async () => {
   const market: unknown = JSON.parse(
     await readFile(new URL("./fixtures/dashscope/qwen4-market.json", import.meta.url), "utf8"),

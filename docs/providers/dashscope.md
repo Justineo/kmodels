@@ -143,6 +143,10 @@ these gaps diagnostic and eligible for repair during accepted or unchanged refre
 the raw quote does not complete that mapping, and numeric sibling prices remain usable.
 Tool prices have independent service subjects with exact model, region, deployment and API
 compatibility; a known per-call quote does not require an invented runtime counter binding.
+Published tool units map onto the shared unit vocabulary: per-call, per-1K-call, per-image,
+per-second and per-page quotes become `request`, `thousand_requests`, `image`, `second` and
+`page`. A `Per page` document-parsing quote is therefore a numeric `tool_call` rate rather than a
+retained raw cell.
 Blank tool units, Batch Chat accounting, combined text/audio output, ambiguous unified Omni
 meters, voice/world-operation units and the contradictory `video_ratio_540p`/`480P` label retain
 their literal evidence. They remain explicit normalization limits. Limited-time discount factors

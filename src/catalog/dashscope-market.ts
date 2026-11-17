@@ -343,6 +343,8 @@ function nativeUnit(unit: string): SourcePriceFact["unit"] | undefined {
       return "thousand_requests";
     case "Per call":
       return "request";
+    case "Per page":
+      return "page";
     default:
       return undefined;
   }
