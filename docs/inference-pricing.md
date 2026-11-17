@@ -204,14 +204,14 @@ missing even when the snapshot publishes one value.
 
 The inspector browses published price schedules. It uses the sole published categorical, exact
 decimal or decimal-bucket value for a required condition when it agrees with the remaining
-candidates' fixed selectors. Display these values as plain text under **Price scope**, separately
-from editable **Usage conditions**. The scope describes the prices being shown, not facts inferred
-about a real request or a claim that other usage is unsupported. Do not require a confirmation click
-for a sole published price scope. Keep the predicate in canonical rates and public lookup; removing
+candidates' fixed selectors. Keep these values internal and show only dynamic **Usage conditions**
+needed to choose rates. A sole published price scope needs no summary or confirmation click.
+The scope describes the prices being shown, not facts inferred about a real request or a claim
+that other usage is unsupported. Keep the predicate in canonical rates and public lookup; removing
 it would incorrectly make a conditional price universal. Do not turn a varying condition into a
 model property merely because one model or filtered view has one published value.
 Resolve native singletons from the ID's unselected domain before replacing mapped dimensions with canonical controls. Keep the
-native price scope and its exact selection instead of an equivalent one-option canonical picker.
+exact native selection internally instead of an equivalent one-option canonical picker.
 Native selection preserves sibling prices that omit the dimension; it does not broaden a commercial
 claim's scope or resolve missing evidence. Apply this ordering to inference-ID, ordinary model and
 provider-resource pricing. A sole account-plan option still requires explicit enrollment selection.
@@ -295,7 +295,7 @@ The UI derives status, missing conditions and visible rows from the same match r
 reevaluates at precise validity boundaries. A decimal bucket selects the published range; it does
 not invent a representative token count. Public query inputs retain exact decimal selectors.
 One contiguous published band also becomes a bucket. Its sole range resolves internally as
-fixed Price scope, preserving the original bounds rather than requiring a numerical usage input.
+fixed scope without a visible field, preserving the original bounds rather than requiring a numerical usage input.
 
 The stored model-detail payload shares identical offer-matching data across that model's request
 IDs. Each ID retains its own rules and fixed selectors; the loader restores the complete matcher

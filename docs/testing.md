@@ -185,6 +185,9 @@ unmapped speed, and no Standard tier. Cache rows omit Speed to exercise commerci
 intersection. Both components run all 216 initial selection paths (including unset Speed) and all
 enabled edits and clears from the reachable rendered states. Assertions reject empty price matches,
 preserve the edited commercial choice, retain compatible Regions and clear conflicting Regions.
+State identity and compatibility checks include categorical selections from the components'
+pricing-context event, so fixed fields need no visible summary. Narrowing Region to one value
+and restoring its alternatives preserves an explicit input without storing an inferred one.
 An explicit Priority-only Region regression switches to Standard and requires Region to reset
 before any rates appear. This deterministic graph complements the fixed performance
 workload; uniform regional tariffs alone cannot detect availability regressions.

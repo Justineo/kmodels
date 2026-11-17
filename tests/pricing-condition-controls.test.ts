@@ -212,7 +212,7 @@ it("keeps commercial alternatives selectable so conflicting native inputs can be
   expect(absent).not.toContain("<select");
 });
 
-it("uses the same speed labels for canonical controls, native choices and fixed scope", async () => {
+it("uses readable speed choices and omits fixed canonical and native values", async () => {
   const speed: WebsitePricingSelector = {
     key: "speed",
     label: "Speed",
@@ -242,7 +242,8 @@ it("uses the same speed labels for canonical controls, native choices and fixed 
     inferred: [optimized],
   });
   for (const html of [fixed, canonical]) {
-    expect(html).toMatch(/<output\b[^>]*>Latency optimized<\/output>/);
+    expect(html).not.toContain("Latency optimized");
+    expect(html).not.toContain('class="pricing-controls"');
     expect(html).not.toContain("<select");
   }
   expect(
@@ -253,6 +254,40 @@ it("uses the same speed labels for canonical controls, native choices and fixed 
     ),
   ).toBe("Provider quality");
   expect(optimized.value.value).toBe("optimized");
+});
+
+it("shows only dynamic native conditions beside a fixed range and commercial choice", async () => {
+  const context: WebsitePricingSelector = {
+    key: "context",
+    label: "Context",
+    kind: "decimal_buckets",
+    dimension: { namespace: "kmodels", value: "context_tokens" },
+    unit: { factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }] },
+    values: [{ key: "band", label: "≤ 1M", upper: { value: "1000000", inclusive: true } }],
+  };
+  const region: WebsitePricingSelector = {
+    key: "region",
+    label: "Region",
+    kind: "categorical",
+    dimension: { namespace: "kmodels", value: "region" },
+    values: ["us", "eu"].map((value) => ({
+      key: value,
+      label: value,
+      value: { namespace: "provider", provider_id: "fixture", value },
+    })),
+  };
+  const html = await renderComponent(PricingControls, {
+    prefix: "dynamic",
+    selectors: [context, region],
+    choices: [{ ...standard, offer_refs: ["plan"] }],
+    inferred: [standard],
+    selected: [],
+    inputs: {},
+  });
+  expect(html.match(/<select\b/g)).toHaveLength(1);
+  expect(html).toContain("Region");
+  for (const fixed of ["Price scope", "Context", "≤ 1M", "Service tier"])
+    expect(html).not.toContain(fixed);
 });
 
 it("hides fixed billing and request modes while retaining real request and cache choices", async () => {
@@ -380,7 +415,7 @@ it("still matches hidden singleton modes without repeating them beside inference
   expect(html).toContain("$1");
   expect(html).not.toContain("Request mode");
   expect(html).not.toContain("Cache mode");
-  expect(html).toContain(">Pricing offer<");
+  expect(html).not.toContain("Pricing offer");
   expect(
     matchInferencePrices(
       matching,

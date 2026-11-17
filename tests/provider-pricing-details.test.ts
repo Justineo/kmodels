@@ -174,10 +174,10 @@ describe("provider pricing details", () => {
     };
     offer.rates = [rate];
     const fixed = await renderComponent(PricingOfferBreakdown, { offer });
-    expect(fixed).toMatch(/<output\b[^>]*>Standard<\/output>/);
+    expect(fixed).not.toContain("<output");
     expect(fixed).toContain('class="exact-rate"');
     expect(fixed).not.toContain("<select");
-    expect(fixed).toContain('aria-label="Price scope"');
+    expect(fixed).not.toContain("Price scope");
     expect(fixed).not.toContain("Usage conditions");
 
     // A native singleton keeps unqualified sibling prices instead of applying a scoped choice.
@@ -198,7 +198,8 @@ describe("provider pricing details", () => {
     ).toEqual([]);
     const mixedControls = await renderComponent(PricingOfferBreakdown, { offer: mixed });
     expect(mixedControls).not.toContain("<select");
-    expect(mixedControls).toMatch(/<output\b[^>]*>Standard<\/output>/);
+    expect(mixedControls).not.toContain("<output");
+    expect(mixedControls).toContain('class="exact-rate"');
     expect(
       queryWebsiteCommercialOffer(
         mixed,

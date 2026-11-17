@@ -181,8 +181,8 @@ Preserve this scope uncertainty until the source supplies an exact bridge.
 
 A parsed numeric context band is one condition, not both a token range and an independently
 selectable tier label. Unparsed labels remain categorical conditions; no numeric range is guessed.
-One parsed band is fixed browsing scope, displayed as `≤ 1M` when its exact predicate is
-`0 < tokens ≤ 1M`; this does not establish the caller's actual input quantity.
+One parsed band resolves internally as fixed browsing scope. Its projected label is `≤ 1M` when
+the exact predicate is `0 < tokens ≤ 1M`; this does not establish the caller's actual input quantity.
 
 Literal price-table associations survive removal of optional API/accounting guides. Source refresh
 replaces the captured associations, so removing a model's price row withdraws its mapping even if a

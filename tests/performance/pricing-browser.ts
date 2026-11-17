@@ -2,6 +2,7 @@ import { createVaporApp, nextTick } from "vue";
 import PricingHarness from "./PricingHarness.vue";
 import type { PricingPerformanceCase } from "./pricing-fixture.ts";
 import { pricingTransitionAudit } from "./pricing-transitions.ts";
+import { selectorSchema } from "../../src/pricing/schema.ts";
 import "../../src/tokens.css";
 
 const root = document.querySelector("#app");
@@ -11,6 +12,9 @@ function state() {
   return {
     text: root?.textContent ?? "",
     rates: [...document.querySelectorAll(".exact-rate")].map((rate) => rate.textContent),
+    categoricalSelections: selectorSchema
+      .array()
+      .parse(JSON.parse(document.getElementById("pricing-context")?.dataset.selections ?? "[]")),
     controls: [...document.querySelectorAll("select")].map((select) => ({
       id: select.id,
       label: [...(select.labels ?? [])].map((label) => label.textContent?.trim()).join(" "),

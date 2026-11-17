@@ -405,9 +405,10 @@ it.each([
     });
     expect(html).not.toContain('placeholder="Enter value"');
     expect(html.includes("<select")).toBe(values > 1);
-    if (!numeric)
+    if (!numeric && values > 1)
       for (let index = 0; index < values; index++)
         expect(html).toContain(`Option ${name} ${index}`);
+    if (values === 1) expect(html).toContain('class="exact-rate"');
   },
 );
 it("preserves same-ID tariff candidates and reports actual missing conditions", () => {
@@ -1536,8 +1537,8 @@ it("uses single-value Bedrock conditions without asking the viewer", async () =>
   const pending = await renderComponent(InferencePrices, { modelRef, prices: [price], offers });
   expect(pending).toContain("to see rates.");
   expect(pending).toMatch(/<label[^>]*>Service tier/);
-  expect(pending).toMatch(/<output\b[^>]*>Responses<\/output>/);
-  expect(pending).toContain("Cache TTL");
+  expect(pending).not.toContain("<output");
+  expect(pending).not.toContain("Cache TTL");
   expect(pending).not.toContain('class="exact-rate"');
   const scopedPrice = {
     ...price,
@@ -1563,13 +1564,9 @@ it("uses single-value Bedrock conditions without asking the viewer", async () =>
     offers,
   });
   expect(resolved).toContain('class="exact-rate"');
-  const resolvedScope = resolved.match(
-    /<section\b[^>]*aria-label="Price scope"[\s\S]*?<\/section>/u,
-  )?.[0];
-  expect(resolvedScope).toMatch(/Operation[\s\S]*?<output\b[^>]*>Responses<\/output>/u);
-  expect(resolved.match(/>Responses</gu)).toHaveLength(1);
-  expect(resolved).toContain("Cache TTL");
-  expect(resolved).toMatch(/<output\b[^>]*>1800<\/output>/);
+  expect(resolved).not.toContain("Price scope");
+  expect(resolved).not.toContain("<output");
+  expect(resolved).not.toContain("Cache TTL");
   expect(resolved).toContain("$66");
   expect(resolved).not.toContain("<select");
   expect(resolved).not.toContain('aria-label="Pricing options"');

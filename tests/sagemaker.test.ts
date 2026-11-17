@@ -408,7 +408,8 @@ describe("SageMaker price books", () => {
       inferencePrices,
     });
     expect(html).toContain("Mapping not verified. The catalog rates below are shown instead.");
-    expect(html).toContain("Marketplace software");
+    expect(html).toContain('aria-label="Model rates"');
+    expect(html).not.toContain("Pricing offer");
     expect(html).toContain("$6");
     expect(html).not.toContain("Inspect target");
     const captured = capturePricingReplaySources(
@@ -500,7 +501,8 @@ describe("SageMaker price books", () => {
         model: { ...model, pricing: { outcome: "offers" } },
         detail,
       });
-      expect(html).toContain("Marketplace software");
+      expect(html).toContain('aria-label="Model rates"');
+      expect(html).not.toContain("Pricing offer");
       if (modelId === "fixture-speech") expect(html).toContain("$2");
       expect(html).not.toContain("No base model rate");
       expect(html).not.toContain("Serverless");

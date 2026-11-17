@@ -594,7 +594,8 @@ it("publishes single-band models and TTL-specific cache tariffs through the real
     prices: detail.inference_prices,
     offers: websiteModelDetail(candidate.pricing.data, model).pricing?.offers ?? [],
   });
-  expect(html).toContain("≤ 1M");
+  expect(html).not.toContain("≤ 1M");
+  expect(html).not.toContain("Price scope");
   expect(html).not.toContain('placeholder="Enter value"');
   expect(html).not.toContain("Some prices are unresolved");
 }, 20000);

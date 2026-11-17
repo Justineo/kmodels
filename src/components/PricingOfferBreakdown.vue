@@ -59,7 +59,6 @@ const props = defineProps<{
   shareContext?: boolean;
   pricingContext?: WebsitePricingContext | undefined;
   preferredRegion?: PricingRegion | undefined;
-  scope?: readonly { label: string; value: string }[] | undefined;
 }>();
 const emit = defineEmits<{ pricingContext: [context: WebsitePricingContext] }>();
 
@@ -590,7 +589,6 @@ function showNoteScope(scope: ScopeCopy): boolean {
       :selectors="rateSelectors"
       :inputs="inputs"
       :follow-region="followedRegion"
-      :scope
       @change="selectCommercial"
       @input="setInput"
     />

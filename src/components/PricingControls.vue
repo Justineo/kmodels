@@ -5,7 +5,6 @@ import type { CommercialChoice } from "../catalog/pricing-schema.ts";
 import type { AvailableCommercialChoice } from "../pricing/commercial-matching.ts";
 import type { WebsitePricingSelector } from "../catalog/website-schema.ts";
 import { fixedPricingSelection } from "../catalog/pricing-selector-input.ts";
-import { fixedPricingDetailVisible } from "../pricing/condition-presentation.ts";
 import {
   commercialDimensionLabels,
   commercialDefinitions,
@@ -22,7 +21,6 @@ const props = defineProps<{
   selectors: readonly WebsitePricingSelector[];
   inputs: Readonly<Record<string, string>>;
   followRegion?: { key: string; label: string } | undefined;
-  scope?: readonly { label: string; value: string }[] | undefined;
 }>();
 const emit = defineEmits<{
   change: [choices: CommercialChoice[]];
@@ -65,16 +63,6 @@ const sections = computed(() =>
         (section.label === "Usage conditions" && editableSelectors.value.length),
     ),
 );
-const fixedGroups = computed(() =>
-  groups.value.filter((group) => group.fixed && fixedPricingDetailVisible(group.dimension)),
-);
-const fixedSelectors = computed(() =>
-  props.selectors.filter(
-    (selector) =>
-      fixedPricingSelection(selector) !== undefined &&
-      fixedPricingDetailVisible(selector.dimension.value),
-  ),
-);
 const editableSelectors = computed(() =>
   props.selectors.filter((selector) => fixedPricingSelection(selector) === undefined),
 );
@@ -88,28 +76,7 @@ function choose(dimension: CommercialChoice["dimension"], key: string): void {
 </script>
 
 <template>
-  <div
-    v-if="sections.length || fixedGroups.length || fixedSelectors.length || scope?.length"
-    class="pricing-controls"
-  >
-    <section
-      v-if="fixedGroups.length || fixedSelectors.length || scope?.length"
-      class="pricing-scope"
-      aria-label="Price scope"
-    >
-      <p class="pricing-scope-title">Price scope</p>
-      <div class="pricing-scope-values">
-        <div v-for="item in scope" :key="item.label" class="commercial-choice">
-          <span class="pricing-scope-label">{{ item.label }}</span>
-          <output class="pricing-fixed-value">{{ item.value }}</output>
-        </div>
-        <div v-for="group in fixedGroups" :key="group.dimension" class="commercial-choice">
-          <span class="pricing-scope-label" :title="group.description">{{ group.label }}</span>
-          <output class="pricing-fixed-value">{{ group.options[0]?.label }}</output>
-        </div>
-        <PricingConditions :prefix="prefix" :selectors="fixedSelectors" :inputs="inputs" />
-      </div>
-    </section>
+  <div v-if="sections.length" class="pricing-controls">
     <fieldset v-for="section in sections" :key="section.label">
       <legend>{{ section.label }}</legend>
       <div v-for="group in section.groups" :key="group.dimension" class="commercial-choice">
@@ -141,8 +108,7 @@ function choose(dimension: CommercialChoice["dimension"], key: string): void {
   display: grid;
   gap: var(--space-3);
 }
-.pricing-controls fieldset,
-.pricing-scope-values {
+.pricing-controls fieldset {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
@@ -158,18 +124,12 @@ function choose(dimension: CommercialChoice["dimension"], key: string): void {
   font-size: var(--font-size-meta);
   font-weight: var(--font-weight-semibold);
 }
-.pricing-scope-title {
-  margin: 0 0 var(--space-2);
-  font-size: var(--font-size-meta);
-  font-weight: var(--font-weight-semibold);
-}
 .commercial-choice {
   display: grid;
   min-width: 0;
   gap: var(--space-1);
 }
-.pricing-controls label,
-.pricing-scope-label {
+.pricing-controls label {
   color: var(--color-text-muted);
   font-size: var(--font-size-meta);
 }
@@ -187,16 +147,8 @@ function choose(dimension: CommercialChoice["dimension"], key: string): void {
   outline: var(--stroke-focus) solid var(--color-accent);
   outline-offset: calc(var(--stroke-focus) * -1);
 }
-.pricing-controls :deep(.pricing-fixed-value) {
-  display: block;
-  min-width: 0;
-  color: var(--color-text-primary);
-  font-size: var(--font-size-meta);
-  line-height: var(--line-height-body);
-}
 @media (max-width: 640px) {
-  .pricing-controls fieldset,
-  .pricing-scope-values {
+  .pricing-controls fieldset {
     grid-template-columns: 1fr;
   }
 }

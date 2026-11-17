@@ -2,7 +2,6 @@
 import type { WebsitePricingSelector } from "../catalog/website-schema.ts";
 import {
   decimalRangeLabel,
-  fixedPricingSelection,
   isIntegerSelector,
   pricingInputError,
 } from "../catalog/pricing-selector-input.ts";
@@ -29,16 +28,6 @@ const booleanOptions = [
 ];
 function inputValue(key: string): string {
   return props.inputs[key] ?? "";
-}
-function fixedLabel(selector: WebsitePricingSelector): string {
-  if (selector.kind === "categorical") {
-    const value = selector.values[0];
-    return value === undefined
-      ? ""
-      : formatConditionValue(selector.dimension, value.value, value.label);
-  }
-  if (selector.kind === "decimal_buckets") return selector.values[0]?.label ?? "";
-  return selector.kind === "decimal_values" ? (selector.values[0] ?? "") : "";
 }
 function setInput(key: string, value: string): void {
   emit("input", key, value);
@@ -71,19 +60,7 @@ function scheduleRows(selector: WebsitePricingSelector) {
 
 <template>
   <div v-for="(selector, index) in selectors" :key="selector.key" class="pricing-condition">
-    <span v-if="fixedPricingSelection(selector) !== undefined" class="pricing-condition-label">
-      <UiTooltip
-        v-if="pricingConditionDescription(selector)"
-        class="tooltip-text-trigger"
-        tabindex="0"
-        :content="pricingConditionDescription(selector) ?? ''"
-        :aria-label="`${selector.label}: ${pricingConditionDescription(selector)}`"
-        >{{ selector.label }}</UiTooltip
-      >
-      <template v-else>{{ selector.label }}</template>
-      <template v-if="'unit' in selector">({{ formatUnitExpression(selector.unit) }})</template>
-    </span>
-    <label v-else-if="pricingConditionDescription(selector)" :for="`${prefix}-selector-${index}`">
+    <label v-if="pricingConditionDescription(selector)" :for="`${prefix}-selector-${index}`">
       <UiTooltip
         class="tooltip-text-trigger"
         tabindex="0"
@@ -97,10 +74,7 @@ function scheduleRows(selector: WebsitePricingSelector) {
       {{ selector.label }}
       <template v-if="'unit' in selector">({{ formatUnitExpression(selector.unit) }})</template>
     </label>
-    <output v-if="fixedPricingSelection(selector) !== undefined" class="pricing-fixed-value">{{
-      fixedLabel(selector)
-    }}</output>
-    <template v-else-if="selector.kind === 'categorical'">
+    <template v-if="selector.kind === 'categorical'">
       <UiSelect
         :id="`${prefix}-selector-${index}`"
         :model-value="inputValue(selector.key)"
@@ -169,9 +143,7 @@ function scheduleRows(selector: WebsitePricingSelector) {
         <div
           v-for="row in scheduleRows(selector)"
           :key="row.key"
-          :data-selected="
-            fixedPricingSelection(selector) !== undefined || inputValue(selector.key) === row.key
-          "
+          :data-selected="inputValue(selector.key) === row.key"
         >
           <dt>{{ row.label }}</dt>
           <dd>{{ row.rule }}</dd>
@@ -206,8 +178,7 @@ function scheduleRows(selector: WebsitePricingSelector) {
   gap: var(--space-1);
 }
 
-.pricing-condition > label,
-.pricing-condition-label {
+.pricing-condition > label {
   color: var(--color-text-muted);
   font-size: var(--font-size-meta);
 }

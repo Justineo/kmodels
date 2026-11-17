@@ -2,6 +2,7 @@ import type { PricingPerformanceCase } from "./pricing-fixture.ts";
 import { commercialChoiceSchema } from "../../src/catalog/pricing-schema.ts";
 import { pricingSelection } from "../../src/catalog/pricing-selector-input.ts";
 import { matchInferencePrices } from "../../src/pricing/inference-matching.ts";
+import { canonicalJson } from "../../src/catalog/canonical-value.ts";
 
 type Benchmark = Pick<Window["pricingBenchmark"], "mount" | "select">;
 type State = Awaited<ReturnType<Benchmark["mount"]>>;
@@ -51,7 +52,7 @@ export async function pricingTransitionAudit(
       throw new Error(
         `Completed selections have no rendered rates: ${JSON.stringify({ path, state })}`,
       );
-    const key = JSON.stringify([state.controls, state.text]);
+    const key = JSON.stringify([state.controls, state.text, state.categoricalSelections]);
     if (!seen.has(key)) {
       seen.add(key);
       queue.push(path);
@@ -72,25 +73,32 @@ export async function pricingTransitionAudit(
     transitions++;
     if (action.label !== "region" && action.value !== "") {
       const edited = control(next, action.label);
-      const option = field.options.find(({ value }) => value === action.value);
-      if (edited ? edited.value !== action.value : !option || !next.text.includes(option.label))
+      const dimension = action.label === "service tier" ? "service_tier" : "speed";
+      const preserved = edited
+        ? edited.value === action.value
+        : next.categoricalSelections.some(
+            (selection) =>
+              selection.kind === "categorical" &&
+              selection.dimension.namespace === "kmodels" &&
+              selection.dimension.value === dimension &&
+              canonicalJson(selection.value) === action.value,
+          );
+      if (!preserved)
         throw new Error(`Edited choice was lost: ${JSON.stringify({ path, action, next })}`);
     }
     if (action.label !== "region" && region?.value) {
       const retained = control(next, "region");
-      const selected = region.options.find(({ value }) => value === region.value);
       const selection = pricingSelection(queryData.regionOption, region.value);
       if (selection === undefined) throw new Error("Missing selected audit Region");
-      const choices = next.controls.flatMap((field) => {
+      const choices = next.categoricalSelections.flatMap((selection) => {
         const dimension =
-          field.label.toLowerCase() === "service tier"
-            ? "service_tier"
-            : field.label.toLowerCase() === "speed"
-              ? "speed"
-              : undefined;
-        return dimension === undefined || field.value === ""
+          selection.dimension.namespace === "kmodels" &&
+          ["service_tier", "speed"].includes(selection.dimension.value)
+            ? selection.dimension.value
+            : undefined;
+        return dimension === undefined || selection.kind !== "categorical"
           ? []
-          : [commercialChoiceSchema.parse({ dimension, value: JSON.parse(field.value) })];
+          : [commercialChoiceSchema.parse({ dimension, value: selection.value })];
       });
       const result = matchInferencePrices(
         queryData.matching,
@@ -104,7 +112,9 @@ export async function pricingTransitionAudit(
         result.reason !== "no_applicable_price" && result.reason !== "incompatible_conditions";
       const preserved = retained
         ? retained.value === region.value
-        : selected !== undefined && next.text.includes(selected.label);
+        : next.categoricalSelections.some(
+            (value) => canonicalJson(value) === canonicalJson(selection),
+          );
       if (compatible !== preserved || (!compatible && retained?.value))
         throw new Error(
           `Commercial edit must retain compatible Regions and reset conflicts: ${JSON.stringify({ path, action, next })}`,
@@ -115,6 +125,23 @@ export async function pricingTransitionAudit(
   }
   accept(initial, []);
   const [regions = [], tiers = [], speeds = []] = domains;
+  // Hiding a narrowed Region must preserve an explicit input without storing an inferred one.
+  for (const explicit of [false, true]) {
+    let state = await mount();
+    const region = control(state, "region");
+    const speed = control(state, "speed");
+    const firstRegion = regions[0];
+    const optimized = speeds.find(({ label }) => label === "Latency optimized");
+    if (!region || !speed || !firstRegion || !optimized)
+      throw new Error("Missing singleton round-trip controls");
+    if (explicit) state = await benchmark.select(region.id, firstRegion.value);
+    state = await benchmark.select(speed.id, optimized.value);
+    if (control(state, "region") !== undefined || state.rates.length === 0)
+      throw new Error(`A sole Region must resolve internally: ${JSON.stringify(state)}`);
+    state = await benchmark.select(speed.id, "");
+    if (control(state, "region")?.value !== (explicit ? firstRegion.value : ""))
+      throw new Error(`Restoring Region changed input ownership: ${JSON.stringify(state)}`);
+  }
   // A Priority-only Region must not disable Standard; the edit clears Region and keeps the tier.
   let regression = await mount();
   for (const [label, text] of [

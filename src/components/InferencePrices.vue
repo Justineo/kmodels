@@ -389,8 +389,8 @@ function conditionItem(selector: Exclude<PricingSelection, { kind: "decimal_rang
         : `${name} (${formatRecurringTimeSchedule(schedule)} · ${schedule.time_zone})`,
   };
 }
-// Conditions already shown as a control or a fixed commercial value are not repeated in the scope.
-function scopeConditions(selectors: readonly PricingSelection[]) {
+// Keep candidate distinctions that are not already resolved by the controls.
+function candidateConditions(selectors: readonly PricingSelection[]) {
   return selectors
     .filter(
       ({ dimension }) =>
@@ -412,31 +412,13 @@ const candidates = computed(() => {
   return (
     selected.value?.candidates.map((candidate) => ({
       ...candidate,
-      conditions: scopeConditions(candidate.selectors).map((selector) => {
+      conditions: candidateConditions(candidate.selectors).map((selector) => {
         const { label, value } = conditionItem(selector);
         return `${label}: ${value}`;
       }),
       offer: props.offers.find(({ id }) => id === candidate.offer_ref),
     })) ?? []
   );
-});
-// The scope names the pricing offer and fixed conditions shared by every remaining candidate, so it is
-// stable before and after the required selections are complete.
-const scopeItems = computed(() => {
-  const [first, ...rest] = selected.value?.candidates ?? [];
-  if (first === undefined) return [];
-  const items: { label: string; value: string }[] = [];
-  const offer = props.offers.find(({ id }) => id === first.offer_ref);
-  if (offer !== undefined && rest.every(({ offer_ref }) => offer_ref === first.offer_ref))
-    items.push({ label: "Pricing offer", value: offer.title });
-  for (const selector of scopeConditions(first.selectors))
-    if (
-      rest.every(({ selectors }) =>
-        selectors.some((other) => canonicalJson(other) === canonicalJson(selector)),
-      )
-    )
-      items.push(conditionItem(selector));
-  return items;
 });
 const selectionPrompt = computed(() => {
   const missing = selected.value?.missing_conditions ?? [];
@@ -600,7 +582,6 @@ async function copyId(id: string): Promise<void> {
       :selected="commercialChoices"
       :selectors="conditionOptions"
       :inputs="inputs"
-      :scope="idPending ? undefined : scopeItems"
       @change="selectCommercial"
       @input="setInput"
     />

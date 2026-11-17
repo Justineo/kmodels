@@ -328,8 +328,8 @@ describe("model pricing details", () => {
     expect(html).not.toContain("<table");
     expect(html).not.toContain("<thead");
     expect(html).not.toContain("Region");
-    expect(html).toContain("Pricing offer");
-    expect(html).toContain("On-demand inference");
+    expect(html).not.toContain("Pricing offer");
+    expect(html).not.toContain("On-demand inference");
   });
 
   it("shows only context that changes the price", async () => {
@@ -565,7 +565,7 @@ describe("model pricing details", () => {
     expect(html).not.toContain("$9");
   });
 
-  it("shows a sole published Region as price scope rather than a required input", async () => {
+  it("resolves a sole published Region internally without an extra field or summary", async () => {
     const pricedOffer = offer([{ amount: "$2", scope: region("us") }]);
     const selector = pricedOffer.selectors[0];
     if (selector?.kind !== "categorical") throw new Error("Missing categorical test selector");
@@ -574,11 +574,11 @@ describe("model pricing details", () => {
     const html = await render([pricedOffer]);
 
     expect(html).toContain("$2");
-    expect(html).toContain("Region");
-    expect(html).toMatch(/<output\b[^>]*>US<\/output>/);
+    expect(html).not.toContain("<output");
     expect(html).not.toContain("<select");
     expect(html).not.toContain("Billing details");
-    expect(html).toContain('aria-label="Price scope"');
+    expect(html).not.toContain("Price scope");
+    expect(html).not.toContain("Pricing offer");
     expect(html).not.toContain("Usage conditions");
   });
 

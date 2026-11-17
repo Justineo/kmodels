@@ -281,11 +281,6 @@ watch(hasOtherCharges, (available) => {
           <PricingOfferBreakdown
             :offer="activeMechanism"
             :model-ref="model.uid"
-            :scope="
-              modelMechanisms.length === 1
-                ? [{ label: 'Pricing offer', value: activeMechanism.title }]
-                : undefined
-            "
             share-context
             @pricing-context="catalogContext = $event"
           />

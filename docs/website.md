@@ -24,10 +24,9 @@ pricing program; request mode and billed tier qualify its rates. Canonical condi
 native price selectors share one **Usage conditions** fieldset and one continuous two-column grid.
 The canonical mapping is an input convenience, not a separate category of pricing condition.
 Resolve native single-value fields before generating mapped commercial controls, and keep those
-values in the matching context. Fixed request mode, billing basis, and cache mode are omitted
-from controls and rate annotations because they offer no choice. Other fixed values remain
-descriptive text in **Price scope**, outside the editable **Usage conditions** fieldset, so a
-regional or tier restriction is still visible.
+values in the matching context. Show only dynamic conditions needed to select the displayed
+rates. Fixed values and a sole Pricing offer stay internal; do not add a Price scope summary or
+one-option controls. Fixed request mode, billing basis, and cache mode also stay out of rate annotations.
 For mapped commercial fields, determine fixedness from the unselected subject's domain, not the
 values left after another commercial selection. A dependent singleton fills its editable control
 while preserving alternatives; editing it removes only incompatible explicit selections. Commercial
@@ -50,8 +49,7 @@ these explain API access/data storage region versus inference execution scope; G
 guarantee inference within the selected API region. Other commercial definitions remain in titles.
 Automatically apply a sole condition value only when its mapping covers every remaining price
 context, not merely every offer ID. A Standard speed scoped to Request cannot silently discard
-Batch while Request mode is still unselected. Show fixed values as labeled text without input
-borders, backgrounds or dropdown arrows. The scope describes the displayed published prices;
+Batch while Request mode is still unselected. Resolve fixed values without additional UI. The scope describes the displayed published prices;
 it does not establish the caller's actual usage or provider support outside that scope. Keep the
 underlying applicability predicate even for a singleton. Public lookup requires caller inputs or
 evidenced ID bindings and never guesses an actual value from a one-value published domain.
@@ -79,9 +77,8 @@ values remain scoped to the selected ID, commercial choices, plan and evaluation
 required Pricing offer and conditions before showing rates with one line that names the missing
 conditions. Once those inputs are complete, show applicable rates without a separate status heading,
 or explain unresolved evidence such as imprecise validity or conflicting prices.
-Show fixed ID conditions without claiming a complete request quote: the Pricing offer and fixed
-conditions shared by every remaining candidate appear in **Price scope**, so the scope is stable
-before and after the required selections.
+Fixed ID conditions remain in matching without a separate summary. Preserve candidate-specific
+annotations when they distinguish multiple displayed prices.
 When the ID picker has several groups, each ID's condition domain links back to the ID. A
 categorical condition offers the values published by any ID, in the source option order, and a
 chosen value narrows the picker to IDs whose published prices or fixed ID scope admit it. When
@@ -200,12 +197,11 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   that model's inspector at the pricing section; it does not choose an offer or
   pricing context on the user's behalf.
 - Mapped and catalog pricing share one detail flow: `Inference model ID (or its unverified-mapping
-  notice) → [capacity charges when linked] → [Pricing offer when selectable] → Price scope and Usage
+  notice) → [capacity charges when linked] → [Pricing offer when selectable] → dynamic Usage
   conditions → rates or a one-line selection prompt → mapping evidence → collapsed related
   services → refresh status`. Neither path adds its own status banner or rate-block heading. The first mechanism in
   stable presentation order is the initial browsing focus, not a provider default,
-  recommendation, or cheapest-offer choice. A sole mechanism is named as the Pricing offer in Price scope so a viewer can distinguish Messages, Batch, or another mechanism without inferring it
-  from the rates.
+  recommendation, or cheapest-offer choice. A sole mechanism resolves internally without a Pricing offer summary.
   The selected mechanism remains the context for its request-cost breakdown; exact mechanism
   references filter its related costs. Public running-capacity rates occupy a separate block and
   are never converted to per-request prices. Capacity books with the same offer identity and
@@ -254,7 +250,7 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   billed service tiers remain distinct when the provider distinguishes them.
   Configurable controls in the same grid row stay top-aligned when one control includes guidance or
   validation text. A categorical dimension, exact decimal selector, or decimal bucket with one
-  possible value in its unselected domain resolves internally and appears as descriptive Price scope.
+  possible value in its unselected domain resolves internally without rendering a field or summary.
   A categorical selector whose values carry a recurring daily or weekly billing rule exposes one
   compact UTC rule disclosure below the control. Its values render as separated marker rows rather
   than an undifferentiated text list. Selecting a value highlights its row and filters rates; the
@@ -294,7 +290,7 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   each choice resolves every original condition without guessing a representative
   value. Ranges with gaps or continuous-decimal overlaps accept an exact value and
   reject invalid or non-integral count/TTL input.
-  A single contiguous band is one bucket and resolves as fixed Price scope in both
+  A single contiguous band is one bucket and resolves internally in both
   pricing views; it never requires a fabricated usage count. Context labels abbreviate
   exact thousands and millions as K/M without rounding a boundary. The first positive
   token band may omit its lower bound in the label (`≤ 1M` for `0 < tokens ≤ 1M`),
@@ -304,8 +300,8 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
 - The model rate matrix shows only the meter, rate, unit, and unresolved validity qualification. Driver metadata
   remains in the canonical audit; a missing driver never hides a rate. Labels identify the meter,
   not an optional usage counter. TTL and other rate-changing facts remain conditions. Selecting
-  geography must not hide a still-required TTL; a sole published value appears as descriptive
-  **Price scope**. The UI must not interpret provider-specific term keys.
+  geography must not hide a still-required TTL; a sole published value resolves internally.
+  The UI must not interpret provider-specific term keys.
   Contribution rows expose the same driver metadata without copying the target rate. Generic
   usage-based billing is omitted because the meter, unit, and rate already express it. These rows
   explain what affects cost without accepting usage input,

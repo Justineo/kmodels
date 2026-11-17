@@ -252,12 +252,8 @@ it.each(["service_tier", "speed"] as const)(
       prices: [price],
       offers: [],
     });
-    expect(html).toMatch(/<output\b[^>]*>Standard<\/output>/);
-    const priceScope = html.match(
-      /<section\b[^>]*aria-label="Price scope"[\s\S]*?<\/section>/u,
-    )?.[0];
-    expect(priceScope).toContain(">Standard</output>");
-    expect(priceScope).not.toContain("<select");
+    expect(html).not.toContain("<output");
+    expect(html).not.toContain("Price scope");
     const conditions = html.match(/<fieldset\b[\s\S]*?<\/fieldset>/gu) ?? [];
     expect(conditions.some((section) => section.includes("Region"))).toBe(true);
     for (const section of conditions) expect(section).not.toContain(">Standard<");
@@ -265,7 +261,7 @@ it.each(["service_tier", "speed"] as const)(
     for (const select of html.match(/<select\b[\s\S]*?<\/select>/gu) ?? [])
       expect(select).not.toContain(">Standard<");
 
-    // A fully mapped native singleton must stay visible instead of being consumed twice.
+    // A fully mapped native singleton also resolves internally without another field.
     const variants = term.variants;
     term.variants = [{ applicability: qualified, semantics: 0 }];
     const fullyMapped = await renderComponent(InferencePrices, {
@@ -273,7 +269,8 @@ it.each(["service_tier", "speed"] as const)(
       prices: [price],
       offers: [],
     });
-    expect(fullyMapped).toMatch(/<output\b[^>]*>Standard<\/output>/);
+    expect(fullyMapped).not.toContain("<output");
+    expect(fullyMapped).not.toContain('class="pricing-controls"');
     term.variants = variants;
 
     // Multiple native values remain a real choice even when only one has a canonical mapping.
