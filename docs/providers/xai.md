@@ -107,6 +107,23 @@ table and REST route. The engine has no inferred model-specific rate: STT remain
 metered provider resource, so admitting an engine cannot duplicate that tariff. Internal service
 configuration labels alone do not establish additional TTS/STT model identities.
 
+## Tool-calling evidence
+
+The [Models page](https://docs.x.ai/developers/models) payload's
+`features.functionCalling` supplies the existing language-model `tool_call` indicator.
+It does not establish arbitrary client-function support across APIs. The
+[Multi Agent guide](https://docs.x.ai/developers/model-capabilities/text/multi-agent)
+explicitly excludes client-side function calling and custom tools for that variant while
+supporting built-in tools and remote MCP; it also excludes Chat Completions and directs
+requests to Responses. This narrower evidence qualifies a category and API, rather than
+redefining the legacy indicator or justifying a scalar flip from its native positive value.
+
+The guide's request model IDs resolve only to an exact public model ID or a unique official
+alias. A model-name prefix cannot extend this scope to sibling models or Voice services.
+Absent or ambiguous identity evidence cannot establish a scoped request capability. Preserve
+the language and Voice mappings independently, and require category-specific evidence for a
+consumer that needs to configure tools rather than display the coarse flag.
+
 ## Direct inference ID pricing
 
 The public source emits exact current model IDs and concrete aliases as associations to existing

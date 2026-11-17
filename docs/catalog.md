@@ -136,7 +136,17 @@ Both fields are optional, bounded, and detail-only on the website. Sources decla
 in `field_paths`; lower-authority model-card facts fill only missing keys, while a deployment
 snapshot is merged atomically to avoid combining different package versions.
 
-- Capability flags are tri-state; missing evidence stays unknown.
+- Capability flags are tri-state; missing evidence stays unknown. `tool_call` is a coarse
+  provider-derived indicator under the adapter's reviewed source mapping: `true` preserves
+  positive tool-calling evidence, `false` an explicit negative in that mapping, and `unknown`
+  insufficient or unresolved evidence. Existing mappings include function-calling fields,
+  general tool-use labels, and named-tool guides; this is neither a uniform tool taxonomy nor
+  a new rule that any hosted tool must set the flag. A function-calling negative does not
+  exclude separately documented hosted tools or remote MCP, and a broad tools positive does
+  not establish arbitrary client functions. The flag alone cannot select request parameters
+  or guarantee a tool category, API, forced tool choice, parallel calls, hosted execution,
+  remote MCP, or account entitlement. Those claims require evidence at their own scope.
+  The pricing meter named `tool_call` describes a billed quantity independently of this flag.
 - `status` describes availability/support: `active`, `legacy`, `deprecated`, `retired`, or `unknown`.
 - `release_stage` independently describes maturity: `stable`, `preview`, `experimental`, or `unknown`.
 - `legacy` means callable but superseded or restricted. `deprecated` means migration is announced while some use remains. `retired` requires evidence that requests or deployments are unavailable.
