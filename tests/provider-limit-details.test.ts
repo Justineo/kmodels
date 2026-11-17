@@ -56,6 +56,7 @@ async function geminiBundle(): Promise<LinkedBundle> {
 }
 async function xaiBundle(): Promise<LinkedBundle> {
   const bundle = await xaiInferenceBundle();
+  bundle.index.body += '<a href="/developers/models/grok-4.7"><span>Grok 4.7</span></a>';
   const llms = bundle.documents[0];
   if (!llms) throw new Error("Missing xAI document");
   const card = (await fixture("xai/scoped-output.txt")).split(

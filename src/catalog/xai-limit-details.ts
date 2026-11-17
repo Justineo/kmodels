@@ -50,8 +50,8 @@ export function applyXaiLimitDetails(
       const description =
         id === model.model_id &&
         headings.length === 1 &&
-        heading?.[1] &&
-        summary?.startsWith(heading[1].trim() + " is ") &&
+        heading?.[1]?.trim() === model.name &&
+        summary?.startsWith(model.name + " is ") &&
         summary.length <= 1024
           ? summary
           : undefined;
