@@ -61,8 +61,8 @@ catalog. Consumer profiles use `schema_version` for their contract, while
   encoding.
 - `/catalog/index.json` remains the audit-rich legacy envelope with flat,
   exact `(provider_id, model_id, version)` rows, source records, coverage, and
-  warnings. It and the v1 semantic profiles omit optional internal `limit_details`;
-  this omission does not apply to durable catalog storage or its full core hash.
+  warnings. It and the v1 semantic profiles omit internal `limit_details` and
+  `capability_details`. Durable catalog storage and its full core hash include both fields.
 - `/providers/index.json` is provider metadata and provider-scoped coverage
   only. `/providers/<provider>/index.json` selects one such record, and
   `/providers/<provider>/models/index.json` contains only that provider's
@@ -151,6 +151,12 @@ snapshot is merged atomically to avoid combining different package versions.
   or guarantee a tool category, API, forced tool choice, parallel calls, hosted execution,
   remote MCP, or account entitlement. Those claims require evidence at their own scope.
   The pricing meter named `tool_call` describes a billed quantity independently of this flag.
+- Optional `capability_details` records separately evidenced prompt-cache modes and native
+  reasoning-effort values for an exact model and API. A documented implicit cache and an explicit
+  cache exclusion can coexist in one scope. Effort options retain native spelling and display
+  separately from a documented default or explicit exclusions. Omitted values remain unknown.
+  A scoped fact does not redefine a model-wide chip, select a request parameter, or determine a
+  cache hit or a tariff.
 - `status` describes availability/support: `active`, `legacy`, `deprecated`, `retired`, or `unknown`.
 - `release_stage` independently describes maturity: `stable`, `preview`, `experimental`, or `unknown`.
 - `legacy` means callable but superseded or restricted. `deprecated` means migration is announced while some use remains. `retired` requires evidence that requests or deployments are unavailable.

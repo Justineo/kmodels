@@ -5,7 +5,7 @@ import {
   type LimitDetailGroup,
   type LimitStatement,
 } from "../catalog/model-limit-details.ts";
-import UiIcon from "./UiIcon.vue";
+import ModelClaimEvidence from "./ModelClaimEvidence.vue";
 
 const props = defineProps<{ groups: LimitDetailGroup[] }>();
 const statements = computed(() => props.groups.flatMap(({ statements }) => statements));
@@ -49,48 +49,13 @@ function statementValue(statement: LimitStatement): string {
           <dd class="limit-scope">{{ statement.scope }}</dd>
         </div>
       </dl>
-      <p
-        v-for="evidence in group.evidence"
-        :key="`${evidence.document_url}:${evidence.content_hash}:${evidence.locator}`"
-        class="unknown-note"
-      >
-        <a :href="evidence.document_url" target="_blank" rel="noopener noreferrer">{{
-          evidence.document_url
-        }}</a>
-        · Observed <time :datetime="evidence.observed_at">{{ evidence.observed_at }}</time>
-      </p>
-      <details class="detail-disclosure">
-        <summary><span>Source evidence</span><UiIcon name="chevron-right" /></summary>
-        <div class="detail-disclosure-body limit-evidence">
-          <dl
-            v-for="evidence in group.evidence"
-            :key="`${evidence.document_url}:${evidence.content_hash}:${evidence.locator}`"
-            class="availability-list"
-          >
-            <div>
-              <dt>Location</dt>
-              <dd>{{ evidence.locator }}</dd>
-            </div>
-            <div>
-              <dt>Evidence</dt>
-              <dd>{{ evidence.excerpt }}</dd>
-            </div>
-            <div>
-              <dt>Document SHA-256</dt>
-              <dd>
-                <code>{{ evidence.content_hash }}</code>
-              </dd>
-            </div>
-          </dl>
-        </div>
-      </details>
+      <ModelClaimEvidence :documents="group.evidence" />
     </div>
   </section>
 </template>
 
 <style scoped>
-.limit-group,
-.limit-evidence {
+.limit-group {
   display: grid;
   gap: var(--space-3);
   overflow-wrap: anywhere;

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { limitDetailsSchema } from "./model-limit-details.ts";
+import { capabilityDetailsSchema } from "./model-capability-details.ts";
 import { selectorSchema } from "../pricing/schema.ts";
 import { inferencePriceReasonSchema } from "../pricing/inference-schema.ts";
 import { inferenceMatchDataSchema } from "../pricing/inference-matching-schema.ts";
@@ -613,6 +614,7 @@ const websiteModelDetailShape = {
 export const websiteModelDetailSchema = z.strictObject({
   ...websiteModelDetailShape,
   limit_details: limitDetailsSchema.optional(),
+  capability_details: capabilityDetailsSchema.optional(),
   pricing: websitePricingDetailSchema.optional(),
 });
 
@@ -627,8 +629,12 @@ const websiteStoredModelDetailSchemaV7 = z.strictObject({
     .optional(),
 });
 
-const websiteStoredModelDetailSchema = websiteStoredModelDetailSchemaV7.extend({
+const websiteStoredModelDetailSchemaV8 = websiteStoredModelDetailSchemaV7.extend({
   limit_details: limitDetailsSchema.optional(),
+});
+
+const websiteStoredModelDetailSchema = websiteStoredModelDetailSchemaV8.extend({
+  capability_details: capabilityDetailsSchema.optional(),
 });
 
 const websiteDetailChunkSchemaV7 = z.strictObject({
@@ -644,6 +650,10 @@ export const websiteDetailChunkSchema = z.discriminatedUnion("schema_version", [
   websiteDetailChunkSchemaV7,
   websiteDetailChunkSchemaV7.extend({
     schema_version: z.literal(8),
+    details: z.array(websiteStoredModelDetailSchemaV8),
+  }),
+  websiteDetailChunkSchemaV7.extend({
+    schema_version: z.literal(9),
     details: z.array(websiteStoredModelDetailSchema),
   }),
 ]);

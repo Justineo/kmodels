@@ -3,6 +3,7 @@ import { storeInferencePrices } from "./website-inference-storage.ts";
 import { canonicalJsonKey, compareUtf8, uniqueCanonicalValues } from "./canonical-value.ts";
 import { modelLifecycles, modelReleaseStages, modelTasks } from "./catalog-vocabulary.ts";
 import { manifests, type ProviderManifest } from "./manifests.ts";
+import { hasClaimStatements } from "./model-claim-details.ts";
 import { formatDecimal, formatSentenceCase } from "./presentation.ts";
 import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
 import {
@@ -360,7 +361,13 @@ function websiteDeferredAssets(
         storedDetails,
         (values, chunk) =>
           websiteDetailChunkSchema.parse({
-            schema_version: values.some((detail) => detail.limit_details?.length) ? 8 : 7,
+            schema_version: values.some(({ capability_details }) =>
+              hasClaimStatements(capability_details),
+            )
+              ? 9
+              : values.some(({ limit_details }) => hasClaimStatements(limit_details))
+                ? 8
+                : 7,
             data_version: dataVersion,
             provider_id: provider.id,
             chunk,
@@ -653,6 +660,9 @@ function websiteModelDetailFromView(
   const pricingDetail = websitePricingDetail(view, model.uid, labels, atoms);
   const deploymentAvailability = groupedDeploymentAvailability(model);
   const limitDetails = model.limit_details?.filter(({ statements }) => statements.length > 0);
+  const capabilityDetails = model.capability_details?.filter(
+    ({ statements }) => statements.length > 0,
+  );
   return {
     model_ref: model.uid,
     ...(model.updated_date === undefined ? {} : { updated_date: model.updated_date }),
@@ -664,6 +674,7 @@ function websiteModelDetailFromView(
     modalities: model.modalities,
     capabilities: model.capabilities,
     ...(limitDetails?.length ? { limit_details: limitDetails } : {}),
+    ...(capabilityDetails?.length ? { capability_details: capabilityDetails } : {}),
     ...(model.limits.max_output_tokens === undefined
       ? {}
       : { max_output_tokens: model.limits.max_output_tokens }),

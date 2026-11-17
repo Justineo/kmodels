@@ -7,7 +7,7 @@ import { websitePublicationAssets } from "../src/catalog/endpoints.ts";
 import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
 import { defaultProjectionPaths } from "../src/catalog/projection-paths.ts";
 import type { PriceDimension } from "../src/catalog/pricing-schema.ts";
-import { hasScopedLimitDetails, websiteDataVersion } from "../src/catalog/projections.ts";
+import { websiteDataVersionForCatalog } from "../src/catalog/projections.ts";
 import { withPricingCanonicalCache } from "../src/catalog/pricing-canonical.ts";
 import { fixedPricingSelection } from "../src/catalog/pricing-selector-input.ts";
 import { websiteInferencePrices } from "../src/catalog/website-inference-pricing.ts";
@@ -67,11 +67,10 @@ let generatedPublication: ReturnType<typeof loadGeneratedPublication> | undefine
 
 async function loadGeneratedPublication() {
   const { catalog, pricing, inference } = await generatedData();
-  const dataVersion = websiteDataVersion(
-    catalog.catalog_version,
+  const dataVersion = websiteDataVersionForCatalog(
+    catalog,
     pricing.pricing_data_version,
     inference?.source,
-    hasScopedLimitDetails(catalog),
   );
   return {
     catalog,

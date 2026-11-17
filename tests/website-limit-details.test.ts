@@ -3,12 +3,14 @@ import { gunzipSync } from "node:zlib";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { catalogJson } from "../src/catalog/endpoints.ts";
 import { baseModel } from "../src/catalog/model.ts";
+import type { CapabilityDetailGroup } from "../src/catalog/model-capability-details.ts";
 import type { LimitDetailGroup } from "../src/catalog/model-limit-details.ts";
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
 import {
   hasScopedLimitDetails,
   projectCatalogPair,
   websiteDataVersion,
+  websiteDataVersionForCatalog,
 } from "../src/catalog/projections.ts";
 import {
   createPricingCatalogEnvelope,
@@ -56,12 +58,14 @@ const model: WebsiteModel = {
   detail_chunk: 0,
   pricing: { outcome: "unknown" },
 };
-function catalog(details?: LimitDetailGroup[]) {
+function catalog(details?: LimitDetailGroup[], capabilityDetails?: CapabilityDetailGroup[]) {
+  const ids =
+    capabilityDetails === undefined ? ["example", "other"] : ["example", "limited", "other"];
   return catalogSchema.parse({
     catalog_version: "a".repeat(64),
     generated_at: at,
     warnings: [],
-    coverage: ["example", "other"].map((provider_id) => ({
+    coverage: ids.map((provider_id) => ({
       provider_id,
       status: "fresh",
       model_count: 1,
@@ -69,18 +73,18 @@ function catalog(details?: LimitDetailGroup[]) {
       checked_at: at,
       last_successful_sync_at: at,
     })),
-    sources: ["example", "other"].map((id) => ({
+    sources: ids.map((id) => ({
       id: `${id}-models`,
       provider_id: id,
       url: `https://${id}.com/limits`,
       source: ["website"],
       stability: "documented",
-      field_paths: ["limit_details"],
+      field_paths: ["limit_details", "capability_details"],
       observed_at: at,
       content_hash: "a".repeat(64),
       extractor_version: "1",
     })),
-    providers: ["example", "other"].map((id) => ({
+    providers: ids.map((id) => ({
       id,
       name: id,
       kind: "hosted",
@@ -88,7 +92,7 @@ function catalog(details?: LimitDetailGroup[]) {
       catalog_scope: "global",
       source_ids: [`${id}-models`],
     })),
-    models: ["example", "other"].map((id) => ({
+    models: ids.map((id) => ({
       ...baseModel({
         providerId: id,
         id: "model",
@@ -97,6 +101,10 @@ function catalog(details?: LimitDetailGroup[]) {
         observedAt: at,
       }),
       ...(id === "example" && details !== undefined ? { limit_details: details } : {}),
+      ...(id === "example" && capabilityDetails !== undefined
+        ? { capability_details: capabilityDetails }
+        : {}),
+      ...(id === "limited" ? { limit_details: [{ ...group, source_ref: "limited-models" }] } : {}),
     })),
   });
 }
@@ -111,6 +119,72 @@ function chunk(details: LimitDetailGroup[] | undefined, version: string) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("versioned scoped limit website details", () => {
+  it("projects and loads a mixed v9, v8 and v7 publication under the capability cache salt", async () => {
+    const capability: CapabilityDetailGroup = {
+      source_ref: group.source_ref,
+      claim: "interactions_cache",
+      evidence: group.evidence,
+      statements: [
+        { kind: "prompt_cache", mode: "explicit", supported: false, scope: "Interactions API" },
+      ],
+    };
+    const input: unknown = JSON.parse(stableJson(catalog([group], [capability])));
+    const core = catalogSchema.parse(input);
+    const pricing = createPricingCatalogEnvelope(emptyPricingCatalog(), core);
+    const dataVersion = websiteDataVersionForCatalog(core, pricing.pricing_data_version);
+    expect(dataVersion).not.toBe(
+      websiteDataVersion(core.catalog_version, pricing.pricing_data_version, undefined, true),
+    );
+    const result = await projectCatalogPair({
+      pairId: "1".repeat(64),
+      catalog: core,
+      pricing,
+      catalogAssetSource: catalogJson(core),
+      pricingAssetChunks: [pricingCatalogJson(pricing, core)],
+    });
+    expect(result.ui.manifest.data_version).toBe(dataVersion);
+    function packedChunk(provider: string) {
+      const name = `ui/details/${provider}/0.json`;
+      const entry = result.ui.manifest.assets.find(({ file_name }) => file_name === name);
+      if (entry === undefined) throw new Error(`Missing projected asset ${name}`);
+      return gunzipSync(compressedAsset(result.ui.pack, entry)).toString("utf8");
+    }
+    const versions = ["example", "limited", "other"].map((provider) =>
+      websiteDetailChunkSchema.parse(JSON.parse(packedChunk(provider))),
+    );
+    expect(versions.map(({ schema_version }) => schema_version)).toEqual([9, 8, 7]);
+    expect(() => websiteDetailChunkSchema.parse({ ...versions[0], schema_version: 8 })).toThrow();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const provider = new URL(url, "https://example.com").pathname.split("/")[3];
+        if (provider === undefined) throw new Error("Missing provider in details URL");
+        return new Response(packedChunk(provider));
+      }),
+    );
+    expect(await loadWebsiteModelDetail(dataVersion, model)).toMatchObject({
+      limit_details: [group],
+      capability_details: [capability],
+    });
+    const limited = await loadWebsiteModelDetail(dataVersion, {
+      ...model,
+      provider_id: "limited",
+      uid: "limited/model",
+    });
+    expect(limited).toHaveProperty("limit_details");
+    expect(limited).not.toHaveProperty("capability_details");
+    const other = await loadWebsiteModelDetail(dataVersion, {
+      ...model,
+      provider_id: "other",
+      uid: "other/model",
+    });
+    expect(other).not.toHaveProperty("limit_details");
+    expect(other).not.toHaveProperty("capability_details");
+    const withdrawn = catalog([group], [{ ...capability, statements: [] }]);
+    expect(websiteDataVersionForCatalog(withdrawn, pricing.pricing_data_version)).toBe(
+      websiteDataVersion(core.catalog_version, pricing.pricing_data_version, undefined, true),
+    );
+  });
   it("projects real statement-bearing assets under the conditional v8 cache identity", async () => {
     const coreInput: unknown = JSON.parse(stableJson(catalog([group])));
     const core = catalogSchema.parse(coreInput);
@@ -169,7 +243,7 @@ describe("versioned scoped limit website details", () => {
     const current = chunk([group], "c".repeat(64));
     expect(websiteDetailChunkSchema.parse(current)).toEqual(current);
     expect(() => websiteDetailChunkSchema.parse({ ...current, schema_version: 7 })).toThrow();
-    expect(() => websiteDetailChunkSchema.parse({ ...current, schema_version: 9 })).toThrow();
+    expect(() => websiteDetailChunkSchema.parse({ ...current, schema_version: 10 })).toThrow();
     expect(() => websiteDetailChunkSchema.parse({ ...current, extra: true })).toThrow();
     expect(() =>
       websiteDetailChunkSchema.parse({
@@ -216,7 +290,7 @@ describe("versioned scoped limit website details", () => {
               ? "other"
               : field === "chunk"
                 ? 1
-                : 9,
+                : 10,
       };
       const fetcher = vi
         .fn()

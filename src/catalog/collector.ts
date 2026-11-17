@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
+import type { ZodType } from "zod";
 import { parseSource } from "./adapters.ts";
 import { captureRepairSource } from "./catalog-repair-capture.ts";
 import {
@@ -32,12 +33,18 @@ import { readJson, rootDirectory, sha256, stableJson, writeJson } from "./io.ts"
 import { isCredentialLikeIdentifier } from "./identity.ts";
 import { normalizeModelReleaseStage } from "./lifecycle.ts";
 import { apiEndpointKey, modelRouteKey } from "./model.ts";
+import { limitDetailGroupSchema, limitDetailsSchema } from "./model-limit-details.ts";
 import {
-  limitDetailGroupSchema,
-  limitDetailsSchema,
-  validateLimitDetailSources,
-  type LimitDetailGroup,
-} from "./model-limit-details.ts";
+  capabilityDetailGroupSchema,
+  capabilityDetailsSchema,
+} from "./model-capability-details.ts";
+import {
+  filterModelClaims,
+  modelClaimFields,
+  validateModelDetailSources,
+  type ModelClaimField,
+  type ModelClaimGroup,
+} from "./model-claim-details.ts";
 import {
   composeCatalogPair,
   coreCatalogVersion,
@@ -250,13 +257,37 @@ function mergeRawPriceFacts(
   );
 }
 
-function mergeLimitDetails(
-  current: LimitDetailGroup[] | undefined,
-  incoming: LimitDetailGroup[] | undefined,
+function declaresModelClaims(source: SourceManifest, field: ModelClaimField): boolean {
+  return (
+    source.fields.includes(field) &&
+    source.access === "public" &&
+    source.auth === undefined &&
+    source.role !== "inventory"
+  );
+}
+
+function ownsModelClaim(
   source: SourceManifest,
-): LimitDetailGroup[] | undefined {
-  if (!source.fields.includes("limit_details")) return current;
-  const key = (group: LimitDetailGroup) => canonicalJson([group.source_ref, group.claim]);
+  field: ModelClaimField,
+  group: ModelClaimGroup,
+): boolean {
+  return (
+    declaresModelClaims(source, field) &&
+    group.source_ref === source.id &&
+    group.evidence.every(({ document_url }) =>
+      source.allowedHosts.includes(new URL(document_url).hostname),
+    )
+  );
+}
+
+function mergeClaimGroups<Group extends ModelClaimGroup>(
+  current: Group[] | undefined,
+  incoming: Group[] | undefined,
+  source: SourceManifest,
+  field: ModelClaimField,
+): Group[] | undefined {
+  if (!declaresModelClaims(source, field)) return current;
+  const key = (group: Group) => canonicalJson([group.source_ref, group.claim]);
   const groups = mergeBy(
     current,
     incoming?.filter(({ source_ref }) => source_ref === source.id),
@@ -267,30 +298,38 @@ function mergeLimitDetails(
     : groups.sort((left, right) => compareUtf8(key(left), key(right)));
 }
 
-function admitLimitDetails(
+const claimSchemas = {
+  limit_details: { group: limitDetailGroupSchema, all: limitDetailsSchema, subject: "limit" },
+  capability_details: {
+    group: capabilityDetailGroupSchema,
+    all: capabilityDetailsSchema,
+    subject: "capability",
+  },
+} satisfies Record<
+  ModelClaimField,
+  { group: ZodType<ModelClaimGroup>; all: ZodType<ModelClaimGroup[]>; subject: string }
+>;
+
+function admitClaimGroups<Group extends ModelClaimGroup>(
   model: ParsedProviderModel,
   source: SourceManifest,
   providerId: string,
   warnings: CatalogWarning[],
-): ParsedProviderModel {
-  if (model.limit_details === undefined) return model;
-  const groups: LimitDetailGroup[] = [];
+  field: ModelClaimField,
+  schemas: { group: ZodType<Group>; all: ZodType<Group[]>; subject: string },
+): Group[] | undefined {
+  const observations = model[field];
+  if (observations === undefined) return;
+  const groups: Group[] = [];
   const seen = new Set<string>();
   const duplicates = new Set<string>();
   let rejected = false;
-  for (const value of model.limit_details) {
-    const parsed = limitDetailGroupSchema.safeParse(value);
+  for (const value of observations) {
+    const parsed = schemas.group.safeParse(value);
     if (
       !parsed.success ||
       model.provider_id !== providerId ||
-      !source.fields.includes("limit_details") ||
-      source.access !== "public" ||
-      source.auth !== undefined ||
-      source.role === "inventory" ||
-      parsed.data.source_ref !== source.id ||
-      !parsed.data.evidence.every(({ document_url }) =>
-        source.allowedHosts.includes(new URL(document_url).hostname),
-      )
+      !ownsModelClaim(source, field, parsed.data)
     ) {
       rejected = true;
       continue;
@@ -300,24 +339,66 @@ function admitLimitDetails(
     groups.push(parsed.data);
   }
   const accepted = groups.filter(({ claim }) => !duplicates.has(claim));
-  const bounded = limitDetailsSchema.safeParse(accepted);
+  const bounded = schemas.all.safeParse(accepted);
   if (rejected || duplicates.size > 0 || !bounded.success)
     warnings.push(
       sourceWarning(
-        "limit_detail_invalid",
+        `${schemas.subject}_detail_invalid`,
         providerId,
         source.id,
-        `Withheld invalid or unowned limit detail observations for ${model.uid}; independent model facts remain usable.`,
+        `Withheld invalid or unowned ${schemas.subject} detail observations for ${model.uid}. Independent model facts remain usable.`,
       ),
     );
-  const { limit_details: _details, ...ordinary } = model;
-  return bounded.success && bounded.data.length > 0
-    ? {
-        ...ordinary,
-        limit_details: bounded.data,
-        source_refs: [...new Set([...ordinary.source_refs, source.id])],
-      }
-    : ordinary;
+  return bounded.success && bounded.data.length > 0 ? bounded.data : undefined;
+}
+
+function admitModelClaims(
+  model: ParsedProviderModel,
+  source: SourceManifest,
+  providerId: string,
+  warnings: CatalogWarning[],
+): ParsedProviderModel {
+  if (model.limit_details === undefined && model.capability_details === undefined) return model;
+  const limitDetails = admitClaimGroups(
+    model,
+    source,
+    providerId,
+    warnings,
+    "limit_details",
+    claimSchemas.limit_details,
+  );
+  const capabilityDetails = admitClaimGroups(
+    model,
+    source,
+    providerId,
+    warnings,
+    "capability_details",
+    claimSchemas.capability_details,
+  );
+  const { limit_details: _limits, capability_details: _capabilities, ...ordinary } = model;
+  if (limitDetails === undefined && capabilityDetails === undefined) return ordinary;
+  return {
+    ...ordinary,
+    ...(limitDetails === undefined ? {} : { limit_details: limitDetails }),
+    ...(capabilityDetails === undefined ? {} : { capability_details: capabilityDetails }),
+    source_refs: [...new Set([...ordinary.source_refs, source.id])],
+  };
+}
+
+function retainClaimGroups<Group extends ModelClaimGroup>(
+  groups: Group[] | undefined,
+  prior: Group[] | undefined,
+  source: SourceManifest,
+  field: ModelClaimField,
+): Group[] | undefined {
+  if (prior === undefined || !declaresModelClaims(source, field)) return groups;
+  const observed = new Set(
+    groups?.filter(({ source_ref }) => source_ref === source.id).map(({ claim }) => claim),
+  );
+  const omitted = prior.filter(
+    ({ source_ref, claim }) => source_ref === source.id && !observed.has(claim),
+  );
+  return mergeClaimGroups(groups, omitted, source, field);
 }
 
 function applyFields(
@@ -477,7 +558,18 @@ function applyFields(
         ? { ...incoming.limits, ...current.limits }
         : { ...current.limits, ...incoming.limits }
       : current.limits,
-    limit_details: mergeLimitDetails(current.limit_details, incoming.limit_details, source),
+    limit_details: mergeClaimGroups(
+      current.limit_details,
+      incoming.limit_details,
+      source,
+      "limit_details",
+    ),
+    capability_details: mergeClaimGroups(
+      current.capability_details,
+      incoming.capability_details,
+      source,
+      "capability_details",
+    ),
     release_date: fields.has("release_date")
       ? optional(current.release_date, incoming.release_date, fillOnly)
       : current.release_date,
@@ -537,17 +629,20 @@ export function retainSourceFacts(
     models: models.map((model) => {
       const old = oldByUid.get(model.uid);
       if (old === undefined) return model;
-      const observedClaims = new Set(
-        model.limit_details
-          ?.filter(({ source_ref }) => source_ref === source.id)
-          .map(({ claim }) => claim),
-      );
-      const unobservedDetails = old.limit_details?.filter(
-        ({ source_ref, claim }) => source_ref === source.id && !observedClaims.has(claim),
-      );
       const withDetails = {
         ...model,
-        limit_details: mergeLimitDetails(model.limit_details, unobservedDetails, source),
+        limit_details: retainClaimGroups(
+          model.limit_details,
+          old.limit_details,
+          source,
+          "limit_details",
+        ),
+        capability_details: retainClaimGroups(
+          model.capability_details,
+          old.capability_details,
+          source,
+          "capability_details",
+        ),
       };
       const incoming: ParsedProviderModel = {
         ...old,
@@ -557,6 +652,7 @@ export function retainSourceFacts(
         ),
         routes: old.routes?.filter(({ source_ref }) => source_ref === source.id),
         limit_details: undefined,
+        capability_details: undefined,
         source_refs: [],
         observed_at: model.observed_at,
         last_seen_at: model.last_seen_at,
@@ -649,7 +745,11 @@ function mergeGroups(
         if (create) {
           const admitted = {
             ...incoming,
-            limit_details: sourceOwnedLimitDetails(incoming, group.source),
+            ...filterModelClaims(
+              incoming,
+              (field, fact) =>
+                declaresModelClaims(group.source, field) && fact.source_ref === group.source.id,
+            ),
           };
           byUid.set(incoming.uid, admitted);
           index(admitted);
@@ -671,12 +771,6 @@ function mergeGroups(
         }))
       : values
   ).sort((left, right) => left.uid.localeCompare(right.uid));
-}
-
-function sourceOwnedLimitDetails(model: ParsedProviderModel, source: SourceManifest) {
-  if (!source.fields.includes("limit_details")) return undefined;
-  const groups = model.limit_details?.filter(({ source_ref }) => source_ref === source.id);
-  return groups?.length ? groups : undefined;
 }
 
 function missingCredential(source: SourceManifest): boolean {
@@ -852,7 +946,6 @@ function providerSources(
 ): SourceRecord[] {
   const sourceIds = new Set([
     ...models.flatMap((model) => model.source_refs),
-    ...models.flatMap((model) => model.limit_details?.map(({ source_ref }) => source_ref) ?? []),
     // A failed price assembly can only retain the previous partition, whose provenance still
     // cites configured pricing sources that contribute no model rows of their own.
     ...(pricing === undefined ? pricingDependencySources : providerPartitionSourceRefs(pricing)),
@@ -908,24 +1001,25 @@ export async function collectProvider(
   const oldModels = previousModels(previous, manifest.provider.id);
   const oldSources = previousSources(previous, manifest.provider.id);
   const oldSourceById = new Map(oldSources.map((source) => [source.id, source]));
-  const currentSourceIds = new Set(manifest.sources.map((source) => source.id));
+  const currentSources = new Map(manifest.sources.map((source) => [source.id, source]));
   const comparableOldModels = oldModels.flatMap((model) => {
-    const sourceRefs = model.source_refs.filter((sourceId) => currentSourceIds.has(sourceId));
+    const sourceRefs = model.source_refs.filter((sourceId) => currentSources.has(sourceId));
     return sourceRefs.length > 0 &&
       !manifest.supersededIdKinds?.includes(model.id_kind) &&
       !manifest.supersededModelIds?.includes(model.model_id)
       ? [
           {
             ...model,
-            routes: model.routes?.filter((route) => currentSourceIds.has(route.source_ref)),
-            limit_details: model.limit_details?.filter(({ source_ref }) =>
-              manifest.sources.some(
-                (source) =>
-                  source.id === source_ref &&
-                  source.fields.includes("limit_details") &&
-                  oldSourceById.get(source_ref)?.extractor_version === source.extractorVersion,
-              ),
-            ),
+            routes: model.routes?.filter((route) => currentSources.has(route.source_ref)),
+            ...filterModelClaims(model, (field, group) => {
+              const source = currentSources.get(group.source_ref);
+              return (
+                source !== undefined &&
+                oldSourceById.get(group.source_ref)?.extractor_version ===
+                  source.extractorVersion &&
+                ownsModelClaim(source, field, group)
+              );
+            }),
             source_refs: sourceRefs,
           },
         ]
@@ -1097,7 +1191,7 @@ export async function collectProvider(
         parsed = parsedSource.models
           .map(normalizeModelTasks)
           .map(normalizeDeliveryModes)
-          .map((model) => admitLimitDetails(model, source, manifest.provider.id, warnings));
+          .map((model) => admitModelClaims(model, source, manifest.provider.id, warnings));
       } catch (error) {
         await captureEvidence();
         const failureState = recordSourceFailure(state, source.id, observedAt, result);
@@ -1248,11 +1342,11 @@ export async function collectProvider(
           ),
         );
     }
-    // Limit companions can fail independently of a successful catalog card. Their explicit
+    // Claim companions can fail independently of a successful catalog card. Their explicit
     // source/claim receipts must not opt ordinary fields into whole-source retention.
     for (const source of manifest.sources) {
       if (
-        !source.fields.includes("limit_details") ||
+        !modelClaimFields.some((field) => declaresModelClaims(source, field)) ||
         oldSourceById.get(source.id)?.extractor_version !== source.extractorVersion
       )
         continue;
@@ -1263,10 +1357,12 @@ export async function collectProvider(
       if (retention.count > 0)
         warnings.push(
           sourceWarning(
-            "limit_detail_retention",
+            source.fields.includes("limit_details") && !source.fields.includes("capability_details")
+              ? "limit_detail_retention"
+              : "model_detail_retention",
             manifest.provider.id,
             source.id,
-            `Retained unobserved limit claims with their original evidence for ${retention.count} models.`,
+            `Retained unobserved detail claims with their original evidence for ${retention.count} models.`,
           ),
         );
     }
@@ -1288,23 +1384,23 @@ export async function collectProvider(
       .map(normalizeModelTasks)
       .map(normalizeDeliveryModes);
     candidate = candidate.map((model) => {
-      if (
-        model.limit_details === undefined ||
-        limitDetailsSchema.safeParse(model.limit_details).success
-      )
-        return model;
-      warnings.push(
-        sourceWarning(
-          "limit_detail_invalid",
-          manifest.provider.id,
-          model.limit_details[0]?.source_ref ?? manifest.sources[0]?.id ?? "unknown",
-          `Withheld combined limit observations for ${model.uid}: the detail contract was exceeded; prior verified groups are preserved when available.`,
-        ),
-      );
-      return {
-        ...model,
-        limit_details: comparableOldModels.find(({ uid }) => uid === model.uid)?.limit_details,
-      };
+      let accepted = model;
+      for (const field of modelClaimFields) {
+        const groups = model[field];
+        const { subject, all } = claimSchemas[field];
+        if (groups === undefined || all.safeParse(groups).success) continue;
+        warnings.push(
+          sourceWarning(
+            `${subject}_detail_invalid`,
+            manifest.provider.id,
+            groups[0]?.source_ref ?? manifest.sources[0]?.id ?? "unknown",
+            `Withheld combined ${subject} observations for ${model.uid} because they exceed the detail contract. Retained prior verified groups when available.`,
+          ),
+        );
+        const prior = comparableOldModels.find(({ uid }) => uid === model.uid);
+        accepted = { ...accepted, [field]: prior?.[field] };
+      }
+      return accepted;
     });
     const freshModels = candidate.map(publishedModel);
     candidateModels = freshModels;
@@ -1342,7 +1438,7 @@ export async function collectProvider(
     };
     const models = reconcileCatalog(freshModels, comparableOldModels, reconciliationSources);
     const sourceById = new Map(
-      [...oldSources.filter((source) => currentSourceIds.has(source.id)), ...collectedSources].map(
+      [...oldSources.filter((source) => currentSources.has(source.id)), ...collectedSources].map(
         (source) => [source.id, source],
       ),
     );
@@ -1405,7 +1501,7 @@ export async function collectProvider(
       inferencePriceSources,
       retainedPricingDependencySources(manifest, sourceById),
     );
-    validateLimitDetailSources({ models, sources: retainedSources });
+    validateModelDetailSources({ models, sources: retainedSources });
     return {
       inferencePriceSources,
       provider,

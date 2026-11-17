@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { Catalog } from "./schema.ts";
 import {
   modelClaimGroupSchema,
   modelClaimGroupsSchema,
@@ -40,17 +39,4 @@ export function limitStatementsConflict(left: LimitStatement, right: LimitStatem
   return left.tokens !== right.tokens;
 }
 
-export function validateLimitDetailSources(core: Pick<Catalog, "models" | "sources">): void {
-  const sources = new Map(core.sources.map((source) => [source.id, source]));
-  for (const model of core.models)
-    for (const group of model.limit_details ?? []) {
-      const source = sources.get(group.source_ref);
-      if (
-        !model.source_refs.includes(group.source_ref) ||
-        source?.provider_id !== model.provider_id ||
-        !source.field_paths.includes("limit_details") ||
-        source.role === "inventory"
-      )
-        throw new Error(`Unowned limit detail source for ${model.uid}: ${group.source_ref}`);
-    }
-}
+export { validateModelDetailSources as validateLimitDetailSources } from "./model-claim-details.ts";

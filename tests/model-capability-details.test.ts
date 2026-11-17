@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   capabilityDetailsSchema,
   capabilityStatementSchema,
+  capabilityStatementsConflict,
   type CapabilityDetailGroup,
 } from "../src/catalog/model-capability-details.ts";
 import { baseModel } from "../src/catalog/model.ts";
@@ -35,6 +36,45 @@ const group: CapabilityDetailGroup = {
 };
 
 describe("scoped model capability details", () => {
+  it("detects exact-scope contradictions without equating cache modes or option lists", () => {
+    const implicit = capabilityStatementSchema.parse({
+      kind: "prompt_cache",
+      mode: "implicit",
+      supported: true,
+      scope,
+    });
+    const effort = { kind: "reasoning_effort", scope, supported_values: ["low"] } as const;
+    const compareEffort = (a: unknown, b: unknown) =>
+      capabilityStatementsConflict(
+        capabilityStatementSchema.parse(a),
+        capabilityStatementSchema.parse(b),
+      );
+    expect(compareEffort(effort, { ...effort, supported_values: ["medium"] })).toBe(false);
+    expect(
+      compareEffort(effort, { kind: "reasoning_effort", scope, unsupported_values: ["low"] }),
+    ).toBe(true);
+    expect(
+      compareEffort({ ...effort, default_value: "medium" }, { ...effort, default_value: "high" }),
+    ).toBe(true);
+    expect(
+      compareEffort(
+        { kind: "reasoning_effort", scope, default_value: "medium" },
+        { kind: "reasoning_effort", scope, unsupported_values: ["medium"] },
+      ),
+    ).toBe(true);
+    if (implicit.kind !== "prompt_cache") throw new Error("Expected a cache claim");
+    expect(capabilityStatementsConflict(implicit, { ...implicit, supported: false })).toBe(true);
+    expect(
+      capabilityStatementsConflict(implicit, { ...implicit, mode: "explicit", supported: false }),
+    ).toBe(false);
+    expect(
+      capabilityStatementsConflict(implicit, {
+        ...implicit,
+        scope: "GenerateContent",
+        supported: false,
+      }),
+    ).toBe(false);
+  });
   it("preserves optional detail and native values independently of legacy capabilities", () => {
     const model = providerModelSchema.parse(
       baseModel({

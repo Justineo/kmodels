@@ -8,6 +8,7 @@ import type { Catalog } from "./schema.ts";
 import { inferencePricingPath, type InferencePricingPublication } from "./inference-pricing.ts";
 import { websiteInferencePrices } from "./website-inference-pricing.ts";
 import { withPricingCanonicalCache } from "./pricing-canonical.ts";
+import { hasClaimStatements } from "./model-claim-details.ts";
 
 export interface ProjectionInput {
   pairId: string;
@@ -24,9 +25,7 @@ export interface PairProjections {
 }
 
 export function hasScopedLimitDetails(catalog: Pick<Catalog, "models">): boolean {
-  return catalog.models.some((model) =>
-    model.limit_details?.some(({ statements }) => statements.length > 0),
-  );
+  return catalog.models.some((model) => hasClaimStatements(model.limit_details));
 }
 
 export function websiteDataVersion(
@@ -34,18 +33,35 @@ export function websiteDataVersion(
   pricingDataVersion: string,
   inferenceSource?: string,
   scopedLimitDetails = false,
+  scopedCapabilityDetails = false,
 ): string {
-  return sha256(
-    `website-core-v7\u0000${catalogVersion}\u0000${pricingDataVersion}${inferenceSource === undefined ? "" : `\u0000inference-matching-v3\u0000${sha256(inferenceSource)}`}${scopedLimitDetails ? "\u0000model-limit-details-v8" : ""}`,
+  const identity = ["website-core-v7", catalogVersion, pricingDataVersion];
+  if (inferenceSource !== undefined)
+    identity.push("inference-matching-v3", sha256(inferenceSource));
+  if (scopedLimitDetails) identity.push("model-limit-details-v8");
+  if (scopedCapabilityDetails) identity.push("model-capability-details-v9");
+  return sha256(identity.join("\0"));
+}
+
+export function websiteDataVersionForCatalog(
+  catalog: Pick<Catalog, "catalog_version" | "models">,
+  pricingDataVersion: string,
+  inferenceSource?: string,
+): string {
+  return websiteDataVersion(
+    catalog.catalog_version,
+    pricingDataVersion,
+    inferenceSource,
+    hasScopedLimitDetails(catalog),
+    catalog.models.some(({ capability_details }) => hasClaimStatements(capability_details)),
   );
 }
 
 export async function projectCatalogPair(input: ProjectionInput): Promise<PairProjections> {
-  const dataVersion = websiteDataVersion(
-    input.catalog.catalog_version,
+  const dataVersion = websiteDataVersionForCatalog(
+    input.catalog,
     input.pricing.pricing_data_version,
     input.inference?.source,
-    hasScopedLimitDetails(input.catalog),
   );
   // Projection indexes are temporary even when the caller retains the old pair.
   // End the synchronous cache scope before asynchronous encoding/compression.

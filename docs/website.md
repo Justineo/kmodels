@@ -511,6 +511,12 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   the exact schema 7 shape. A publication may contain both explicit versions. Statement-bearing
   publications add the `model-limit-details-v8` salt to `data_version`, independently of producer
   catalog-version changes. No-detail publication bytes and cache identity remain unchanged.
+  Chunks with visible `capability_details` use strict schema 9, which can also carry qualified
+  limits. A publication may combine schemas 7, 8 and 9. Its conditional
+  `model-capability-details-v9` salt is calculated from the same visible-statement rule as the
+  writer and accepted-pack validator. Withdrawals stay in canonical storage without generating
+  a visible value or opting a chunk into a new schema. Existing v7 and v8 publications retain
+  their cache identities.
   Cache completed and in-flight chunks by data version, and retain parsed model
   details after either path. Failed preloads stay silent and are evicted so an
   explicit open can retry.
@@ -538,6 +544,11 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   cap, is an unresolved source conflict. Defaults are independent of maxima; disagreeing defaults
   conflict only with each other. Different scope text is shown separately without inferring
   equivalence or disjoint applicability. Missing details do not manufacture a negative claim.
+- Modalities & capabilities shows scoped cache and native effort observations beneath the model
+  summary chips. Each statement shows its API scope with its support state, native levels,
+  exclusions or default. Document evidence uses the same disclosure as qualified limits.
+  Same-scope contradictions stay visible. The inspector does not choose an applicable option,
+  equate provider effort labels, or infer unsupported values from a partial option list.
 - Use one `data_version` derived from the accepted catalog/pricing pair and core
   transport version on the manifest, core chunks, model-detail, shared-offer,
   and provider-detail projections. Reject mismatched core chunks before mounting

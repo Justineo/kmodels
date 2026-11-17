@@ -5,6 +5,7 @@ import { fetchSource } from "../src/catalog/fetch.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import type { LimitDetailGroup } from "../src/catalog/model-limit-details.ts";
+import type { CapabilityDetailGroup } from "../src/catalog/model-capability-details.ts";
 import { catalogSchema } from "../src/catalog/schema.ts";
 
 vi.mock("../src/catalog/adapters.ts", () => ({ parseSource: vi.fn() }));
@@ -27,7 +28,7 @@ if (
   throw new Error("Missing test source");
 const source: SourceManifest = {
   ...originalSource,
-  fields: [...originalSource.fields, "limit_details"],
+  fields: [...originalSource.fields, "limit_details", "capability_details"],
   allowedHosts: ["example.com"],
   retainOmittedFacts: true,
 };
@@ -69,6 +70,16 @@ function model(at = now, details?: LimitDetailGroup[]) {
     }),
     ...(details === undefined ? {} : { limit_details: details }),
     limits: { context_tokens: 1000 },
+  };
+}
+
+function cacheDetail(claim: string, supported = true): CapabilityDetailGroup {
+  const { evidence, source_ref } = detail(claim);
+  return {
+    claim,
+    source_ref,
+    evidence,
+    statements: [{ kind: "prompt_cache", mode: "implicit", supported, scope: "Interactions API" }],
   };
 }
 
@@ -123,7 +134,12 @@ describe("claim-local limit detail collection", () => {
         dependencies: [],
       });
       vi.mocked(parseSource).mockReturnValue({
-        models: [model(before, [detail("card"), detail("batch", 300)])],
+        models: [
+          {
+            ...model(before, [detail("card"), detail("batch", 300)]),
+            capability_details: [cacheDetail("cache"), cacheDetail("revoked")],
+          },
+        ],
       });
       const first = await collectProvider(selectedManifest, undefined, { sources: {} }, before);
       const previous = catalogSchema.parse({
@@ -151,10 +167,20 @@ describe("claim-local limit detail collection", () => {
         ],
       });
       vi.mocked(parseSource).mockReturnValue({
-        models: [{ ...model(now, [detail("card", 250)]), limits: { context_tokens: 2000 } }],
+        models: [
+          {
+            ...model(now, [detail("card", 250)]),
+            limits: { context_tokens: 2000 },
+            capability_details: [{ ...cacheDetail("revoked"), statements: [] }],
+          },
+        ],
       });
       const next = await collectProvider(selectedManifest, previous, { sources: {} }, now);
       expect(next.models[0]?.limit_details).toEqual([detail("batch", 300), detail("card", 250)]);
+      expect(next.models[0]?.capability_details).toEqual([
+        cacheDetail("cache"),
+        { ...cacheDetail("revoked"), statements: [] },
+      ]);
       expect(next.sources[0]?.observed_at).toBe(now);
       expect(next.models[0]?.limit_details?.[0]?.evidence[0]?.observed_at).toBe(before);
       expect(next.provider.catalog_version).not.toBe(first.provider.catalog_version);
@@ -169,6 +195,25 @@ describe("claim-local limit detail collection", () => {
         now,
       );
       expect(changedExtractor.models[0]?.limit_details).toEqual([detail("card", 250)]);
+      expect(changedExtractor.models[0]?.capability_details).toEqual([
+        { ...cacheDetail("revoked"), statements: [] },
+      ]);
+      const undeclared = await collectProvider(
+        {
+          ...selectedManifest,
+          sources: [
+            {
+              ...selectedSource,
+              fields: selectedSource.fields.filter((field) => field !== "capability_details"),
+            },
+          ],
+        },
+        previous,
+        { sources: {} },
+        now,
+      );
+      expect(undeclared.models[0]?.capability_details).toBeUndefined();
+      expect(undeclared.models[0]?.limit_details).toEqual(next.models[0]?.limit_details);
     },
   );
 
@@ -194,7 +239,15 @@ describe("claim-local limit detail collection", () => {
             ? Array.from({ length: 9 }, (_, i) => detail(`bad-${i}`))
             : [invalid];
       vi.mocked(parseSource).mockReturnValue({
-        models: [model(now, [detail("card"), ...details])],
+        models: [
+          {
+            ...model(now, [detail("card"), ...details]),
+            capability_details: [
+              cacheDetail("cache"),
+              { ...cacheDetail("foreign"), source_ref: "different-provider-source" },
+            ],
+          },
+        ],
       });
       const next = await collectProvider(manifest, undefined, { sources: {} }, now);
       expect(next.models[0]?.model_id).toBe("example");
@@ -203,6 +256,8 @@ describe("claim-local limit detail collection", () => {
         failure === "oversized" ? undefined : [detail("card")],
       );
       expect(next.warnings.some(({ code }) => code === "limit_detail_invalid")).toBe(true);
+      expect(next.models[0]?.capability_details).toEqual([cacheDetail("cache")]);
+      expect(next.warnings.some(({ code }) => code === "capability_detail_invalid")).toBe(true);
     },
   );
 });

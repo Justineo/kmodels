@@ -58,3 +58,24 @@ export const capabilityDetailsSchema = modelClaimGroupsSchema(capabilityDetailGr
 
 export type CapabilityStatement = z.infer<typeof capabilityStatementSchema>;
 export type CapabilityDetailGroup = z.infer<typeof capabilityDetailGroupSchema>;
+
+export function capabilityStatementsConflict(
+  left: CapabilityStatement,
+  right: CapabilityStatement,
+): boolean {
+  if (left.scope !== right.scope) return false;
+  if (left.kind === "prompt_cache" && right.kind === "prompt_cache")
+    return left.mode === right.mode && left.supported !== right.supported;
+  if (left.kind !== "reasoning_effort" || right.kind !== "reasoning_effort") return false;
+  const contradicts = (positive: typeof left, exclusions: readonly string[] | undefined) =>
+    exclusions?.some(
+      (value) => positive.default_value === value || positive.supported_values?.includes(value),
+    ) ?? false;
+  return (
+    (left.default_value !== undefined &&
+      right.default_value !== undefined &&
+      left.default_value !== right.default_value) ||
+    contradicts(left, right.unsupported_values) ||
+    contradicts(right, left.unsupported_values)
+  );
+}

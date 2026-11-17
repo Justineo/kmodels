@@ -17,6 +17,7 @@ import ProviderIcon from "./ProviderIcon.vue";
 import PricingDetails from "./PricingDetails.vue";
 import ModelMetadata from "./ModelMetadata.vue";
 import ModelLimitDetails from "./ModelLimitDetails.vue";
+import ModelCapabilityDetails from "./ModelCapabilityDetails.vue";
 import UiIcon from "./UiIcon.vue";
 
 const props = defineProps<{
@@ -347,7 +348,13 @@ onUnmounted(() => {
                   {{ capability }}
                 </li>
               </ul>
-              <p v-else class="unknown-note">No supported capabilities published.</p>
+              <p v-else-if="!detail.capability_details?.length" class="unknown-note">
+                No supported capabilities published.
+              </p>
+              <ModelCapabilityDetails
+                v-if="detail.capability_details?.length"
+                :groups="detail.capability_details"
+              />
             </section>
 
             <section

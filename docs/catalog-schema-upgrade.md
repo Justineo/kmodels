@@ -45,3 +45,17 @@ unowned detail observations produce a local diagnostic while identity and pricin
 The owner must be a public source declaring `limit_details`, and evidence URLs must belong to
 its allowed hosts. Independent groups preserve their own document clocks even when the source
 record has been refreshed.
+
+## Scoped capability details
+
+The optional internal `capability_details` field uses the same bounded, source-owned claim and
+document revision structure as `limit_details`. Each field has independent bounds and claims.
+Prompt-cache observations give the implicit or explicit mode and an evidenced support state for
+one API scope. Reasoning-effort observations preserve documented native option spellings,
+explicit exclusions and an independently evidenced default. A documented default can establish
+its own support when a partial option list omits it. Each statement states its API scope.
+
+Collection, retention, ownership validation and full snapshot binding use the same claim rules
+as qualified limits. Both detail fields remain optional and independently populated. Bad
+capability observations do not revoke limits, model identity or pricing. Legacy audit and v1
+profiles omit both detail fields, while the private accepted manifest commits the full core.
