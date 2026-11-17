@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { limitDetailsSchema } from "./model-limit-details.ts";
 import { selectorSchema } from "../pricing/schema.ts";
 import { inferencePriceReasonSchema } from "../pricing/inference-schema.ts";
 import { inferenceMatchDataSchema } from "../pricing/inference-matching-schema.ts";
@@ -611,10 +612,11 @@ const websiteModelDetailShape = {
 
 export const websiteModelDetailSchema = z.strictObject({
   ...websiteModelDetailShape,
+  limit_details: limitDetailsSchema.optional(),
   pricing: websitePricingDetailSchema.optional(),
 });
 
-const websiteStoredModelDetailSchema = z.strictObject({
+const websiteStoredModelDetailSchemaV7 = z.strictObject({
   ...websiteModelDetailShape,
   inference_prices: z.array(websiteStoredInferencePriceSchema).optional(),
   pricing: z
@@ -625,14 +627,26 @@ const websiteStoredModelDetailSchema = z.strictObject({
     .optional(),
 });
 
-export const websiteDetailChunkSchema = z.strictObject({
+const websiteStoredModelDetailSchema = websiteStoredModelDetailSchemaV7.extend({
+  limit_details: limitDetailsSchema.optional(),
+});
+
+const websiteDetailChunkSchemaV7 = z.strictObject({
   schema_version: z.literal(7),
   data_version: hash,
   provider_id: nonEmpty,
   chunk: z.number().int().nonnegative(),
   snapshot: websitePricingSnapshotSchema.optional(),
-  details: z.array(websiteStoredModelDetailSchema),
+  details: z.array(websiteStoredModelDetailSchemaV7),
 });
+
+export const websiteDetailChunkSchema = z.discriminatedUnion("schema_version", [
+  websiteDetailChunkSchemaV7,
+  websiteDetailChunkSchemaV7.extend({
+    schema_version: z.literal(8),
+    details: z.array(websiteStoredModelDetailSchema),
+  }),
+]);
 
 export type WebsiteCatalogIndex = z.infer<typeof websiteCatalogIndexSchema>;
 export type WebsitePricingSummaries = z.infer<typeof websitePricingSummariesSchema>;

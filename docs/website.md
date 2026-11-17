@@ -506,6 +506,11 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   Local condition dictionaries, variant tuples, and shared selector options preserve the same
   matching input. Inventory and pricing coverage growth can add chunks. The
   2 MiB ceiling applies to each requested chunk.
+  Strict schema 7 remains readable without rewriting existing snapshots. Chunks containing
+  source-owned `limit_details` statements use strict schema 8; chunks without statements retain
+  the exact schema 7 shape. A publication may contain both explicit versions. Statement-bearing
+  publications add the `model-limit-details-v8` salt to `data_version`, independently of producer
+  catalog-version changes. No-detail publication bytes and cache identity remain unchanged.
   Cache completed and in-flight chunks by data version, and retain parsed model
   details after either path. Failed preloads stay silent and are evicted so an
   explicit open can retry.
@@ -523,6 +528,16 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   the table's model-wide context limit. These facts live only in the existing byte-bounded detail
   chunks; inventory growth and richer details do not inflate the core rows or create aggregate-size
   warnings. Provider strings are rendered as text.
+- Qualified limits appear in the existing model inspector, with the quantity, maximum/default/no
+  separate cap, measurement and complete scope always visible together. The shared-context label
+  does not invent which token categories participate; the source-owned scope supplies them.
+  Ordinary scalar limits remain visible as unqualified catalog summaries. Each claim has an
+  evidence disclosure containing its document URL, original observation time, locator, excerpt
+  and revision hash. The inspector never evaluates scope text or computes a request maximum.
+  Equal quantity/measurement/scope with unequal finite maxima, or a maximum versus no separate
+  cap, is an unresolved source conflict. Defaults are independent of maxima; disagreeing defaults
+  conflict only with each other. Different scope text is shown separately without inferring
+  equivalence or disjoint applicability. Missing details do not manufacture a negative claim.
 - Use one `data_version` derived from the accepted catalog/pricing pair and core
   transport version on the manifest, core chunks, model-detail, shared-offer,
   and provider-detail projections. Reject mismatched core chunks before mounting

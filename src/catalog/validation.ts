@@ -12,6 +12,7 @@ export const providerValidationIssueSchema = z.object({
     "duplicate_api_endpoint",
     "duplicate_route",
     "missing_route_source",
+    "missing_limit_detail_source",
     "duplicate_availability",
     "model_count_drop",
     "service_family_count_drop",
@@ -82,6 +83,14 @@ export function validateProvider(models: ProviderModel[]): ValidationResult {
         model_ref: model.uid,
       });
     uids.add(model.uid);
+    if (model.limit_details?.some(({ source_ref }) => !model.source_refs.includes(source_ref)))
+      return invalid(
+        "missing_limit_detail_source",
+        `limit detail source is missing for ${model.uid}`,
+        {
+          model_ref: model.uid,
+        },
+      );
     const serviceFamilies = new Set<string>();
     for (const family of model.service_families ?? []) {
       if (serviceFamilies.has(family))
@@ -172,6 +181,9 @@ export function reconcileCatalog(
             ...model,
             source_refs: refs,
             routes: model.routes?.filter((route) => refs.includes(route.source_ref)),
+            limit_details: model.limit_details?.filter(({ source_ref }) =>
+              refs.includes(source_ref),
+            ),
           },
         ]
       : [];

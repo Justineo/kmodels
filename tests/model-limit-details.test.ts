@@ -4,8 +4,11 @@ import {
   limitDetailGroupSchema,
   limitDetailsSchema,
   limitStatementSchema,
+  limitStatementsConflict,
+  validateLimitDetailSources,
 } from "../src/catalog/model-limit-details.ts";
 import { providerModelSchema } from "../src/catalog/schema.ts";
+import { validateProvider } from "../src/catalog/validation.ts";
 
 const evidence = {
   document_url: "https://example.com/docs/batch",
@@ -29,6 +32,82 @@ const group = {
 };
 
 describe("source-owned limit detail schema", () => {
+  it("detects same-scope finite maximum versus no cap while keeping defaults and different measurements independent", () => {
+    const finite = limitStatementSchema.parse(maximum);
+    if (finite.kind !== "maximum") throw new Error("Expected a finite maximum");
+    const { tokens: _tokens, ...withoutTokens } = maximum;
+    const noCap = limitStatementSchema.parse({ ...withoutTokens, kind: "no_separate_cap" });
+    expect(limitStatementsConflict(finite, noCap)).toBe(true);
+    expect(limitStatementsConflict(noCap, finite)).toBe(true);
+    expect(limitStatementsConflict(finite, { ...finite, tokens: 200 })).toBe(true);
+    expect(limitStatementsConflict(finite, { ...finite, kind: "default" })).toBe(false);
+    expect(limitStatementsConflict(noCap, { ...finite, kind: "default" })).toBe(false);
+    expect(limitStatementsConflict(finite, { ...finite, tokens: 200, scope: "Other API" })).toBe(
+      false,
+    );
+    expect(
+      limitStatementsConflict(finite, { ...finite, tokens: 200, measurement: "per_hop" }),
+    ).toBe(false);
+    expect(limitStatementsConflict(finite, finite)).toBe(false);
+    expect(limitStatementsConflict(noCap, noCap)).toBe(false);
+    expect(
+      limitStatementsConflict(
+        { ...finite, kind: "default" },
+        { ...finite, kind: "default", tokens: 200 },
+      ),
+    ).toBe(true);
+  });
+
+  it("requires model-cited same-provider source ownership at the canonical graph boundary", () => {
+    const model = providerModelSchema.parse({
+      ...baseModel({
+        providerId: "example",
+        id: "model",
+        name: "Model",
+        sourceId: group.source_ref,
+        observedAt: evidence.observed_at,
+      }),
+      limit_details: [group],
+    });
+    const source = {
+      id: group.source_ref,
+      provider_id: "example",
+      url: evidence.document_url,
+      source: ["website" as const],
+      stability: "documented" as const,
+      scope: "global" as const,
+      exhaustive: false,
+      role: "catalog" as const,
+      field_paths: ["limit_details"],
+      observed_at: evidence.observed_at,
+      content_hash: evidence.content_hash,
+      extractor_version: "1",
+    };
+    expect(validateProvider([{ ...model, source_refs: ["other"] }])).toMatchObject({
+      ok: false,
+      issue: { code: "missing_limit_detail_source" },
+    });
+    expect(() => validateLimitDetailSources({ models: [model], sources: [source] })).not.toThrow();
+    expect(() => validateLimitDetailSources({ models: [model], sources: [] })).toThrow("Unowned");
+    expect(() =>
+      validateLimitDetailSources({
+        models: [model],
+        sources: [{ ...source, provider_id: "other" }],
+      }),
+    ).toThrow("Unowned");
+    expect(() =>
+      validateLimitDetailSources({ models: [model], sources: [{ ...source, field_paths: [] }] }),
+    ).toThrow("Unowned");
+    expect(() =>
+      validateLimitDetailSources({ models: [model], sources: [{ ...source, role: "inventory" }] }),
+    ).toThrow("Unowned");
+    expect(() =>
+      validateLimitDetailSources({
+        models: [{ ...model, source_refs: ["other"] }],
+        sources: [source],
+      }),
+    ).toThrow("Unowned");
+  });
   it("preserves absent legacy fields and round-trips qualified facts without scalar changes", () => {
     const model = providerModelSchema.parse(
       baseModel({

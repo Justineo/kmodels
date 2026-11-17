@@ -23,13 +23,20 @@ export interface PairProjections {
   exports: EncodedAssetPack;
 }
 
+export function hasScopedLimitDetails(catalog: Pick<Catalog, "models">): boolean {
+  return catalog.models.some((model) =>
+    model.limit_details?.some(({ statements }) => statements.length > 0),
+  );
+}
+
 export function websiteDataVersion(
   catalogVersion: string,
   pricingDataVersion: string,
   inferenceSource?: string,
+  scopedLimitDetails = false,
 ): string {
   return sha256(
-    `website-core-v7\u0000${catalogVersion}\u0000${pricingDataVersion}${inferenceSource === undefined ? "" : `\u0000inference-matching-v3\u0000${sha256(inferenceSource)}`}`,
+    `website-core-v7\u0000${catalogVersion}\u0000${pricingDataVersion}${inferenceSource === undefined ? "" : `\u0000inference-matching-v3\u0000${sha256(inferenceSource)}`}${scopedLimitDetails ? "\u0000model-limit-details-v8" : ""}`,
   );
 }
 
@@ -38,6 +45,7 @@ export async function projectCatalogPair(input: ProjectionInput): Promise<PairPr
     input.catalog.catalog_version,
     input.pricing.pricing_data_version,
     input.inference?.source,
+    hasScopedLimitDetails(input.catalog),
   );
   // Projection indexes are temporary even when the caller retains the old pair.
   // End the synchronous cache scope before asynchronous encoding/compression.

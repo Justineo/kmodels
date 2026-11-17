@@ -360,7 +360,7 @@ function websiteDeferredAssets(
         storedDetails,
         (values, chunk) =>
           websiteDetailChunkSchema.parse({
-            schema_version: 7,
+            schema_version: values.some((detail) => detail.limit_details?.length) ? 8 : 7,
             data_version: dataVersion,
             provider_id: provider.id,
             chunk,
@@ -652,6 +652,7 @@ function websiteModelDetailFromView(
 ): WebsiteModelDetail {
   const pricingDetail = websitePricingDetail(view, model.uid, labels, atoms);
   const deploymentAvailability = groupedDeploymentAvailability(model);
+  const limitDetails = model.limit_details?.filter(({ statements }) => statements.length > 0);
   return {
     model_ref: model.uid,
     ...(model.updated_date === undefined ? {} : { updated_date: model.updated_date }),
@@ -662,6 +663,7 @@ function websiteModelDetailFromView(
     ...(model.api_endpoints === undefined ? {} : { api_endpoints: model.api_endpoints }),
     modalities: model.modalities,
     capabilities: model.capabilities,
+    ...(limitDetails?.length ? { limit_details: limitDetails } : {}),
     ...(model.limits.max_output_tokens === undefined
       ? {}
       : { max_output_tokens: model.limits.max_output_tokens }),

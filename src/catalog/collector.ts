@@ -33,6 +33,12 @@ import { isCredentialLikeIdentifier } from "./identity.ts";
 import { normalizeModelReleaseStage } from "./lifecycle.ts";
 import { apiEndpointKey, modelRouteKey } from "./model.ts";
 import {
+  limitDetailGroupSchema,
+  limitDetailsSchema,
+  validateLimitDetailSources,
+  type LimitDetailGroup,
+} from "./model-limit-details.ts";
+import {
   composeCatalogPair,
   coreCatalogVersion,
   type AcceptedPairSafetyFinding,
@@ -244,6 +250,76 @@ function mergeRawPriceFacts(
   );
 }
 
+function mergeLimitDetails(
+  current: LimitDetailGroup[] | undefined,
+  incoming: LimitDetailGroup[] | undefined,
+  source: SourceManifest,
+): LimitDetailGroup[] | undefined {
+  if (!source.fields.includes("limit_details")) return current;
+  const key = (group: LimitDetailGroup) => canonicalJson([group.source_ref, group.claim]);
+  const groups = mergeBy(
+    current,
+    incoming?.filter(({ source_ref }) => source_ref === source.id),
+    key,
+  );
+  return groups.length === 0
+    ? current
+    : groups.sort((left, right) => compareUtf8(key(left), key(right)));
+}
+
+function admitLimitDetails(
+  model: ParsedProviderModel,
+  source: SourceManifest,
+  providerId: string,
+  warnings: CatalogWarning[],
+): ParsedProviderModel {
+  if (model.limit_details === undefined) return model;
+  const groups: LimitDetailGroup[] = [];
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  let rejected = false;
+  for (const value of model.limit_details) {
+    const parsed = limitDetailGroupSchema.safeParse(value);
+    if (
+      !parsed.success ||
+      model.provider_id !== providerId ||
+      !source.fields.includes("limit_details") ||
+      source.access !== "public" ||
+      source.auth !== undefined ||
+      source.role === "inventory" ||
+      parsed.data.source_ref !== source.id ||
+      !parsed.data.evidence.every(({ document_url }) =>
+        source.allowedHosts.includes(new URL(document_url).hostname),
+      )
+    ) {
+      rejected = true;
+      continue;
+    }
+    if (seen.has(parsed.data.claim)) duplicates.add(parsed.data.claim);
+    seen.add(parsed.data.claim);
+    groups.push(parsed.data);
+  }
+  const accepted = groups.filter(({ claim }) => !duplicates.has(claim));
+  const bounded = limitDetailsSchema.safeParse(accepted);
+  if (rejected || duplicates.size > 0 || !bounded.success)
+    warnings.push(
+      sourceWarning(
+        "limit_detail_invalid",
+        providerId,
+        source.id,
+        `Withheld invalid or unowned limit detail observations for ${model.uid}; independent model facts remain usable.`,
+      ),
+    );
+  const { limit_details: _details, ...ordinary } = model;
+  return bounded.success && bounded.data.length > 0
+    ? {
+        ...ordinary,
+        limit_details: bounded.data,
+        source_refs: [...new Set([...ordinary.source_refs, source.id])],
+      }
+    : ordinary;
+}
+
 function applyFields(
   current: ParsedProviderModel,
   incoming: ParsedProviderModel,
@@ -401,6 +477,7 @@ function applyFields(
         ? { ...incoming.limits, ...current.limits }
         : { ...current.limits, ...incoming.limits }
       : current.limits,
+    limit_details: mergeLimitDetails(current.limit_details, incoming.limit_details, source),
     release_date: fields.has("release_date")
       ? optional(current.release_date, incoming.release_date, fillOnly)
       : current.release_date,
@@ -448,6 +525,7 @@ export function retainSourceFacts(
   previous: ProviderModel[],
   source: SourceManifest,
   observed: ReadonlySet<string> = new Set(),
+  options: { detailsOnly?: boolean } = {},
 ): SourceRetention {
   const oldByUid = new Map(
     previous
@@ -457,9 +535,20 @@ export function retainSourceFacts(
   let count = 0;
   return {
     models: models.map((model) => {
-      if (observed.has(model.uid)) return model;
       const old = oldByUid.get(model.uid);
       if (old === undefined) return model;
+      const observedClaims = new Set(
+        model.limit_details
+          ?.filter(({ source_ref }) => source_ref === source.id)
+          .map(({ claim }) => claim),
+      );
+      const unobservedDetails = old.limit_details?.filter(
+        ({ source_ref, claim }) => source_ref === source.id && !observedClaims.has(claim),
+      );
+      const withDetails = {
+        ...model,
+        limit_details: mergeLimitDetails(model.limit_details, unobservedDetails, source),
+      };
       const incoming: ParsedProviderModel = {
         ...old,
         task_evidence: old.task_evidence?.filter(({ source_ref }) => source_ref === source.id),
@@ -467,6 +556,7 @@ export function retainSourceFacts(
           ({ source_ref }) => source_ref === source.id,
         ),
         routes: old.routes?.filter(({ source_ref }) => source_ref === source.id),
+        limit_details: undefined,
         source_refs: [],
         observed_at: model.observed_at,
         last_seen_at: model.last_seen_at,
@@ -474,7 +564,10 @@ export function retainSourceFacts(
         price_facts: [],
         raw_price_facts: [],
       };
-      const applied = applyFields(model, incoming, source);
+      const applied =
+        options.detailsOnly || observed.has(model.uid)
+          ? withDetails
+          : applyFields(withDetails, incoming, source);
       const next = {
         ...applied,
         source_refs: model.source_refs,
@@ -554,8 +647,12 @@ function mergeGroups(
         (matchAliases ? (idModel ?? aliasModel ?? reverseModel) : undefined);
       if (current === undefined) {
         if (create) {
-          byUid.set(incoming.uid, incoming);
-          index(incoming);
+          const admitted = {
+            ...incoming,
+            limit_details: sourceOwnedLimitDetails(incoming, group.source),
+          };
+          byUid.set(incoming.uid, admitted);
+          index(admitted);
         }
         continue;
       }
@@ -574,6 +671,12 @@ function mergeGroups(
         }))
       : values
   ).sort((left, right) => left.uid.localeCompare(right.uid));
+}
+
+function sourceOwnedLimitDetails(model: ParsedProviderModel, source: SourceManifest) {
+  if (!source.fields.includes("limit_details")) return undefined;
+  const groups = model.limit_details?.filter(({ source_ref }) => source_ref === source.id);
+  return groups?.length ? groups : undefined;
 }
 
 function missingCredential(source: SourceManifest): boolean {
@@ -749,6 +852,7 @@ function providerSources(
 ): SourceRecord[] {
   const sourceIds = new Set([
     ...models.flatMap((model) => model.source_refs),
+    ...models.flatMap((model) => model.limit_details?.map(({ source_ref }) => source_ref) ?? []),
     // A failed price assembly can only retain the previous partition, whose provenance still
     // cites configured pricing sources that contribute no model rows of their own.
     ...(pricing === undefined ? pricingDependencySources : providerPartitionSourceRefs(pricing)),
@@ -802,6 +906,8 @@ export async function collectProvider(
   }
 
   const oldModels = previousModels(previous, manifest.provider.id);
+  const oldSources = previousSources(previous, manifest.provider.id);
+  const oldSourceById = new Map(oldSources.map((source) => [source.id, source]));
   const currentSourceIds = new Set(manifest.sources.map((source) => source.id));
   const comparableOldModels = oldModels.flatMap((model) => {
     const sourceRefs = model.source_refs.filter((sourceId) => currentSourceIds.has(sourceId));
@@ -812,13 +918,19 @@ export async function collectProvider(
           {
             ...model,
             routes: model.routes?.filter((route) => currentSourceIds.has(route.source_ref)),
+            limit_details: model.limit_details?.filter(({ source_ref }) =>
+              manifest.sources.some(
+                (source) =>
+                  source.id === source_ref &&
+                  source.fields.includes("limit_details") &&
+                  oldSourceById.get(source_ref)?.extractor_version === source.extractorVersion,
+              ),
+            ),
             source_refs: sourceRefs,
           },
         ]
       : [];
   });
-  const oldSources = previousSources(previous, manifest.provider.id);
-  const oldSourceById = new Map(oldSources.map((source) => [source.id, source]));
   const oldCoverage = previousCoverage(previous, manifest.provider.id);
   const warnings: CatalogWarning[] = [];
   const sourceAttempts: SourceRefreshAttempt[] = [];
@@ -982,7 +1094,10 @@ export async function collectProvider(
             if (retainsPricingOnFailure(source)) invalidPricingDependencies.add(url);
           },
         });
-        parsed = parsedSource.models.map(normalizeModelTasks).map(normalizeDeliveryModes);
+        parsed = parsedSource.models
+          .map(normalizeModelTasks)
+          .map(normalizeDeliveryModes)
+          .map((model) => admitLimitDetails(model, source, manifest.provider.id, warnings));
       } catch (error) {
         await captureEvidence();
         const failureState = recordSourceFailure(state, source.id, observedAt, result);
@@ -1013,8 +1128,9 @@ export async function collectProvider(
       if (source.retainOmittedFacts === true && !extractorChanged)
         retainedOmissions.push({
           source,
-          observed:
-            dependencyFailures.length === 0 ? new Set(parsed.map(({ uid }) => uid)) : new Set(),
+          observed: dependencyFailures.every(({ impact }) => impact === "claim")
+            ? new Set(parsed.map(({ uid }) => uid))
+            : new Set(),
         });
       const contractSummary = contractFindings.summary();
       if (contentChanged || extractorChanged || contractSummary.contract_findings?.length)
@@ -1132,6 +1248,28 @@ export async function collectProvider(
           ),
         );
     }
+    // Limit companions can fail independently of a successful catalog card. Their explicit
+    // source/claim receipts must not opt ordinary fields into whole-source retention.
+    for (const source of manifest.sources) {
+      if (
+        !source.fields.includes("limit_details") ||
+        oldSourceById.get(source.id)?.extractor_version !== source.extractorVersion
+      )
+        continue;
+      const retention = retainSourceFacts(candidate, comparableOldModels, source, new Set(), {
+        detailsOnly: true,
+      });
+      candidate = retention.models;
+      if (retention.count > 0)
+        warnings.push(
+          sourceWarning(
+            "limit_detail_retention",
+            manifest.provider.id,
+            source.id,
+            `Retained unobserved limit claims with their original evidence for ${retention.count} models.`,
+          ),
+        );
+    }
     for (const { source, observed } of retainedOmissions) {
       const retention = retainSourceFacts(candidate, comparableOldModels, source, observed);
       candidate = retention.models;
@@ -1149,6 +1287,25 @@ export async function collectProvider(
       .map(normalizeModelReleaseStage)
       .map(normalizeModelTasks)
       .map(normalizeDeliveryModes);
+    candidate = candidate.map((model) => {
+      if (
+        model.limit_details === undefined ||
+        limitDetailsSchema.safeParse(model.limit_details).success
+      )
+        return model;
+      warnings.push(
+        sourceWarning(
+          "limit_detail_invalid",
+          manifest.provider.id,
+          model.limit_details[0]?.source_ref ?? manifest.sources[0]?.id ?? "unknown",
+          `Withheld combined limit observations for ${model.uid}: the detail contract was exceeded; prior verified groups are preserved when available.`,
+        ),
+      );
+      return {
+        ...model,
+        limit_details: comparableOldModels.find(({ uid }) => uid === model.uid)?.limit_details,
+      };
+    });
     const freshModels = candidate.map(publishedModel);
     candidateModels = freshModels;
     const validation = validateProvider(freshModels);
@@ -1248,6 +1405,7 @@ export async function collectProvider(
       inferencePriceSources,
       retainedPricingDependencySources(manifest, sourceById),
     );
+    validateLimitDetailSources({ models, sources: retainedSources });
     return {
       inferencePriceSources,
       provider,

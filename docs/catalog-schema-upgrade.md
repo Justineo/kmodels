@@ -33,3 +33,14 @@ record's clock. The field is bounded to eight groups and 16 KiB of UTF-8 JSON. I
 rejected without truncation. Source ownership and same-provider closure are collection-boundary
 requirements; schema acceptance alone does not establish those relationships or adoption in
 stored data.
+
+Collection replaces an observed `(source_ref, claim)` group atomically, including evidenced
+empty withdrawals. Missing groups retain their last verified revision independently of
+`retainOmittedFacts`, so a failed optional companion does not restore old ordinary card limits.
+This requires an unchanged owning extractor version; changed interpretations do not inherit
+old groups. Claim-local dependency failures leave successful model observations fresh. Whole
+bundle failures retain the existing broader fallback policy. Invalid, duplicate, oversized or
+unowned detail observations produce a local diagnostic while identity and pricing stay usable.
+The owner must be a public source declaring `limit_details`, and evidence URLs must belong to
+its allowed hosts. Independent groups preserve their own document clocks even when the source
+record has been refreshed.
