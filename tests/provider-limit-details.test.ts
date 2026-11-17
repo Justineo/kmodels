@@ -102,6 +102,18 @@ it("keeps ordinary Anthropic metadata when its optional Batch companion is absen
   expect(model?.limits.max_output_tokens).toBe(128000);
 });
 
+it("withholds a neighboring xAI heading's description without losing the owned limit", async () => {
+  const bundle = await xaiBundle();
+  for (const document of bundle.documents)
+    document.body = document.body.replace(
+      "# Grok 4.7\n\nGrok 4.7 is",
+      "# Other model\n\nOther model is",
+    );
+  const model = parse("xai", "xai-models", bundle).models.find((m) => m.model_id === "grok-4.7");
+  expect(model?.description).toBeUndefined();
+  expect(model?.limit_details?.[0]?.claim).toBe("card_limits");
+});
+
 it("publishes the owned xAI no-cap state with exact document evidence and finite context", async () => {
   const bundle = await xaiBundle();
   const model = parse("xai", "xai-models", bundle).models.find((m) => m.model_id === "grok-4.7");
