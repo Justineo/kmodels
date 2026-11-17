@@ -32,7 +32,10 @@ discovered from remaining rates. A context threshold does not cause token multip
 
 Evaluation time accepts RFC 3339 with a known offset and normalizes to UTC without losing fractional
 precision. Omission uses the snapshot generation time. Freshness is independent of applicability.
-Date-only validity boundaries remain unresolved where an exact instant cannot be established.
+Calendar-only validity excludes clearly future or expired rates only when the evaluation time's
+previous and next UTC dates both fall strictly outside the published calendar period. The period
+and adjacent dates remain unresolved when the effective instant/time zone is unknown. Exact
+datetime inclusivity is unchanged; no source boundary is converted to UTC midnight.
 
 ## Results
 

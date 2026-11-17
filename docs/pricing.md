@@ -222,10 +222,10 @@ The following are deliberately outside this contract:
 - a universal formula language or general predicate solver;
 - historical reconstruction when a source publishes only an undated current
   value;
-- execution of imprecise validity labels as a time query;
+- inventing exact effective instants or time zones from imprecise validity labels;
 - a provider default, cheapest offer, or automatic offer recommendation;
 - a lossless model for every possible commercial contract.
-- training, retained storage, prepaid capacity commitments, subscriptions, plans, and
+- training, retained files/vector stores, prepaid capacity commitments, subscriptions, plans, and
   account settlement; running inference capacity with a public unit-time rate is admitted separately.
 
 An exact currency tariff explicitly defined by a first-party source may be normalized during
@@ -325,6 +325,8 @@ Newly reviewed provider partitions normalize:
 
 - on-demand, Batch, realtime, and other directly callable inference offer identities;
 - request-attributable model and provider-service rates with exact denomination and compound unit;
+- explicit inference-cache storage as a separately priced service with exact model applicability
+  and token-time units; no request-time allocation or runtime retention counter is required;
 - public unit-time rates for inference-hosting resources, with resource-level billing signals and
   exact model compatibility evidence when linked to model details;
 - applicability over reviewed request, outcome, and publication dimensions;
@@ -337,7 +339,7 @@ Newly reviewed provider partitions normalize:
 - optional dimensionally checked charge and contribution bindings; and
 - exact bounded adapter calculations whose result and provenance are first-party evidenced.
 
-Training, retained storage, prepaid capacity commitments, subscriptions, account-resource templates,
+Training, retained files/vector stores, prepaid capacity commitments, subscriptions, account-resource templates,
 settlement, invoices, private prices, and workload-amortization formulas are outside the publication
 boundary. The shared decoder retains its closed broader vocabulary while older provider partitions
 converge; provider adapters must not use those fields merely because they remain representable.
@@ -775,17 +777,24 @@ retain their missing inputs.
 
 Validity preserves an official label with year, month, date, or canonical UTC
 datetime precision and inclusive/exclusive endpoint metadata. The canonical
-contract records that fact without asserting currentness. Model details may use
-exact datetime boundaries to select the current rate-plan version without
-rewriting or discarding the published validity.
+contract records that fact without asserting currentness. Lookup and model details evaluate
+the same preserved boundaries without rewriting or discarding published validity.
 
 Recurring schedules and published validity are independent: the schedule says which categorical
 value applies within a day or week, while validity says when that published rule starts or stops
 being offered.
 
-Kmodels does not turn collection time into validity or execute imprecise year,
-month, or date labels as a historical/current query. Model details default to
-the exact datetime version containing the current instant and offer one concise
+Kmodels does not turn collection time into validity. Exact datetime boundaries retain their
+published inclusivity. A year, month or date locates an effective boundary within that calendar
+period without establishing an instant or time zone. Lookup resolves it only when the evaluation
+time is clearly outside the entire period: its previous and next UTC calendar dates must both
+precede or both follow the label at its published precision. This guard covers every accepted
+RFC 3339 offset, whose magnitude is less than 24 hours. Within that uncertainty window, lookup
+retains `unresolved_validity`, including when coarse inclusivity is explicit. A proven future or
+expired boundary excludes a variant even when its other boundary is uncertain. This does not
+invent UTC midnight, change source precision or execute recurring/holiday schedules.
+
+Model details default to the exact datetime version containing the current instant and offer one concise
 preview of the next version. The effective time belongs to the plan transition
 rather than every state and rate row. A future exact start on any offer fact establishes a preview,
 even when the overall offer state stays numeric. The preview is explicitly labeled as upcoming

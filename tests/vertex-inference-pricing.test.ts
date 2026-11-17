@@ -17,6 +17,8 @@ import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-c
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
 import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
+import { createCommercialPriceLookup } from "../src/pricing/commercial.ts";
+import { modelPricingView } from "../src/catalog/pricing-presentation.ts";
 import type { Selector } from "../src/pricing/schema.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
@@ -122,6 +124,47 @@ function context(value: string): Selector {
   };
 }
 const standard = condition("served_service_tier", "standard");
+it("exports cache storage separately from generation with exact token-hours and model scope", () => {
+  const data = priceDataExport(baseline.catalog, baseline.pricing);
+  const book = data.providers[0]?.books.find(
+    ({ book_key }) => book_key === "service:context-cache-storage",
+  );
+  if (!book) throw new Error("Missing Vertex cache storage book");
+  const query = createCommercialPriceLookup(data, baseline.inference?.mapping);
+  const result = query({
+    subject: { kind: "resource", provider_id: "vertex", book_ref: book.id },
+    meter: { namespace: "kmodels", value: "storage" },
+    selectors: [
+      context("1000"),
+      {
+        kind: "categorical",
+        dimension: { namespace: "kmodels", value: "model" },
+        value: { namespace: "kmodels", value: "vertex/gemini-3.1-pro-preview" },
+      },
+    ],
+  });
+  expect(result.status).toBe("matched");
+  expect(
+    result.candidates.flatMap(({ offer }) =>
+      offer.terms.flatMap((term) =>
+        term.kind === "rate" ? term.variants.map(({ price }) => price.value) : [],
+      ),
+    ),
+  ).toEqual([{ numerator: "1", denominator: "800000000" }]);
+  expect(
+    query({
+      subject: { kind: "resource", provider_id: "vertex", book_ref: book.id },
+      choices: [{ dimension: "execution", value: { namespace: "kmodels", value: "batch" } }],
+    }).reason,
+  ).toBe("no_applicable_price");
+  const model = baseline.catalog.models.find(({ uid }) => uid === "vertex/gemini-3.1-pro-preview");
+  if (!model) throw new Error("Missing Vertex storage model");
+  expect(
+    modelPricingView(baseline.pricing.data, model).optionalServices.some(({ terms }) =>
+      terms.some((term) => term.kind === "rate" && term.meter.value === "storage"),
+    ),
+  ).toBe(true);
+});
 function inputPrices(result: ReturnType<ReturnType<typeof lookup>>) {
   return result.candidates.flatMap(({ offer }) =>
     offer.terms.flatMap((term) =>

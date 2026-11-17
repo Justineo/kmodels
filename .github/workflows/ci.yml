@@ -27,6 +27,11 @@ jobs:
           vp env doctor
           vp node --version
 
+      - name: Verify isolated Codex protocol without paid inference
+        run: |
+          docker build --file .github/repair-codex.Dockerfile --tag kmodels-repair-codex:local .github
+          vp node scripts/repair/codex-smoke.ts
+
       - name: Verify the Catalog repair workflow frontmatter lock
         run: |
           set -euo pipefail

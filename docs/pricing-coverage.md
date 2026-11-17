@@ -51,9 +51,22 @@ superseded design decisions.
   SKU conversion and private settlement cannot supply a universal public exchange multiplier.
 - Hosting capacity directly associated with an admitted model is priced independently of request
   usage. An instance-hour is never allocated across a guessed request throughput.
-- Training, retained storage, subscriptions, private discounts and unrelated account products are
+- Explicit context-cache storage is an independent service tariff. Preserve its model, account,
+  modality and validity predicates and its token-time denominator; it is neither a cache-read
+  token price nor another generation charge. Missing runtime retention measurements cannot erase it.
+- Training, retained files/vector stores, subscriptions, private discounts and unrelated account products are
   excluded under [commercial topology](commercial-topology.md). Excluded products are not missing
   request prices. Provider guides document narrower exceptions and exact admitted components.
+
+Published-price correctness and static tariff coverage are separate review outcomes. Correct
+amounts among exported rates do not compensate for an omitted tier, unsupported denominator or
+product-scope exclusion. Raw quotes conserve evidence but remain mapping gaps; exclusions remain
+coverage limits when comparing against all published API prices. Report source uncertainty and
+operational failures separately from reproduced extractor omissions and accepted-data adoption.
+Informational raw terms retain owned policy prose without representing an unmapped price.
+Coverage excludes their reasons from tariff mapping gaps; assess `impact` together with `reason`.
+A numeric categorical tariff can be complete even when its recurring calendar definition remains
+descriptive. Kmodels does not maintain holiday calendars or infer a billing period from the clock.
 
 ## Review and repair
 

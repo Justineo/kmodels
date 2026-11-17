@@ -1082,7 +1082,29 @@ it("does not turn an expired tariff into a matched price", () => {
     expect.objectContaining({ code: "outside_validity" }),
   );
 });
-it("keeps date-only rates visible as evidence without prompting for a pricing input", async () => {
+it("does not use resolved calendar validity as evidence for a price observed later", () => {
+  const data = structuredClone(typesafe);
+  for (const provider of data.providers)
+    for (const book of provider.books)
+      for (const offer of book.offers)
+        for (const term of offer.terms)
+          if (term.kind === "rate")
+            for (const variant of term.variants)
+              variant.validity = { from: { value: "2026-09-01", precision: "date" } };
+  const result = createInferencePriceLookup(
+    data,
+    mapping(data, [typesafeRule()]),
+  )({
+    provider_id: "typesafe",
+    model_id: "jev-1.13.0",
+    evaluated_at: "2026-10-01T00:00:00Z",
+  });
+  expect(result.status).toBe("unknown");
+  expect(result.candidates.flatMap(({ gaps }) => gaps)).toContainEqual(
+    expect.objectContaining({ code: "historical_evidence_missing" }),
+  );
+});
+it("keeps date-only rates visible as evidence near their boundary without prompting for a pricing input", async () => {
   const data = structuredClone(typesafe);
   const association = typesafeRule();
   const offer = data.providers[0]?.books
@@ -1097,7 +1119,11 @@ it("keeps date-only rates visible as evidence without prompting for a pricing in
   const result = createInferencePriceLookup(
     data,
     mapping(data, [association]),
-  )({ provider_id: "typesafe", model_id: association.model_id });
+  )({
+    provider_id: "typesafe",
+    model_id: association.model_id,
+    evaluated_at: "2026-11-30T00:00:00Z",
+  });
   expect(result.status).toBe("candidates");
   expect(result.candidates.flatMap(({ gaps }) => gaps)).toContainEqual(
     expect.objectContaining({ code: "unresolved_validity" }),
@@ -1111,7 +1137,9 @@ it("keeps date-only rates visible as evidence without prompting for a pricing in
   ).toContainEqual({ until: { value: "2026-11-30", precision: "date" } });
   const projected = websiteInferencePrice(result, new Map());
   const matching = inferenceMatchData(createPricingSnapshot(data), [association]);
-  expect(queryWebsiteInferencePrice({ ...projected, matching }, [], at)).toMatchObject({
+  expect(
+    queryWebsiteInferencePrice({ ...projected, matching }, [], "2026-11-30T00:00:00.000Z"),
+  ).toMatchObject({
     status: "candidates",
     explanation: expect.stringContaining("Price validity is not fully established"),
     candidates: [

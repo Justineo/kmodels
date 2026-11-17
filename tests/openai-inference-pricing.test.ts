@@ -236,7 +236,7 @@ it("publishes Sol Ultrafast EU prices while excluding Astra EU and Luna non-Stan
     provider_id: "openai",
     model_id: "gpt-5.6-sol",
     selectors: [...selectors, mode("sync")],
-    evaluated_at: "2026-11-29T00:00:00Z",
+    evaluated_at: "2026-11-30T00:00:00Z",
   });
   expect(promotional.missing_conditions).toEqual([]);
   expect(promotional.status).toBe("candidates");
@@ -266,6 +266,114 @@ it("publishes Sol Ultrafast EU prices while excluding Astra EU and Luna non-Stan
   expect(queryWebsiteInferencePrice(price, selected.selectors, at, selected.offer.id).status).toBe(
     "matched",
   );
+});
+
+it.each(["#### Priority Plus", "#### Economy"])(
+  "does not inherit a tariff under the unknown heading %s",
+  async (heading) => {
+    const pricing = await fixture("flex-headings.md");
+    const unknown = `${heading}\n\n| Model | Short context input | Short context output |\n| --- | --- | --- |\n| gpt-5.4 | $99.00 | $199.00 |\n\n`;
+    const candidate = await collect((input) => {
+      input.pricing =
+        pricing.replace("#### Flex", unknown + "#### Flex") +
+        input.pricing.slice(input.pricing.indexOf("Image generation models"));
+    });
+    const query = lookup(candidate);
+    const context = selectors[1];
+    if (!context) throw new Error("Missing context fixture");
+    const batch = query({
+      provider_id: "openai",
+      model_id: "gpt-5.4",
+      execution_mode: "batch",
+      meter: { namespace: "kmodels", value: "input_text" },
+      selectors: [context],
+    });
+    expect(batch.status).toBe("matched");
+    expect(
+      batch.candidates.flatMap(({ offer }) =>
+        offer.terms.flatMap((term) =>
+          term.kind === "rate" ? term.variants.map(({ price }) => price.value) : [],
+        ),
+      ),
+    ).toEqual([{ numerator: "1", denominator: "800000" }]);
+  },
+);
+
+it("exports Flex from nested Markdown tier headings independently of Batch", async () => {
+  const pricing = await fixture("flex-headings.md");
+  const candidate = await collect((input) => {
+    input.pricing = pricing + input.pricing.slice(input.pricing.indexOf("Image generation models"));
+  });
+  const query = lookup(candidate);
+  const flex: Selector = {
+    kind: "categorical",
+    dimension: { namespace: "kmodels", value: "served_service_tier" },
+    value: { namespace: "provider", provider_id: "openai", value: "flex" },
+  };
+  const context = selectors[1];
+  if (!context) throw new Error("Missing context fixture");
+  const result = query({
+    provider_id: "openai",
+    model_id: "gpt-5.4",
+    selectors: [flex, context, mode("sync")],
+  });
+  expect(result.status, JSON.stringify(result)).toBe("matched");
+  const canonical = query({
+    provider_id: "openai",
+    model_id: "gpt-5.4",
+    selectors: [context, mode("sync")],
+    choices: [{ dimension: "served_service_tier", value: { namespace: "kmodels", value: "flex" } }],
+  });
+  expect(
+    canonical.status,
+    JSON.stringify({
+      reason: canonical.reason,
+      choices: canonical.available_choices,
+      missing: canonical.missing_conditions,
+    }),
+  ).toBe("matched");
+  expect(canonical.candidates.map(({ offer }) => offer)).toEqual(
+    result.candidates.map(({ offer }) => offer),
+  );
+  const projected = await projectCatalogPair(candidate);
+  const price = projected.ui.manifest.assets
+    .filter(({ file_name }) => file_name.includes("details"))
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()))
+        .details.map(restoreWebsiteInferenceDetail),
+    )
+    .find(({ model_ref }) => model_ref === "openai/gpt-5.4")
+    ?.inference_prices?.find(({ model_id }) => model_id === "gpt-5.4");
+  if (!price) throw new Error("Missing Flex website tariff");
+  expect(queryWebsiteInferencePrice(price, [flex, context, mode("sync")], at).status).toBe(
+    "matched",
+  );
+  expect(
+    result.candidates.flatMap(({ offer }) =>
+      offer.terms.flatMap((term) =>
+        term.kind === "rate" && term.meter.value === "input_text"
+          ? term.variants.map(({ price }) => price.value)
+          : [],
+      ),
+    ),
+  ).toEqual([{ numerator: "1", denominator: "800000" }]);
+  expect(
+    query({
+      provider_id: "openai",
+      model_id: "gpt-5.4",
+      execution_mode: "batch",
+      selectors: [context],
+    }).status,
+  ).toBe("matched");
+  const unsupported = await collect((input) => {
+    input.pricing =
+      pricing.replace("#### Flex", "#### Priority") +
+      input.pricing.slice(input.pricing.indexOf("Image generation models"));
+  });
+  expect(() =>
+    lookup(unsupported)({ provider_id: "openai", model_id: "gpt-5.4", selectors: [flex] }),
+  ).toThrow();
 });
 
 it("joins exact request IDs to canonical synchronous and Batch prices without API wiring", async () => {

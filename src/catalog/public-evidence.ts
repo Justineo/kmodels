@@ -86,6 +86,32 @@ export function reviewedPublicSource(sourceId: string, documentUrl?: string): So
   };
 }
 
+/** Research can inspect a new path on an already-reviewed public origin without admitting it to collection. */
+export function researchPublicSource(sourceId: string, targetUrl: string): SourceManifest {
+  const source = reviewedPublicSource(sourceId);
+  const target = new URL(targetUrl);
+  if (
+    target.protocol !== "https:" ||
+    target.username ||
+    target.password ||
+    target.port ||
+    !source.allowedHosts.includes(target.hostname)
+  )
+    throw new Error("Research URL left the reviewed public host boundary");
+  const { transport: _transport, linkedDocuments: _linked, ...plain } = source;
+  target.hash = "";
+  return {
+    ...plain,
+    url: target.href,
+    maxResponseBytes: Math.min(source.maxResponseBytes, 4 * 1024 * 1024),
+    format: target.pathname.endsWith(".md")
+      ? "markdown"
+      : target.pathname.endsWith(".json")
+        ? "json"
+        : "html",
+  };
+}
+
 /** One verified navigation step; callers bound the chain, without adding collection dependencies. */
 export function linkedPublicSource(
   parent: SourceManifest,

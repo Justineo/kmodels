@@ -29,7 +29,7 @@ export function websiteDataVersion(
   inferenceSource?: string,
 ): string {
   return sha256(
-    `website-core-v6\u0000${catalogVersion}\u0000${pricingDataVersion}${inferenceSource === undefined ? "" : `\u0000inference-matching-v3\u0000${sha256(inferenceSource)}`}`,
+    `website-core-v7\u0000${catalogVersion}\u0000${pricingDataVersion}${inferenceSource === undefined ? "" : `\u0000inference-matching-v3\u0000${sha256(inferenceSource)}`}`,
   );
 }
 

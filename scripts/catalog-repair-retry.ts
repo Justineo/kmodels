@@ -6,6 +6,7 @@ import { stripVTControlCharacters } from "node:util";
 import { z } from "zod";
 import { artifactsSchema, github, type GitHubCommand } from "./catalog-repair-evidence.ts";
 import { readReviewEvidence, reviewHash, validateRepairReview } from "./catalog-repair-review.ts";
+import { investigationMinutes } from "./repair/state.ts";
 
 const workflow = ".github/workflows/catalog-repair.lock.yml";
 const evidenceDirectory = "/tmp/gh-aw/agent";
@@ -127,9 +128,18 @@ export async function loadRepairRetry(
       );
   if (!feedback.trim() || feedback.length > 65_536)
     throw new Error("Publication validation feedback is empty or exceeds its limit");
-  for (const name of ["admitted-catalog-repair", "catalog-repair-investigation"])
+  const independentlyVerified = artifacts.some(
+    ({ name, expired }) => name === "independently-verified-catalog-repair" && !expired,
+  );
+  const proposalArtifact = independentlyVerified
+    ? "independently-verified-catalog-repair"
+    : "admitted-catalog-repair";
+  for (const name of [
+    proposalArtifact,
+    independentlyVerified ? "catalog-maintenance-review" : "catalog-repair-investigation",
+  ])
     await download(name);
-  return { run, feedback, step: failed.name };
+  return { run, feedback, step: failed.name, independentlyVerified, proposalArtifact };
 }
 
 function environment(name: string): string {
@@ -142,20 +152,27 @@ async function main(): Promise<void> {
   const runId = environment("REPAIR_RETRY_RUN_ID");
   const runner = environment("RUNNER_TEMP");
   const directory = join(runner, "catalog-repair-retry");
-  const { run, feedback, step } = await loadRepairRetry(
+  const { run, feedback, step, independentlyVerified, proposalArtifact } = await loadRepairRetry(
     environment("GITHUB_REPOSITORY"),
     runId,
     directory,
   );
   const investigation = join(directory, "catalog-repair-investigation");
-  const previousEvidence = join(investigation, evidenceDirectory);
+  const independent = join(directory, "catalog-maintenance-review");
+  const previousEvidence = independentlyVerified
+    ? join(independent, "effective-evidence")
+    : join(investigation, evidenceDirectory);
   const previousAdmission = await readFile(
-    join(investigation, runner, "gh-aw", "repair-admission.json"),
+    independentlyVerified
+      ? join(independent, "admission.json")
+      : join(investigation, runner, "gh-aw", "repair-admission.json"),
     "utf8",
   );
   const previousReview = await readReviewEvidence(
-    join(previousEvidence, "catalog-repair-review.json"),
-    previousEvidence,
+    independentlyVerified
+      ? join(independent, "review.json")
+      : join(previousEvidence, "catalog-repair-review.json"),
+    independentlyVerified ? independent : previousEvidence,
   );
   await validateRepairReview(
     previousAdmission,
@@ -178,7 +195,7 @@ async function main(): Promise<void> {
     env: {
       ...env,
       REPAIR_BASE_SHA: run.head_sha,
-      REPAIR_ARTIFACT_DIR: join(directory, "admitted-catalog-repair"),
+      REPAIR_ARTIFACT_DIR: join(directory, proposalArtifact),
     },
   });
   const started = new Date();
@@ -186,7 +203,10 @@ async function main(): Promise<void> {
     ...prior,
     base_sha: environment("REPAIR_BASE_SHA"),
     retry_started_at: started.toISOString(),
-    investigation_deadline: new Date(started.getTime() + 20 * 60 * 1000).toISOString(),
+    difficulty: "complex",
+    investigation_deadline: new Date(
+      started.getTime() + investigationMinutes.complex * 60 * 1000,
+    ).toISOString(),
   });
   const admissionPath = environment("KMODELS_REPAIR_ADMISSION");
   await mkdir(join(runner, "gh-aw"), { recursive: true });

@@ -60,11 +60,11 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
   regular price. Screen-reader labels do not become part of either amount. Malformed, duplicate,
   or otherwise unreadable sale markup is isolated to the affected cell and signaled.
   Header semantics remain part of the meter: a cached-input page cell cannot overwrite ordinary
-  OCR pages. Cached non-token columns currently have no reviewed meter/quantity contract and are
-  signaled as unsupported. When one exact model owns the cell, its published amount, currency and
-  unit survive as raw evidence alongside ordinary page, minute, and character rates. An ambiguous
-  identity cannot assign that quote to multiple models. Raw cached prices do not borrow token-cache
-  counters, establish an uncached/total partition, or become a free offer when their amount is zero.
+  OCR pages. Cached non-token columns use the provider's `cache_read` meter with the published
+  page, minute or character denominator, independently of quantity acquisition. An ambiguous
+  identity cannot assign that quote to multiple models. These prices do not borrow token-cache
+  counters or establish an uncached/total partition. A numeric zero remains a zero unit rate,
+  without making the entire model free.
   The [current caching guide](https://docs.mistral.ai/studio/conversations/advanced/prompt-caching)
   defines cached prompt tokens, 64-token blocks and token subtraction. It supplies no corresponding
   cached-minute, cached-page or cached-character billing rule. Its token percentage and
@@ -121,9 +121,11 @@ Missing currency, tier, or offer choice leaves candidates; known conditions excl
 candidate produce no applicable price. Unknown regional prefixes are not stripped or translated.
 Regional endpoint availability still requires independent evidence, as described below.
 
-Current OCR and audio cached-input cells remain explicit unresolved prices because their
-non-token cache meters have not been established. Associating an ID does not conceal those
-unknowns or reinterpret them using text-cache quantities. Model-specific free moderation is
+Current OCR, audio and character-denominated cached-input cells publish numeric rates under the
+provider's `cache_read` meter, with their page, duration or character denominator and operation.
+They do not use cached-token quantities. Where no cache/miss partition is documented, ordinary
+media-input quantities remain caller-owned; output and independently established token mappings
+survive. Model-specific free moderation is
 independent of separately priced request services. Optional accounting documents are not
 prerequisites for the direct ID association; discount evidence still owns derived Batch/cache
 amounts.
@@ -223,7 +225,9 @@ composition. This establishes the regional factor for its other published row un
 Chat token pricing only; the generic widget cannot override the guide's feature limitations.
 Unknown composition removes that derived Priority amount while preserving the guide's Standard
 token rule. Currency precision is checked after regional multiplication. Conflicting page amounts
-remain conflicting regionally, and unresolved non-token cache units remain raw evidence.
+remain conflicting regionally, and unreviewed denominators remain raw evidence. Known page,
+duration and character cache rates use the same regional multiplier only within exact
+stateless model/endpoint availability.
 
 Regional variants require a positively observed stateless endpoint. Batch, Files, Agents,
 Conversations and built-in service fees do not inherit regional prices. Global prices receive an

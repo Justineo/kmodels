@@ -9,19 +9,26 @@ import {
   linkedPublicSource,
   publicEvidenceBaseline,
   reviewedPublicSource,
+  researchPublicSource,
 } from "../src/catalog/public-evidence.ts";
 
 const sourceId = process.argv[2];
 if (!sourceId)
   throw new Error(
-    "Usage: vp node scripts/fetch-catalog-evidence.ts SOURCE_ID [--index | FIXED_COMPANION_URL | --linked ROOT_URL_OR_--index TARGET_URL [TARGET_URL...]]",
+    "Usage: vp node scripts/fetch-catalog-evidence.ts SOURCE_ID [--index | FIXED_COMPANION_URL | --research URL | --linked ROOT_URL_OR_--index TARGET_URL [TARGET_URL...]]",
   );
 const linked = process.argv[3] === "--linked";
+const research = process.argv[3] === "--research";
 const targets = linked ? process.argv.slice(5) : [];
 if (linked && (process.argv[4] === undefined || targets.length < 1 || targets.length > 4))
   throw new Error("Linked evidence requires a reviewed root and one to four target URLs");
-if (!linked && process.argv.length > 4) throw new Error("Unexpected evidence arguments");
-let source = reviewedPublicSource(sourceId, linked ? process.argv[4] : process.argv[3]);
+if (!linked && !research && process.argv.length > 4)
+  throw new Error("Unexpected evidence arguments");
+if (research && (process.argv.length !== 5 || !process.argv[4]))
+  throw new Error("Research requires one exact public URL");
+let source = research
+  ? researchPublicSource(sourceId, process.argv[4] ?? "")
+  : reviewedPublicSource(sourceId, linked ? process.argv[4] : process.argv[3]);
 const linkedFrom: { source_url: string; source_hash: string; body: string }[] = [];
 for (const target of targets) {
   const parent = await fetchSource(source);
@@ -51,20 +58,24 @@ const report = z
 const companion = reviewedPublicSource(sourceId).linkedDocuments?.documents?.find(
   ({ url }) => url === process.argv[3],
 );
-const scope = linked
-  ? "linked"
-  : process.argv[3] === "--index"
-    ? "index"
-    : companion === undefined
-      ? "source"
-      : "companion";
-const stateKey = linked
-  ? `${sourceId}/linked/${source.url}`
-  : scope === "index"
-    ? `${sourceId}/index`
-    : companion === undefined
-      ? sourceId
-      : `${sourceId}/${companion.id}`;
+const scope = research
+  ? "research"
+  : linked
+    ? "linked"
+    : process.argv[3] === "--index"
+      ? "index"
+      : companion === undefined
+        ? "source"
+        : "companion";
+const stateKey = research
+  ? `${sourceId}/research/${source.url}`
+  : linked
+    ? `${sourceId}/linked/${source.url}`
+    : scope === "index"
+      ? `${sourceId}/index`
+      : companion === undefined
+        ? sourceId
+        : `${sourceId}/${companion.id}`;
 const attemptOutcome =
   scope === "source"
     ? report.providers

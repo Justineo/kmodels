@@ -2,6 +2,13 @@
 
 Status: current
 
+The [maintenance controller](catalog-maintenance.md) preserves unfinished investigations, routes
+bounded expert assistance and tracks code publication, accepted data and deployment separately.
+GPT independently investigates repaired and no-defect claims before comparing the proposal.
+Concrete evidenced errors may trigger one Sol high Codex revision, followed by fresh verification.
+Insufficient evidence stays open. Its discovery leads and model reviews do not replace the
+evidence boundaries below or establish semantic completeness.
+
 ## Decision
 
 Treat source acquisition, extraction contracts, catalog acceptance, pricing acceptance and repair
@@ -18,12 +25,13 @@ own exact identities, pricing policies, known source limits and reviewed fixture
 ### Set a finite scope
 
 For a targeted repair, use the admitted candidates, publication boundary and investigation deadline.
-Preparation selects one error-driven provider per six-hour UTC slot against the stable configured-provider
-rotation, keeping all of that provider's source and validation candidates together alongside
+Preparation selects one error-driven provider using trusted severity, cooldown and age,
+keeping all of that provider's source and validation candidates together alongside
 relevant workflow evidence. Other candidates stay in the prepared
 deferred queue and latest refresh report; they are neither resolved nor part of this run's closing
-list. A continuously failing provider gets its own slot at least once per configured-provider cycle,
-with one six-hour slot per manifest provider. Same-slot reruns select from the latest evidence. The independent
+list. Work waiting seven days takes priority over new high-severity work; updated source or
+implementation fingerprints reopen previous conclusions. Local invocation without maintenance
+state retains the deterministic six-hour provider rotation. Reruns use the latest evidence. The independent
 periodic review has its own daily run and budget. Conclusions apply to the admitted scope.
 Source-acquisition review follows the admitted providers too; an unrelated transport failure must
 not silently expand a bounded batch. Keep those failures visible in the full refresh report. The

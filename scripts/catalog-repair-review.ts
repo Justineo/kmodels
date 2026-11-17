@@ -109,7 +109,9 @@ export async function validateRepairReview(
       throw new Error("Review check disagrees with its command receipt");
     if (
       (receipt.kind === "consumer" || receipt.kind === "transition") &&
-      /(?:fetch|replay)-catalog-evidence\.ts\b/u.test(command)
+      /(?:(?:fetch|replay)-catalog-evidence\.ts\b|catalog-repair-tools\.ts\s+(?:context|unpack|diff|expert)\b)/u.test(
+        command,
+      )
     )
       throw new Error(
         "Source-only acquisition or parser replay cannot establish consumer or transition proof",

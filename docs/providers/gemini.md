@@ -2,6 +2,12 @@
 
 Status: current
 
+The fixed Gemma API guide and model-card companions retain their reviewed `ai.google.dev`
+identities and may follow Google's explicit redirects to `gemma.ai`. Only that catalog source
+admits the new host. The parser reads either the legacy devsite article or the new model-card
+article, accepting exact supported identifiers from its list/table under Supported models.
+Navigation code and other Gemma sizes do not establish hosted Gemini API admission.
+
 ## Offer boundary
 
 [Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
@@ -28,6 +34,7 @@ Included:
 
 - online and Batch model invocation;
 - input, output, cache-read, embedding, image, audio, video, and other direct generation rates;
+- explicit context-cache storage rates, including dated schedules and exact free-tier declarations;
 - request/outcome dimensions such as account eligibility, realized service tier, context band,
   modality, resolution, and operation;
 - independently priced Google Search and Google Maps grounding executions;
@@ -35,7 +42,7 @@ Included:
 
 Excluded:
 
-- explicit cache storage and File Search stores or indexing;
+- File Search stores or indexing;
 - tuning and training;
 - provisioned capacity, subscriptions, commitments, credits, balance, tax, private discounts,
   invoices, and settlement;
@@ -129,14 +136,25 @@ whitespace precedes an explicit footnote marker. Neither rendering detail can tu
 rates or separately billed Search queries into unknown fees.
 
 The website and public lookup use the same matcher. Price schedules stated only as calendar dates
-retain that precision. Lookup displays their published amounts and validity labels as candidates
-with `unresolved_validity`. Exact calculation requires a known effective time. The numeric
-schedules remain in the canonical price book.
+retain that precision. Lookup excludes clearly future or expired schedules under the shared
+[published-validity guard](../pricing.md#published-validity). Near a boundary without an exact
+effective instant/time zone, remaining rates stay candidates with `unresolved_validity`.
+Both schedules remain in the canonical price book and portable export; querying does not rewrite
+the date or discard future evidence.
 Native public fixtures verify collection, publication, lookup and UI projection, including resource
 name withdrawal, observed tier/context choices and Gemma's paid-tier exclusion. Stored-data adoption
 is separate from this producer integration.
 
 ### Offers and conditions
+
+Explicit cache storage is a separate `service:context-cache-storage` resource book. Its
+model-qualified rates retain the table's account, tier, explicitly priced modality and validity
+conditions, with a token × second canonical denominator normalized from million-token-hours.
+An unqualified storage quote applies to cached tokens without inventing a text-only condition.
+Gemma's explicit free storage declaration is one unqualified zero rate. Storage does not acquire
+generation execution choices or token-usage counters. Resource lookup and model details expose it
+independently of online/Batch model rates. An unsupported storage cell remains raw on that service
+and cannot make independently known generation rates unknown.
 
 The source publishes up to two invocation contexts, combined under the account relationships above:
 

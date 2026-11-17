@@ -692,21 +692,33 @@ function openAiPricingTables(
   let reviewedTier = true;
   for (let index = 0; index < lines.length - 1; index += 1) {
     const line = normalizedText(lines[index] ?? "");
-    const observedSection = openAiPricingSections.get(line);
+    const heading = line.match(/^#{1,6}\s+(.+)$/)?.[1];
+    const tierLabel = heading ?? line;
+    const observedSection = openAiPricingSections.get(tierLabel);
     if (observedSection !== undefined) {
       section = observedSection;
       tier = undefined;
       reviewedTier = true;
       continue;
     }
-    const observedTier = openAiPricingTiers.get(line);
+    const observedTier = openAiPricingTiers.get(tierLabel);
     if (observedTier !== undefined) {
       tier = observedTier;
       reviewedTier = true;
       continue;
     }
     if (line === "Our latest models" || line === "Multimodal models") continue;
-    if (/^(?:Standard|Batch|Flex|Fast|Ultrafast|Priority)\b/.test(line)) {
+    if (
+      heading !== undefined &&
+      (openAiPricingTiers.has(heading.replace(/ pricing data$/, "")) ||
+        heading === "Grouped Pricing Table data" ||
+        heading === "Pricing Table data")
+    )
+      continue;
+    if (
+      /^(?:Standard|Batch|Flex|Fast|Ultrafast|Priority)\b/.test(tierLabel) ||
+      (heading !== undefined && section !== undefined)
+    ) {
       reviewedTier = false;
       onReconciliation?.({
         disposition: "unsupported",

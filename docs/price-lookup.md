@@ -39,6 +39,12 @@ candidate offers, applicable terms, effective conditions, missing conditions, ev
 Missing facts produce candidates; unknown, conflicting or unsupported evidence stays explicit.
 Neither missing prices nor missing usage implies zero. No cheapest/default offer is selected.
 
+Evaluation uses exact datetime boundaries directly. Calendar-only boundaries can exclude clearly
+future or expired rates, while the whole published period and adjacent UTC dates remain an
+uncertainty window for an unspecified effective instant/time zone. Rates in that window retain
+`unresolved_validity`; source precision and future schedules are unchanged. See
+[published validity](pricing.md#published-validity) for the shared rule.
+
 The factories validate and privately clone their inputs. Results are independent copies. Mapping
 and price data must identify the same accepted snapshot; replace them together. Complete provider
 partitions preserve reference closure, including contributions to independently priced terms.

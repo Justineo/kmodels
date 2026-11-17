@@ -29,6 +29,7 @@ export const sourcePriceMeters = [
   "input_text",
   "output_text",
   "cache_read_text",
+  "cache_read",
   "cache_write_text",
   "cache_read_audio",
   "cache_write_audio",

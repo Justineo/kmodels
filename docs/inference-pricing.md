@@ -108,8 +108,9 @@ Return the original query, evidence status and all surviving commercial candidat
   Without a meter filter, several meters may be returned. This is a price schedule, not a monetary total.
 - `candidates`: evidenced price rules remain possible, but additional commercial conditions or an
   explicit commercial offer choice are needed. Return the candidates with their applicability and
-  missing conditions. Published numeric rates with imprecise validity remain visible as candidates
-  with an `unresolved_validity` gap. Their original validity labels accompany the amounts, and the
+  missing conditions. Published numeric rates near an imprecise validity boundary remain candidates
+  with an `unresolved_validity` gap; clearly future or expired ranges are excluded by the shared
+  [validity guard](pricing.md#published-validity). Their original validity labels accompany the amounts, and the
   lookup still reports the unresolved effective time. Do not collapse them into a quote or select an
   arbitrary representative.
 - `unknown`: no reliable mapping or usable price evidence establishes an answer. Include the reason,

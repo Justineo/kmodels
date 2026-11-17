@@ -20,6 +20,15 @@ Status: implemented
   previous inputs. Source ownership and reviewed hosts are checked independently.
 - Production build validation checks that the already-validated pair can be consumed and
   materialized. It is not a substitute for unit or adapter behavior tests.
+- Maintenance tests verify reservation/settlement failure boundaries, task invalidation and
+  scheduling, model routing with mocked Responses HTTP, public-only captures, mailbox path
+  isolation, full-source evidence, complete independent verdict coverage and adoption prerequisites.
+  Workflow checks preserve private accounting, unprivileged Codex isolation, final-patch threat
+  detection and trusted publication gates. The repair-toolchain CI job builds the pinned Codex
+  image and runs `vp node scripts/repair/codex-smoke.ts` against a local mock Responses gateway,
+  without an API key or paid inference. `--local` checks the same protocol with an installed CLI
+  when Docker is unavailable; it does not validate Linux container startup.
+  These are deterministic software regressions, not a model evaluation or live spend process.
 - Semantic audit tests use reviewed source fixtures and mock HTTP to verify independent source
   judgments, deterministic gap routing without inference, parser replay, cache reuse, evidence
   integrity, exact dismissals and failure isolation. The separate opt-in live evaluation measures

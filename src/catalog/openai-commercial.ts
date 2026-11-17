@@ -103,7 +103,7 @@ export const openai_commercialSelectionPolicy = {
     batch: ["batch"],
   },
   values: {
-    served_service_tier: ["standard", "fast", "ultrafast"],
+    served_service_tier: ["standard", "flex", "fast", "ultrafast"],
   },
 } satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;
 

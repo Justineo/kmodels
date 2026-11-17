@@ -3538,7 +3538,7 @@ describe("Vertex AI adapters", () => {
     const pricing = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
     expect(pricing).toMatchObject({
       url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
-      extractorVersion: "vertex-pricing-v27",
+      extractorVersion: "vertex-pricing-v28",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(pricing?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual(
@@ -11946,7 +11946,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v33",
+      extractorVersion: "dashscope-pricing-v34",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "beijing-pricing", optional: true, claimLocal: true }),

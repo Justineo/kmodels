@@ -33,7 +33,7 @@ Included:
 Excluded:
 
 - Provisioned Throughput and Reserved capacity commitments;
-- model training, customization, imported-model runtime, and storage;
+- model training, customization, imported-model runtime, and retained artifact storage;
 - Knowledge Bases, Flows, Data Automation, prompt optimization, and model evaluation;
 - AgentCore Runtime, Browser, Code Interpreter, Gateway, Identity, Memory, Registry, Payments, and
   the rest of the AgentCore platform;

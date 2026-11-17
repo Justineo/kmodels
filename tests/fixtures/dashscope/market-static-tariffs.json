@@ -1,0 +1,57 @@
+{
+  "market": [
+    {
+      "region": "cn-beijing",
+      "scope": "asia-pacific-china",
+      "models": [
+        {
+          "model": "qwen3.6-flash",
+          "scope": "PUBLIC",
+          "serviceSites": ["asia-pacific-china"],
+          "supports": { "inference": true },
+          "multiPrices": [
+            {
+              "rangeStart": 0,
+              "rangeEnd": 256000,
+              "rangeName": "Input<=256k",
+              "prices": [
+                {
+                  "type": "input_token",
+                  "priceName": "Input",
+                  "price": "0.33",
+                  "priceUnit": "Per 1M tokens"
+                },
+                {
+                  "type": "input_token_batch_chat",
+                  "priceName": "Input(Batch Chat)",
+                  "price": "0.165",
+                  "priceUnit": "Per 1M tokens"
+                },
+                {
+                  "type": "output_token_batch_chat",
+                  "priceName": "Output(Batch Chat)",
+                  "price": "0.99",
+                  "priceUnit": "Per 1M tokens"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "model": "cosyvoice-v3.5-flash",
+          "scope": "PUBLIC",
+          "serviceSites": ["asia-pacific-china"],
+          "supports": { "inference": true },
+          "prices": [
+            {
+              "type": "cosy_tts_number",
+              "priceName": "TTS",
+              "price": "0.116",
+              "priceUnit": "Per 10,000 characters"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

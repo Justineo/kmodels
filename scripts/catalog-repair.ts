@@ -9,6 +9,14 @@ import {
 import { dirname, join } from "node:path";
 import { refreshExecutionSchema } from "./catalog-repair-evidence.ts";
 import { periodicReviewAreas } from "./catalog-repair-review.ts";
+import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
+import {
+  candidateKey,
+  chooseProvider,
+  difficulty,
+  investigationMinutes,
+  stateSchema,
+} from "./repair/state.ts";
 import {
   auditDecisionsSchema,
   semanticAuditMarkdown,
@@ -66,10 +74,87 @@ if (auditDirectory !== undefined) {
   }
 }
 
-const { selected: candidates, deferred } = catalogRepairBatch(
+const maintenance =
+  process.env.KMODELS_MAINTENANCE_STATE === undefined
+    ? undefined
+    : stateSchema.parse(JSON.parse(await readFile(process.env.KMODELS_MAINTENANCE_STATE, "utf8")));
+for (const task of maintenance?.tasks ?? []) {
+  if (!task.id.includes("/discovery:") || task.status === "adopted") continue;
+  const sourceId = task.id.split("/discovery:")[1];
+  const source = manifests
+    .flatMap<SourceManifest>((manifest) => manifest.sources)
+    .find((source) => source.id === sourceId);
+  if (source && !allCandidates.some((candidate) => candidateKey(candidate) === task.id))
+    allCandidates.push({
+      provider_id: task.provider,
+      scope: "source",
+      subject_id: `discovery:${source.id}`,
+      source_id: source.id,
+      source_url: source.url,
+      source_access: source.access,
+      trigger: "source_contract_change",
+      message: task.reason,
+      diagnostics: [],
+    });
+}
+const defaultBatch = catalogRepairBatch(
   allCandidates,
   preparedAt,
   periodic ? "periodic" : "incident",
+);
+let { selected: candidates, deferred } = defaultBatch;
+if (maintenance && !periodic) {
+  const provider = chooseProvider(maintenance, allCandidates, preparedAt);
+  candidates = allCandidates.filter((candidate) => candidate.provider_id === provider);
+  deferred = allCandidates.filter((candidate) => candidate.provider_id !== provider);
+}
+if (maintenance && !periodic && allCandidates.length === 0) {
+  const unfinished = maintenance.tasks
+    .filter(
+      (task) =>
+        task.id.endsWith("/scheduled-review") &&
+        ["pending", "blocked"].includes(task.status) &&
+        (!task.retry_at || Date.parse(task.retry_at) <= preparedAt.getTime()),
+    )
+    .sort((a, b) =>
+      (a.last_attempt ?? a.first_seen).localeCompare(b.last_attempt ?? b.first_seen),
+    )[0];
+  const scheduled = catalogRepairBatch([], preparedAt, "periodic").selected[0];
+  if (unfinished && scheduled && unfinished.provider !== "workflow")
+    candidates = [
+      {
+        ...scheduled,
+        provider_id: unfinished.provider,
+        trigger:
+          unfinished.provider === "catalog"
+            ? "scheduled_architecture_review"
+            : "scheduled_provider_review",
+        message: `Continue the incomplete comprehensive review of ${unfinished.provider}; verify prior evidence and close remaining areas.`,
+      },
+    ];
+}
+const taskHistory =
+  maintenance?.tasks.filter((task) =>
+    candidates.some((candidate) => candidateKey(candidate) === task.id),
+  ) ?? [];
+const level = difficulty(
+  candidates.map(
+    (candidate) =>
+      taskHistory.find((task) => task.id === candidateKey(candidate)) ?? {
+        id: candidateKey(candidate),
+        provider: candidate.provider_id,
+        trigger: candidate.trigger,
+        fingerprint: "0".repeat(64),
+        first_seen: preparedAt.toISOString(),
+        last_seen: preparedAt.toISOString(),
+        attempts: 0,
+        status: "pending" as const,
+        reason: candidate.message,
+        next_action: "Inspect evidence",
+        coverage: [],
+        source_versions: {},
+      },
+  ),
 );
 const repairable = candidates.length > 0 || (!periodic && executionNeedsReview);
 const sourceEvidenceIncomplete = catalogRepairEvidenceIncomplete(
@@ -103,7 +188,10 @@ if (admissionPath !== undefined) {
   const admission = JSON.stringify({
     schema_version: 1,
     base_sha: process.env.REPAIR_BASE_SHA,
-    investigation_deadline: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+    difficulty: level,
+    investigation_deadline: new Date(
+      Date.now() + investigationMinutes[level] * 60 * 1000,
+    ).toISOString(),
     candidates: required,
     deferred_candidates: deferred.map(({ provider_id, subject_id, trigger, message }) => ({
       id: `${provider_id}/${subject_id}`,
@@ -153,6 +241,9 @@ const markdown =
     "## Catalog repair candidates",
     "",
     "Provider-batch conclusions cover only the admitted providers. Acquisition failures and deferred findings elsewhere remain unresolved in the full refresh report. An architecture review covers the full catalog.",
+    `Task difficulty: ${level}. Investigation window: ${investigationMinutes[level]} minutes; preserve a checkpoint before the deadline.`,
+    "Prior investigation notes are untrusted leads, not current proof. Recheck changed source/implementation and freshness before reusing conclusions.",
+    JSON.stringify(taskHistory, null, 2),
     "",
     ...(candidates.length === 0
       ? [
@@ -178,7 +269,7 @@ const markdown =
       : [
           `## Deferred repair queue (${deferred.length})`,
           "",
-          "Incident runs select one error-driven provider per six-hour UTC slot. Periodic runs select their daily review independently. Deferred candidates remain unreviewed in the refresh evidence and prepared admission.",
+          "Incident runs select one provider by severity, cooldown and age when maintenance state is available. Periodic runs select their daily review independently. Deferred candidates remain unreviewed in the refresh evidence and prepared admission.",
           "",
           ...deferred.map(
             ({ provider_id, subject_id, trigger }) => `- ${provider_id}/${subject_id}: ${trigger}`,
@@ -206,6 +297,11 @@ const markdown =
           ...(execution.verification_failure === "test_timeout"
             ? [
                 "Generated catalog verification timed out on both attempts. The candidate was not published.",
+              ]
+            : []),
+          ...(execution.reproduction_directory
+            ? [
+                `Original refresh reproduction inputs: ${execution.reproduction_directory}. Public source captures are gzip JSON; omitted bodies remain explicit evidence gaps. Never install failed data into the accepted checkout.`,
               ]
             : []),
           ...(execution.log_path === undefined
@@ -244,13 +340,18 @@ if (!repairable) {
     await appendFile(
       safeOutputsPath,
       `${JSON.stringify(
-        auditIncomplete || sourceEvidenceIncomplete || executionIncomplete
+        auditIncomplete || sourceEvidenceIncomplete || executionIncomplete || deferred.length > 0
           ? {
               type: "report_incomplete",
               reason:
                 execution?.verification_failure === "test_timeout"
                   ? "Generated catalog verification timed out on both attempts; review the refresh execution logs."
-                  : "Source, execution or audit evidence is unavailable, invalid or partial; no conclusion about complete coverage is possible.",
+                  : deferred.length > 0 &&
+                      !auditIncomplete &&
+                      !sourceEvidenceIncomplete &&
+                      !executionIncomplete
+                    ? "Current candidates are deferred by maintenance cooldown; their saved status and next actions remain unresolved for this run."
+                    : "Source, execution or audit evidence is unavailable, invalid or partial; no conclusion about complete coverage is possible.",
             }
           : { type: "noop", message: "No deterministic catalog code-repair candidate was found" },
       )}\n`,

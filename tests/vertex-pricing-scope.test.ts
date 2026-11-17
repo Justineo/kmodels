@@ -5,7 +5,7 @@ import { manifests } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
-import { type ModelTask } from "../src/catalog/schema.ts";
+import { type ModelTask, type ProviderModel } from "../src/catalog/schema.ts";
 import { catalogRepairCandidates } from "../src/catalog/catalog-repair.ts";
 import { sourcePricingReconciliation } from "../src/catalog/pricing-reconciliation.ts";
 import { vertexClaudeSkuSource } from "../src/catalog/vertex-claude-skus.ts";
@@ -43,6 +43,7 @@ function parse(
     url: string;
     body: string;
   }[] = [],
+  context: readonly ProviderModel[] = catalogModels,
 ) {
   const findings: PricingReconciliationItem[] = [];
   const parsed = parseSource({
@@ -50,11 +51,66 @@ function parse(
     source,
     observedAt,
     body: JSON.stringify({ index: { url: source.url, body }, documents }),
-    catalogModels,
+    catalogModels: context,
     onPricingReconciliation: (finding) => findings.push(finding),
   });
   return { ...parsed, findings };
 }
+
+it("retains owned cache storage schedules and isolates an unreviewed denominator", async () => {
+  const body = await readFile(
+    new URL("./fixtures/vertex/cache-storage.html", import.meta.url),
+    "utf8",
+  );
+  const context = [
+    ["gemini-er-2.0", "Gemini ER 2.0"],
+    ["gemini-3.1-pro-preview", "Gemini 3.1 Pro"],
+    ["gemini-3.5-flash", "Gemini 3.5 Flash"],
+    ["gemini-3-flash-preview", "Gemini 3 Flash"],
+  ].map(([id, name]) => {
+    if (!id || !name) throw new Error("Missing cache fixture model");
+    return {
+      ...baseModel({ providerId: "vertex", id, name, sourceId: source.id, observedAt }),
+      tasks: ["text_generation"] satisfies ModelTask[],
+    };
+  });
+  const result = parse(body, [], context);
+  const rates = result.commercial_facts?.flatMap(({ price_facts }) => price_facts);
+  expect(rates).toContainEqual(
+    expect.objectContaining({
+      meter: "cache_storage",
+      price: "4.5",
+      unit: "million_tokens_per_hour",
+      raw_price: "0.0000045",
+      conditions: { context_max_tokens: 200000 },
+    }),
+  );
+  expect(rates).toContainEqual(
+    expect.objectContaining({
+      price: "0.5",
+      conditions: { context_min_tokens: 200001, effective_until: "2026-12-31" },
+    }),
+  );
+  expect(rates).toContainEqual(
+    expect.objectContaining({
+      price: "1",
+      conditions: { context_max_tokens: 200000, effective_from: "2027-01-01" },
+    }),
+  );
+  expect(result.models.flatMap(({ price_facts }) => price_facts)).toEqual([]);
+  const changed = parse(body.replaceAll("Tok/hr&lt;=", "Tok/day&lt;="), [], context);
+  expect(
+    changed.commercial_facts?.flatMap(({ raw_price_facts }) => raw_price_facts),
+  ).toContainEqual(
+    expect.objectContaining({
+      reason: "unknown_unit",
+      raw: expect.objectContaining({ amount: "$0.0000045", meter: "cache_storage" }),
+    }),
+  );
+  expect(changed.commercial_facts?.flatMap(({ price_facts }) => price_facts)).toContainEqual(
+    expect.objectContaining({ price: "4.5", conditions: { context_min_tokens: 200001 } }),
+  );
+});
 async function coherentPricing() {
   return (await nativePricing()).replaceAll("longer than or equal to", "longer than");
 }

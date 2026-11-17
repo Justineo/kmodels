@@ -75,24 +75,21 @@ function scenario() {
   return { id, admission, files, check, blocked, repaired, report, read };
 }
 
-it.each(["consumer", "transition"])(
-  "rejects source-only commands labeled as %s proof",
-  async (kind) => {
-    const s = scenario();
-    const row = s.blocked();
-    row.checks.push(
-      s.check(
-        kind,
-        "investigation",
-        0,
-        "vp node scripts/replay-catalog-evidence.ts vertex-pricing /tmp/source.json",
-      ),
-    );
-    await expect(validateRepairReview(s.admission, s.report([row]), s.read)).rejects.toThrow(
-      "Source-only",
-    );
-  },
-);
+it.each(
+  ["consumer", "transition"].flatMap((kind) =>
+    [
+      "replay-catalog-evidence.ts vertex-pricing /tmp/source.json",
+      "catalog-repair-tools.ts context vertex-pricing /tmp/source.json",
+    ].map((command) => ({ kind, command })),
+  ),
+)("rejects source-only commands labeled as $kind proof: $command", async ({ kind, command }) => {
+  const s = scenario();
+  const row = s.blocked();
+  row.checks.push(s.check(kind, "investigation", 0, `vp node scripts/${command}`));
+  await expect(validateRepairReview(s.admission, s.report([row]), s.read)).rejects.toThrow(
+    "Source-only",
+  );
+});
 
 it("rejects a parser-only periodic completion and requires evidence at every reviewed boundary", async () => {
   const s = scenario();

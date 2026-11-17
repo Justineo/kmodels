@@ -44,7 +44,7 @@ jobs:
           name: catalog-plan-${{ github.run_id }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/collection-plan/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 14
 
   collect:
     needs: prepare
@@ -78,6 +78,7 @@ jobs:
         run: vp node scripts/collect-shards.ts collect "$RUNNER_TEMP/collection-plan/plan.json" "$SHARD" "$RUNNER_TEMP/collection-shard"
         env:
           SHARD: ${{ matrix.shard }}
+          KMODELS_REPAIR_CAPTURE_DIRECTORY: ${{ runner.temp }}/repair-public-evidence
           KMODELS_JITTER_MS: "30000"
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -102,6 +103,15 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Preserve public source bytes for repair
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: catalog-public-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/repair-public-evidence/
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload collected providers
         uses: actions/upload-artifact@v7
         with:
@@ -110,7 +120,7 @@ jobs:
           path: ${{ runner.temp }}/collection-shard/
           compression-level: 0
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 14
 
   assemble:
     needs: [prepare, collect]

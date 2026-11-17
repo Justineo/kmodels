@@ -84,7 +84,7 @@ export function commercialSelection(
       const realtime = rates.map((observations) => matches(observations, contract.realtime));
       if (
         rates.length > 0 &&
-        request.every((evidence) => evidence.length > 0) &&
+        request.some((evidence) => evidence.length > 0) &&
         realtime.every((evidence) => evidence.length === 0)
       ) {
         modes = ["request"];
@@ -93,14 +93,15 @@ export function commercialSelection(
       }
       if (
         rates.length > 0 &&
-        realtime.every((evidence) => evidence.length > 0) &&
+        realtime.some((evidence) => evidence.length > 0) &&
         request.every((evidence) => evidence.length === 0)
       ) {
         modes = ["realtime"];
         coverage = "complete";
         executionEvidence = realtime.flat().slice(0, 1);
       }
-      // Mixed acquisition paths do not prove a shared tariff for both mechanisms.
+      // A surviving owned contract establishes this source context even when sibling rates
+      // lack quantity acquisition. Conflicting mechanisms and no positive evidence stay partial.
     } else if (contract !== undefined) {
       modes = contract;
       coverage = "complete";

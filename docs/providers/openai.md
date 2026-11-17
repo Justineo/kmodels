@@ -266,6 +266,13 @@ The normalized selectors are source-backed dimensions shared with other provider
 
 Both `Fast` and the older `Fast mode` heading select the same tier. `Ultrafast` has its own published
 table; it never inherits Fast amounts. Unknown tier/table/cell diagnostics remain local.
+Exact tier labels may be plain text or ATX Markdown headings. In particular, a `#### Flex`
+subsection within the Batch pricing panel starts Flex scope; it cannot inherit the surrounding
+Batch label. Generated headings such as `### Batch pricing data` are presentation, not new tiers.
+Other Markdown headings close the reviewed tariff scope until an exact known tier or section
+resumes it. An unreviewed `#### Priority Plus` or `#### Economy` table cannot inherit Batch prices.
+Flex is an admitted canonical served-tier choice as well as a native provider selector; both
+resolve to the same conditional synchronous rates without inferring a Batch/Flex combination.
 Batch is a separate result-item mechanism. Standard, Flex, Fast, and Ultrafast remain variants of synchronous
 inference. Returned usage selects cache, modality, generated quantity, and served-tier rates; a
 request selector alone is not treated as final billed usage.
@@ -377,8 +384,8 @@ residency alone never establishes regional execution.
 
 The pricing page's exact GPT-5.6 Sol promotional end date qualifies that model's published model
 tariffs with `effective_until=2026-11-30`. It supplies no replacement amount or intraday cutoff;
-the shared evaluator therefore reports unresolved date-precision validity instead of inventing
-an exact applicable interval.
+the shared evaluator therefore preserves uncertainty near that date while excluding clearly
+expired tariffs under the shared validity guard. It never invents an exact cutoff.
 An unreadable or conflicting end date keeps affected quotes raw without changing sibling models.
 The current Web Search table's `incl. images`, `reasoning models` and `other models` labels retain
 the same independently selected search/image and reasoning/non-reasoning preview charges. The

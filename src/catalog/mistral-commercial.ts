@@ -237,6 +237,12 @@ function partitionOffer(
         ),
       ),
   );
+  const hasNonTokenCache = offer.terms.some(
+    (term) =>
+      term.kind === "rate" &&
+      term.meter.namespace === "provider" &&
+      term.meter.value === "cache_read",
+  );
   const states = offer.states.flatMap((state) => {
     const applicability = mechanismApplicability(state.applicability, mechanism, scopedTiers);
     return applicability === undefined
@@ -244,7 +250,16 @@ function partitionOffer(
       : [{ ...state, applicability, observation: normalized(state.observation, applicability) }];
   });
   const terms = offer.terms.flatMap((term) =>
-    partitionTerm(term, mechanism, model, input, inputIndex, hasCache, scopedTiers),
+    partitionTerm(
+      term,
+      mechanism,
+      model,
+      input,
+      inputIndex,
+      hasCache,
+      scopedTiers,
+      hasNonTokenCache,
+    ),
   );
   if (states.length === 0 && terms.length === 0) return;
   return {
@@ -267,6 +282,7 @@ function partitionTerm(
   inputIndex: PricingInputIndex,
   hasCache: boolean,
   scopedTiers: boolean,
+  hasNonTokenCache: boolean,
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
     const variants = term.variants.flatMap((variant) =>
@@ -278,8 +294,9 @@ function partitionTerm(
   const variants = term.variants.flatMap((variant) => {
     const applicability = mechanismApplicability(variant.applicability, mechanism, scopedTiers);
     if (applicability === undefined) return [];
+    const { charge_binding: _binding, ...quote } = variant;
     const next = {
-      ...variant,
+      ...quote,
       applicability,
       observation: normalized(variant.observation, applicability),
     };
@@ -291,6 +308,7 @@ function partitionTerm(
       input,
       inputIndex,
       hasCache,
+      hasNonTokenCache,
     );
     const selector_sources =
       mechanism === "sync" &&
@@ -406,6 +424,7 @@ function modelBinding(
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
   hasCache: boolean,
+  hasNonTokenCache: boolean,
 ): ChargeBinding | undefined {
   if (meter.namespace !== "kmodels") return;
   const aggregation = mechanism === "batch" ? "result_item" : "request";
@@ -422,6 +441,8 @@ function modelBinding(
         : tokenMethods(meter.value, signal, paths, input, inputIndex, hasCache);
     return quantityBinding(signal, aggregation, mapped, variant);
   }
+  if (hasNonTokenCache && ["input_text", "input_image", "input_audio"].includes(meter.value))
+    return;
   const media = mediaSignal(meter, variant, mechanism, model, inputIndex);
   return media === undefined
     ? undefined

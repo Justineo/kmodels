@@ -79,6 +79,9 @@ interface DiscountPolicy {
 const publicPriceSuffixes = new Map<string, string | null>([
   ["Input (/M tokens)", null],
   ["Cached input (/M tokens)", null],
+  ["Cached input (/M chars)", null],
+  ["Cached input (/Min)", null],
+  ["Cached input (/1000 pages)", "/ 1000 pages"],
   ["Output (/M tokens)", null],
   ["Input (/M chars)", null],
   ["Output (/M chars)", null],
@@ -792,23 +795,27 @@ function directRate(
             ? "embedding"
             : "input_text";
   } else if (price.denominator === "/M Chars") {
-    if (price.kind === "cached_input")
-      throw new Error("Mistral cached-input pricing did not use token units");
     unit = "million_characters";
-    meter = price.kind === "output" ? "output_audio" : "input_text";
+    meter =
+      price.kind === "cached_input"
+        ? "cache_read"
+        : price.kind === "output"
+          ? "output_audio"
+          : "input_text";
   } else if (price.denominator === "/Min") {
-    if (price.kind === "cached_input")
-      throw new Error("Mistral cached-input pricing did not use token units");
     unit = "minute";
-    meter = price.kind === "output" ? "output_audio" : "input_audio";
+    meter =
+      price.kind === "cached_input"
+        ? "cache_read"
+        : price.kind === "output"
+          ? "output_audio"
+          : "input_audio";
     if (modelTasks.includes("transcription") && !modelTasks.includes("text_generation"))
       conditions.operation = "transcription";
     else if (modelTasks.includes("text_generation")) conditions.operation = "chat_completions";
   } else if (price.denominator === "/1000 Pages" || price.denominator === "/1000 Annotated Pages") {
-    if (price.kind === "cached_input")
-      throw new Error("Mistral cached-input pricing did not use token units");
     unit = "thousand_pages";
-    meter = "input_image";
+    meter = price.kind === "cached_input" ? "cache_read" : "input_image";
     conditions.operation =
       price.denominator === "/1000 Annotated Pages" ? "document_annotation" : "ocr";
   } else {
@@ -994,6 +1001,19 @@ function pageRate(
   } else if (label === "Cached input (/M tokens)") {
     meter = "cache_read_text";
     unit = "million_tokens";
+  } else if (label === "Cached input (/M chars)") {
+    meter = "cache_read";
+    unit = "million_characters";
+  } else if (label === "Cached input (/Min)") {
+    meter = "cache_read";
+    unit = "minute";
+    conditions.operation = model.tasks.includes("text_generation")
+      ? "chat_completions"
+      : "transcription";
+  } else if (label === "Cached input (/1000 pages)") {
+    meter = "cache_read";
+    unit = "thousand_pages";
+    conditions.operation = "ocr";
   } else if (label === "Input (/M chars)") {
     meter = "input_text";
     unit = "million_characters";

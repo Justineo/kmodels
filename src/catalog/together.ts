@@ -126,7 +126,7 @@ function bindLifecycle(models: Map<string, ParsedProviderModel>, body: string): 
   }
 }
 
-function bindAudioBatch(models: Map<string, ParsedProviderModel>, body: string): void {
+function bindBatchPricing(models: Map<string, ParsedProviderModel>, body: string): void {
   const supported = section(body, "Supported models");
   const discounts = section(supported, "Discounted models", 3);
   const discount = discounts.match(
@@ -138,8 +138,10 @@ function bindAudioBatch(models: Map<string, ParsedProviderModel>, body: string):
     undefined,
   );
   const multiplier = multiplyDecimal(String(100 - Number(discount)), "0.01");
-  for (const row of markdownTableRows(discounts, ["Model ID"])) {
-    const id = tableModelId(row, "Model ID");
+  const discounted = new Set(
+    markdownTableRows(discounts, ["Model ID"]).map((row) => tableModelId(row, "Model ID")),
+  );
+  for (const id of discounted) {
     const model = models.get(id);
     if (model === undefined || model.status === "retired" || !model.tasks.includes("transcription"))
       continue;
@@ -179,6 +181,39 @@ function bindAudioBatch(models: Map<string, ParsedProviderModel>, body: string):
     if (audioLine !== undefined) {
       model.api_endpoints?.push({ name: "Translations", path: "/v1/audio/translations" });
       model.tasks.push("translation");
+    }
+  }
+  const prose = markdownProse(supported);
+  if (
+    !/support batch processing through the `\/v1\/chat\/completions` endpoint\./.test(prose) ||
+    !/^Models not listed run at standard rates\.$/m.test(prose)
+  )
+    return;
+  for (const model of models.values()) {
+    if (
+      model.status === "retired" ||
+      !model.api_endpoints?.some(({ path }) => path === "/v1/chat/completions")
+    )
+      continue;
+    const rateMultiplier = discounted.has(model.model_id) ? multiplier : "1";
+    const tokenRates = model.price_facts.filter(
+      (rate) =>
+        rate.unit === "million_tokens" &&
+        ["input_text", "cache_read_text", "output_text"].includes(rate.meter),
+    );
+    for (const rate of tokenRates) {
+      rate.conditions = { ...rate.conditions, operation: "standard" };
+      model.price_facts.push({
+        ...rate,
+        price: multiplyDecimal(rate.price, rateMultiplier),
+        conditions: { ...rate.conditions, operation: "batch" },
+        source_locator: {
+          kind: "table",
+          value: `Batch overview/Discounted models/${model.model_id}; Models not listed run at standard rates`,
+        },
+        derived: true,
+        derivation: `${rateMultiplier} × published standard token rate under the Batch overview's exact discount/default-rate rule`,
+      });
     }
   }
 }
@@ -542,7 +577,7 @@ export function parseTogetherServerless(input: SourceParseInput): SourceParseRes
   );
   assertItemCount("Together serverless models", models.size, 1, 500);
   bindLifecycle(models, docs("/docs/deprecations.md"));
-  bindAudioBatch(models, docs("/docs/inference/batch/overview.md"));
+  bindBatchPricing(models, docs("/docs/inference/batch/overview.md"));
   for (const [path, name] of [
     ["messages", "Messages"],
     ["responses", "Responses"],

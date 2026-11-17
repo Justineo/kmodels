@@ -202,7 +202,7 @@ create model IDs, subscription prices, or additional commercial agreements.
 
 The collector intentionally discards account balance, granted credit, recharge/refund terms,
 concurrency, capacity expansion, settlement order, and future price notices without an effective
-rate and exact applicability rule. Training, storage, provisioned capacity, subscriptions, and
+rate and exact applicability rule. Training, retained files/artifacts, provisioned capacity, subscriptions, and
 self-hosted execution are also outside the direct request-rate boundary. Excluded facts are not
 published as `unknown` or raw pricing.
 

@@ -28,7 +28,7 @@ engine:
   args: ["--effort=high"]
   env:
     COPILOT_PROVIDER_BASE_URL: https://api.deepseek.com
-    COPILOT_PROVIDER_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+    COPILOT_PROVIDER_API_KEY: ${{ secrets.CATALOG_REPAIR_DEEPSEEK_API_KEY }}
     COPILOT_PROVIDER_TYPE: openai
     COPILOT_PROVIDER_WIRE_API: responses
 
@@ -68,6 +68,7 @@ network:
     - ai.azure.com
     - ai.google.dev
     - aistudio.google.com
+    - gemma.ai
     - ai.meta.com
     - dev.meta.ai
     - aiplatform.googleapis.com
@@ -156,19 +157,19 @@ safe-outputs:
     report-as-issue: false
     steps:
       - name: Download the admitted patch for detection
-        if: needs.agent.result == 'success' && needs.agent.outputs.output_types == 'commit_repair'
-        uses: actions/download-artifact@v8
+        if: needs.agent.result == 'success' && needs.semantic_review.outputs.outcome == 'commit_repair'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: admitted-catalog-repair
+          name: independently-verified-catalog-repair
           path: ${{ runner.temp }}/catalog-repair-detection
       - name: Checkout the repair base for detection
-        if: needs.agent.result == 'success' && needs.agent.outputs.output_types == 'commit_repair'
-        uses: actions/checkout@v7
+        if: needs.agent.result == 'success' && needs.semantic_review.outputs.outcome == 'commit_repair'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
       - name: Supply the admitted repair to threat detection
-        if: needs.agent.result == 'success' && needs.agent.outputs.output_types == 'commit_repair'
+        if: needs.agent.result == 'success' && needs.semantic_review.outputs.outcome == 'commit_repair'
         run: |
           set -euo pipefail
           artifact="$RUNNER_TEMP/catalog-repair-detection"
@@ -180,7 +181,7 @@ safe-outputs:
           cp "$artifact/repair.patch" "$detection/aw-catalog-repair.patch"
     post-steps:
       - name: Verify the detected repair patch
-        if: needs.agent.result == 'success' && needs.agent.outputs.output_types == 'commit_repair'
+        if: needs.agent.result == 'success' && needs.semantic_review.outputs.outcome == 'commit_repair'
         run: cmp "$RUNNER_TEMP/catalog-repair-detection/repair.patch" /tmp/gh-aw/threat-detection/aw-catalog-repair.patch
   report-incomplete:
     max: 1
@@ -208,9 +209,123 @@ safe-outputs:
             test "${GH_AW_SAFE_OUTPUTS_STAGED:-false}" != true
 
 jobs:
+  maintenance_prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: catalog-maintenance-state
+      queue: max
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-repair-toolchain
+      - name: Reserve the bounded monthly OpenAI budget and load task state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAINTENANCE_OPENAI_AVAILABLE: ${{ secrets.CATALOG_REPAIR_OPENAI_API_KEY != '' }}
+          MAINTENANCE_OUTPUT: ${{ runner.temp }}/maintenance
+        run: vp node scripts/repair/maintenance.ts prepare
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: catalog-maintenance-preparation
+          path: ${{ runner.temp }}/maintenance/
+          retention-days: 30
+          if-no-files-found: error
+  semantic_review:
+    needs: [agent, maintenance_prepare]
+    if: needs.agent.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    outputs:
+      outcome: ${{ steps.independent.outputs.outcome }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-repair-toolchain
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: catalog-maintenance-preparation
+          path: ${{ runner.temp }}/independent-input
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: catalog-maintenance-usage
+          path: ${{ runner.temp }}/independent-input
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: admitted-catalog-repair
+          path: ${{ runner.temp }}/independent-input
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: catalog-repair-investigation
+          path: ${{ runner.temp }}/independent-input/investigation
+      - name: Build the pinned isolated Codex runtime
+        run: docker build --file .github/repair-codex.Dockerfile --tag kmodels-repair-codex:local .github
+      - name: Independently verify conclusions and revise concrete errors
+        id: independent
+        env:
+          CATALOG_REPAIR_OPENAI_API_KEY: ${{ secrets.CATALOG_REPAIR_OPENAI_API_KEY }}
+          MAINTENANCE_INPUT: ${{ runner.temp }}/independent-input
+          MAINTENANCE_OUTPUT: ${{ runner.temp }}/independent-result
+        run: vp node scripts/repair/codex-runner.ts
+      - name: Preserve independent verification and trusted spending
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: catalog-maintenance-review
+          path: ${{ runner.temp }}/independent-result/
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Upload the final verified proposal
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: independently-verified-catalog-repair
+          path: |
+            ${{ runner.temp }}/independent-result/repair.patch
+            ${{ runner.temp }}/independent-result/repair.json
+          retention-days: 30
+          if-no-files-found: error
+  maintenance_finish:
+    needs: [maintenance_prepare, agent, semantic_review, publish_repair]
+    if: always() && needs.maintenance_prepare.result == 'success'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: catalog-maintenance-state
+      queue: max
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-repair-toolchain
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: catalog-maintenance-*
+          path: ${{ runner.temp }}/maintenance-results
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.agent.result != 'skipped'
+        continue-on-error: true
+        with:
+          name: catalog-repair-investigation
+          path: ${{ runner.temp }}/maintenance-results/investigation
+      - name: Save verified progress and settle trusted inference usage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAINTENANCE_INPUT: ${{ runner.temp }}/maintenance-results
+          MAINTENANCE_PUBLISHED_REVISION: ${{ needs.publish_repair.outputs.revision }}
+          MAINTENANCE_REVIEW_RESULT: ${{ needs.semantic_review.result }}
+        run: vp node scripts/repair/maintenance.ts finish
   publish_repair:
-    needs: [agent, commit_repair]
-    if: github.ref == 'refs/heads/main' && needs.commit_repair.result == 'success'
+    needs: [agent, commit_repair, safe_outputs, detection, semantic_review]
+    if: always() && github.ref == 'refs/heads/main' && needs.semantic_review.result == 'success' && needs.semantic_review.outputs.outcome == 'commit_repair' && needs.safe_outputs.result == 'success' && needs.detection.result == 'success' && needs.detection.outputs.detection_success == 'true' && (needs.agent.outputs.output_types == 'noop' || needs.commit_repair.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     concurrency:
@@ -221,14 +336,16 @@ jobs:
       actions: write
     env:
       REPAIR_BASE_SHA: ${{ github.sha }}
+    outputs:
+      revision: ${{ steps.published_revision.outputs.revision }}
     steps:
       - name: Download the admitted repair
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: admitted-catalog-repair
+          name: independently-verified-catalog-repair
           path: ${{ runner.temp }}/catalog-repair-validation
       - name: Checkout latest main
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           fetch-depth: 0
@@ -286,6 +403,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" push
+      - name: Record published repair revision
+        id: published_revision
+        run: echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Record the source versions expected after refresh
+        env:
+          MAINTENANCE_OUTPUT: ${{ runner.temp }}/maintenance-publication
+        run: vp node scripts/repair/publication-receipt.ts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: catalog-maintenance-publication
+          path: ${{ runner.temp }}/maintenance-publication/
+          retention-days: 30
+          if-no-files-found: error
       - name: Deploy the repaired site
         env:
           GH_TOKEN: ${{ github.token }}
@@ -306,7 +436,7 @@ jobs:
       - name: Upload failed publication validation feedback
         id: validation_feedback
         if: failure() && steps.prepare_feedback.outcome == 'success'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: catalog-repair-validation-feedback
           path: ${{ runner.temp }}/publication-validation.log
@@ -322,14 +452,19 @@ jobs:
           gh workflow run catalog-repair.lock.yml --ref main -f retry_run_id="$GITHUB_RUN_ID"
           echo 'Queued one Catalog repair revision with this run’s validation feedback.' >> "$GITHUB_STEP_SUMMARY"
   agent:
+    needs: [activation, maintenance_prepare]
     timeout-minutes: 60
+  detection:
+    needs: [activation, agent, semantic_review]
+    if: always() && needs.agent.result == 'success' && needs.semantic_review.result == 'success'
   safe_outputs:
-    if: needs.agent.result == 'success'
+    needs: [activation, agent, detection, semantic_review]
+    if: needs.agent.result == 'success' && needs.semantic_review.result == 'success'
   conclusion:
     permissions:
       issues: none
   verify_delivery:
-    needs: [agent, safe_outputs, publish_repair]
+    needs: [agent, safe_outputs, publish_repair, semantic_review]
     if: always() && needs.agent.result == 'success'
     runs-on: ubuntu-slim
     permissions:
@@ -337,7 +472,7 @@ jobs:
     steps:
       - name: Verify the repair was delivered
         env:
-          REPAIR_OUTCOME: ${{ needs.agent.outputs.output_types }}
+          REPAIR_OUTCOME: ${{ needs.semantic_review.outputs.outcome }}
           DELIVERY_RESULT: ${{ needs.safe_outputs.result }}
           PUBLICATION_RESULT: ${{ needs.publish_repair.result }}
         run: |
@@ -366,7 +501,7 @@ jobs:
 steps:
   # A custom checkout replaces the compiler's default, so it must run in both modes.
   - name: Checkout the repair base
-    uses: actions/checkout@v7
+    uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     with:
       ref: ${{ github.sha }}
       fetch-depth: ${{ inputs.retry_run_id != '' && '0' || '1' }}
@@ -382,11 +517,18 @@ steps:
       GH_TOKEN: ${{ github.token }}
     run: vp node scripts/catalog-repair-evidence.ts
 
+  - name: Load the trusted maintenance snapshot
+    uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+    with:
+      name: catalog-maintenance-preparation
+      path: ${{ runner.temp }}/gh-aw/maintenance
+
   - name: Check whether repair work is needed
     id: repair_context
     env:
       KMODELS_CATALOG_REPAIR_CONTEXT: /tmp/gh-aw/agent/catalog-repair-context.md
       KMODELS_REPAIR_ADMISSION: ${{ runner.temp }}/gh-aw/repair-admission.json
+      KMODELS_MAINTENANCE_STATE: ${{ runner.temp }}/gh-aw/maintenance/state.json
       KMODELS_PERIODIC_REVIEW: ${{ github.event.schedule == '7 2 * * *' || inputs.periodic == true }}
       GH_AW_SAFE_OUTPUTS: ${{ steps.set-runtime-paths.outputs.GH_AW_SAFE_OUTPUTS }}
       REPAIR_RETRY_RUN_ID: ${{ inputs.retry_run_id }}
@@ -402,7 +544,49 @@ steps:
   - name: Check repair infrastructure before inference
     run: vp test --run --reporter=minimal --reporter=github-actions --silent=passed-only tests/catalog-repair-publication.test.ts tests/catalog-repair-review.test.ts tests/catalog-repair-retry.test.ts tests/catalog-repair-workflow.test.ts
 
+  - name: Restore prior investigation leads
+    if: steps.repair_context.outputs.repairable == 'true' && inputs.retry_run_id == ''
+    env:
+      GH_TOKEN: ${{ github.token }}
+      KMODELS_MAINTENANCE_STATE: ${{ runner.temp }}/gh-aw/maintenance/state.json
+      KMODELS_REPAIR_ADMISSION: ${{ runner.temp }}/gh-aw/repair-admission.json
+      KMODELS_CATALOG_REPAIR_CONTEXT: /tmp/gh-aw/agent/catalog-repair-context.md
+    run: vp node scripts/repair/resume.ts
+
+  - name: Initialize trusted spending before inference
+    run: vp node scripts/repair/initialize-usage.ts
+
+  - name: Start the isolated expert broker
+    if: steps.repair_context.outputs.repairable == 'true'
+    env:
+      CATALOG_REPAIR_OPENAI_API_KEY: ${{ secrets.CATALOG_REPAIR_OPENAI_API_KEY }}
+    run: |
+      set -euo pipefail
+      private="$RUNNER_TEMP/repair-expert"
+      mkdir -p "$private/runtime"
+      cp -R scripts src "$private/runtime/"
+      ln -s "$GITHUB_WORKSPACE/node_modules" "$private/runtime/node_modules"
+      vp node "$private/runtime/scripts/repair/broker.ts" "$private" "$RUNNER_TEMP/gh-aw/repair-admission.json" "$RUNNER_TEMP/gh-aw/maintenance/lease.json" > "$private/broker.log" 2>&1 &
+
 post-steps:
+  - name: Stop expert requests and preserve trusted spending
+    if: always()
+    run: |
+      mkdir -p "$RUNNER_TEMP/repair-expert"
+      touch "$RUNNER_TEMP/repair-expert/stop"
+      if [[ -f "$RUNNER_TEMP/repair-expert/pid" ]]; then
+        kill -TERM "$(cat "$RUNNER_TEMP/repair-expert/pid")" 2>/dev/null || true
+      fi
+  - name: Upload trusted expert spending
+    if: always()
+    uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+    with:
+      name: catalog-maintenance-usage
+      path: |
+        ${{ runner.temp }}/repair-expert/usage.json
+        ${{ runner.temp }}/repair-expert/journal.jsonl
+      if-no-files-found: warn
+      retention-days: 30
   - name: Check investigation completion evidence
     if: success() && steps.repair_context.outputs.repairable == 'true'
     env:
@@ -432,21 +616,22 @@ post-steps:
       REPAIR_ARTIFACT_DIR: ${{ runner.temp }}/catalog-repair-validation
     run: vp node "$RUNNER_TEMP/catalog-repair-publication.ts" verify
   - name: Upload the admitted repair
-    if: success() && steps.repair_outcome.outputs.outcome == 'commit_repair'
-    uses: actions/upload-artifact@v7
+    if: success()
+    uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
     with:
       name: admitted-catalog-repair
       path: ${{ runner.temp }}/catalog-repair-validation/
       if-no-files-found: error
       retention-days: 30
   - name: Preserve investigation evidence
-    if: always() && steps.repair_context.outputs.repairable == 'true'
-    uses: actions/upload-artifact@v7
+    if: always()
+    uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
     with:
       name: catalog-repair-investigation
       path: |
         ${{ runner.temp }}/gh-aw/repair-admission.json
         /tmp/gh-aw/agent/
+        !/tmp/gh-aw/agent/previous/**
       if-no-files-found: error
       retention-days: 30
 ---
@@ -469,14 +654,42 @@ test. A `noop` requires every admitted candidate to have independently checked `
 evidence and an empty patch. Blocked, pending or repaired candidates cannot become a no-op.
 Never manufacture a code change to close an investigation that found no defect.
 
-The prepared admission defines this run's active batch. An incident run selects one error-driven
-provider per six-hour UTC slot and includes relevant workflow evidence. A separate daily run
+The prepared admission defines this run's active batch. An incident run selects one provider using
+severity, cooldown and age, and includes relevant workflow evidence. A separate daily run
 selects the periodic review. Other providers' candidates remain in the
 deferred queue in the context and immutable admission. Do not expand investigation to that queue,
 dismiss its entries or describe the whole catalog as healthy after closing only this batch.
 Source-acquisition review is scoped to admitted providers; a periodic architecture review instead
 covers acquisition across the full catalog. Failures outside a provider batch remain in the full
 refresh report and cannot be declared resolved by this run.
+
+Use `docs/catalog-maintenance.md` for task continuity and the isolated expert interface.
+The admission sets a 20/30/35-minute investigation deadline by difficulty; the execution limit
+remains 45 minutes. Prior-run evidence is a lead to revalidate, not inherited completion proof.
+Continue saved next actions, reuse still-applicable evidence and complete outstanding coverage.
+For changed public response captures, `vp node scripts/catalog-repair-tools.ts unpack CAPTURE`
+checks the body hash and creates a normal evidence receipt. `context SOURCE EVIDENCE [CONTEXT]`
+produces actual parsed inventory for dependent parser replay. `diff BEFORE AFTER` compares JSON
+facts; neither command establishes consumer behavior or retained-to-current transition safety.
+Use `catalog-repair-review.ts probe consumer|transition PHASE -- test ...` with the actual
+provider's consumer and collection regression scenarios for those claims.
+
+Read `/tmp/gh-aw/agent/expert/availability.json`. When available, save a focused question in the
+agent directory and run `vp node scripts/catalog-repair-tools.ts expert CANDIDATE_ID PURPOSE
+QUESTION_FILE [PUBLIC_EVIDENCE_JSON...]` (one shell command). PURPOSE is research, repair or review.
+Use research for unresolved first-party discovery, repair for semantic ambiguity or repeated failed
+approaches, and review for a concrete counterexample check. The trusted broker chooses the model,
+bounds calls and cost, and never shares the API key. A failed request is not source evidence;
+checkpoint its ID and continue independent work. Do not retry identical failed questions.
+
+Every repaired and not_a_defect conclusion is independently verified in a separate isolated GPT
+session before it can close or publish. Preserve complete source receipts, contrary context and
+actual consumer/counterexample checks. The verifier first investigates without your explanation,
+then checks your proposed conclusion. Concrete contradictions may trigger one Sol high + Codex
+revision; the revised result is independently checked again. Missing evidence or budget remains
+incomplete. Do not manufacture a patch or a no-defect conclusion to avoid verification.
+`vp node scripts/catalog-repair-tools.ts record CANDIDATE_ID UPDATE_JSON` updates one admitted
+candidate and generates evidence hashes; completion still requires the existing review checker.
 
 Read `design.md`, `AGENTS.md`, `docs/agent-provider-research.md` (including recurring failure
 checks), the review method in `docs/refresh-repair-audit.md`,
@@ -684,10 +897,11 @@ one coherent root cause, repair that cause:
    is an available tool. For an authenticated source, use only
    the sanitized refresh evidence, existing fixtures, and parser contract; never request or expose a
    credential. Reproduce the parser, contract, provider-validation, or pricing-validation problem.
-   This offline BYOK workflow has no native web search/fetch tool or search MCP. Use the evidence
-   CLI for public acquisition. A missing search tool limits discovery; it does not establish that
-   a provider fact is absent. Report a specific remaining discovery gap when linked evidence is
-   insufficient, rather than claiming a complete web search or guessing an undocumented contract.
+   The isolated OpenAI expert can search reviewed first-party domains; the Copilot executor has
+   no native web search/fetch tool. Use the evidence CLI for original-source acquisition. Search
+   answers are navigation leads, never source proof or authority to expand collection. For a
+   discovered URL on an already reviewed source host, use
+   `vp node scripts/fetch-catalog-evidence.ts SOURCE_ID --research URL`.
    For replay, read the saved `scope: source` artifact and pass its `body` unchanged to `parseSource`
    with the configured manifest. It already contains the collector's normalization and complete
    linked-document envelope. Raw `--index` HTML and individual companions are navigation/diagnostic

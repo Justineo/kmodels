@@ -9,7 +9,7 @@ import type {
   SourcePriceFact,
   SourceRawPricingFact,
 } from "./pricing-source.ts";
-import { publishedRate } from "./pricing.ts";
+import { publishedRate, scaleDecimal } from "./pricing.ts";
 
 const marketApi = "zeldaHttp.dashscopeModel./zelda/api/v1/modelCenter/listFoundationModels";
 
@@ -406,14 +406,18 @@ export function parseDashscopeMarket(input: SourceParseInput, value: unknown) {
           /^(?:omni_audio|audio|multi)_output_token$/.test(type),
         );
         for (const price of prices) {
-          const type = price.type.replace(/^thinking_/, "").replace(/_batch$/, "");
-          const mapping = marketMeters(type, row.model);
+          const type = price.type.replace(/^thinking_/, "").replace(/_batch(?:_chat)?$/, "");
+          const speechCharacters =
+            type === "cosy_tts_number" && price.priceUnit === "Per 10,000 characters";
+          const mapping: ReturnType<typeof marketMeters> = speechCharacters
+            ? { meters: ["output_audio"], unit: "million_characters" }
+            : marketMeters(type, row.model);
           const publishedResolution = price.priceName.match(/\b(\d+[pk])\b/i)?.[1]?.toUpperCase();
           const resolutionConflict =
             mapping?.conditions?.resolution !== undefined &&
             publishedResolution !== undefined &&
             mapping.conditions.resolution !== publishedResolution;
-          const batch = price.type.endsWith("_batch");
+          const batch = /_batch(?:_chat)?$/.test(price.type);
           const applicable: SourcePriceFact["conditions"] = {
             ...conditions,
             ...group.conditions,
@@ -443,13 +447,13 @@ export function parseDashscopeMarket(input: SourceParseInput, value: unknown) {
           if (
             mapping !== undefined &&
             !resolutionConflict &&
-            nativeUnit(price.priceUnit) === mapping.unit
+            (speechCharacters || nativeUnit(price.priceUnit) === mapping.unit)
           ) {
             for (const meter of mapping.meters)
               rates.push({
                 ...publishedRate(
                   meter,
-                  price.price,
+                  speechCharacters ? scaleDecimal(price.price, 2) : price.price,
                   mapping.unit,
                   input.source.id,
                   price.priceUnit,

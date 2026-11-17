@@ -88,7 +88,7 @@ export function assertRepairChanges(raw: string, patch: string): void {
       !/^(?:src\/catalog\/[^/]+\.ts|tests\/[^/]+(?:\.test|-fixtures?)\.ts|tests\/fixtures\/.+|docs\/providers\/[^/]+\.md|docs\/semantic-audit-decisions\.json)$/.test(
         path,
       ) ||
-      /^(?:src\/catalog|tests)\/(?:catalog-repair|catalog-snapshot|public-evidence|test-architecture|validate-tests|validation-plan)(?:[.-]|$)/.test(
+      /^(?:src\/catalog|tests)\/(?:catalog-repair|catalog-maintenance|catalog-independent-verification|catalog-snapshot|public-evidence|test-architecture|validate-tests|validation-plan)(?:[.-]|$)/.test(
         path,
       )
     )
@@ -292,6 +292,13 @@ export async function runRepairPublication(operation: string | undefined): Promi
       }
       if (outcome.type === "noop") {
         if (patch !== "") throw new Error("Catalog repair no-op contains code changes");
+        const directory = environment("REPAIR_ARTIFACT_DIR");
+        await mkdir(directory, { recursive: true });
+        await writeFile(join(directory, "repair.patch"), "");
+        await writeFile(
+          join(directory, "repair.json"),
+          JSON.stringify({ ...outcome, base_sha: base, patch_sha256: repairPatchHash("") }),
+        );
       } else {
         admitStagedPatch(base, patch);
         const patchHash = repairPatchHash(patch);

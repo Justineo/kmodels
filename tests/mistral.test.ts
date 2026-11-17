@@ -777,17 +777,11 @@ describe("Mistral adapters", () => {
     expect(ocr).toBeDefined();
     expect(ocr?.price_facts).toEqual([
       expect.objectContaining({ meter: "input_image", price: "4", unit: "thousand_pages" }),
+      expect.objectContaining({ meter: "cache_read", price: "0.4", unit: "thousand_pages" }),
     ]);
-    expect(ocr?.raw_price_facts).toContainEqual(
-      expect.objectContaining({
-        reason: "unknown_meter",
-        raw: expect.objectContaining({
-          label: "Cached input (/1000 pages)",
-          amount: "0.4",
-          denomination: "USD",
-        }),
-      }),
-    );
+    expect(
+      ocr?.raw_price_facts.every(({ term_key }) => term_key.startsWith("pricing_policy:currency:")),
+    ).toBe(true);
     const partition = assembleParsedProviderPricing(
       "mistral",
       observedAt,
@@ -805,20 +799,25 @@ describe("Mistral adapters", () => {
           ),
         ),
       );
-    expect(raw).toContainEqual(
+    expect(raw?.some(({ label }) => label === "Cached input (/1000 pages)")).toBe(false);
+    expect(
+      partition?.books
+        .flatMap(({ offers }) => offers.flatMap(({ terms }) => terms))
+        .filter(
+          (term) =>
+            term.kind === "rate" &&
+            term.meter.namespace === "provider" &&
+            term.meter.value === "cache_read",
+        ),
+    ).toEqual([
       expect.objectContaining({
-        label: "Cached input (/1000 pages)",
-        amount: "0.4",
-        denomination: "USD",
+        variants: [
+          expect.objectContaining({
+            price: expect.objectContaining({ value: { numerator: "1", denominator: "2500" } }),
+          }),
+        ],
       }),
-    );
-    expect(result.findings).toContainEqual(
-      expect.objectContaining({
-        disposition: "raw",
-        reason_code: "public_price_label_unsupported",
-        sample: "mistral-ocr-4-1: Cached input (/1000 pages)",
-      }),
-    );
+    ]);
     const ambiguous = parse(body, [
       ...catalogModels,
       {
@@ -2264,7 +2263,7 @@ describe("Mistral adapters", () => {
         id: "mistral-pricing",
         url: "https://docs.mistral.ai/inference/pricing",
         extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v14",
+        extractorVersion: "mistral-pricing-v15",
         fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
         type: "website",
         scope: "global",

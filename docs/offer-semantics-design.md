@@ -58,6 +58,11 @@ missing rates or model capabilities.
 Where execution classification remains partial, a native invocation-mode predicate preserves
 known tariff separation without inventing request/live support. Streaming alone does not establish
 a live session; one asynchronous video job does not establish Batch.
+Within one adapter-owned tariff context, a surviving positive request or live contract establishes
+that execution choice even when sibling rates lack quantity acquisition. A new cache-write rate
+without a TTL counter cannot erase the context's known request classification. No positive
+contract or mixed request/live contracts remains partial; missing acquisition never supplies a
+counter, a zero quantity, or another execution mechanism.
 
 ## Compilation and migration
 

@@ -31,7 +31,7 @@ Included:
 
 Excluded:
 
-- training, storage, capacity commitments, subscriptions, credits, invoices, marketplace
+- training, retained files/artifacts, capacity commitments, subscriptions, credits, invoices, marketplace
   settlement, private discounts, and other account administration;
 - free management or preflight APIs such as Files and token counting, because they do not add a
   generation-request charge;

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { parseSource } from "./adapters.ts";
+import { captureRepairSource } from "./catalog-repair-capture.ts";
 import {
   captureInferencePriceSources,
   type InferencePriceSource,
@@ -911,6 +912,17 @@ export async function collectProvider(
         throw error;
       }
       const { result } = fetch;
+      const captureEvidence = () =>
+        captureRepairSource(source, result.body, observedAt).catch((error: unknown) => {
+          warnings.push(
+            sourceWarning(
+              "repair_evidence_unavailable",
+              manifest.provider.id,
+              source.id,
+              error instanceof Error ? error.message : "Repair evidence could not be saved",
+            ),
+          );
+        });
 
       const dependencyFailures = (result.dependencyFailures ?? []).map((failure) => ({
         ...failure,
@@ -972,6 +984,7 @@ export async function collectProvider(
         });
         parsed = parsedSource.models.map(normalizeModelTasks).map(normalizeDeliveryModes);
       } catch (error) {
+        await captureEvidence();
         const failureState = recordSourceFailure(state, source.id, observedAt, result);
         const evidence = contractEvidence(error);
         if (evidence !== undefined) contractFindings.add(evidence);
@@ -1004,6 +1017,8 @@ export async function collectProvider(
             dependencyFailures.length === 0 ? new Set(parsed.map(({ uid }) => uid)) : new Set(),
         });
       const contractSummary = contractFindings.summary();
+      if (contentChanged || extractorChanged || contractSummary.contract_findings?.length)
+        await captureEvidence();
       sourceAttempts.push({
         source_id: source.id,
         outcome: contentChanged || extractorChanged ? "changed" : "unchanged",

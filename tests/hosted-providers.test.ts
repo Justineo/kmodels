@@ -96,7 +96,7 @@ const togetherCatalog = [
   "There are currently no moderation models offered via serverless.",
 ].join("\n");
 
-function togetherBundle(body = togetherCatalog) {
+function togetherBundle(body = togetherCatalog, standardBatch = false) {
   const docs = "https://docs.together.ai/docs";
   return JSON.stringify({
     index: { url: `${docs}/serverless/models.md`, body },
@@ -133,6 +133,12 @@ function togetherBundle(body = togetherCatalog) {
           "| Model ID |",
           "| - |",
           "| `Example/ASR` |",
+          ...(standardBatch
+            ? [
+                "Most [serverless models](https://docs.together.ai/docs/serverless/models.md) support batch processing through the `/v1/chat/completions` endpoint.",
+                "Models not listed run at standard rates.",
+              ]
+            : []),
         ].join("\n"),
       },
       {
@@ -154,6 +160,39 @@ function payload(body: string) {
 }
 
 describe("Together AI Serverless", () => {
+  it("keeps the Batch default-rate rule independent of discounts, model access and media estimates", () => {
+    const current = parse("together", togetherBundle(togetherCatalog, true));
+    const chat = current.models.find(({ model_id }) => model_id === "Example/Vision-Chat");
+    expect(
+      chat?.price_facts.filter(({ conditions }) => conditions.operation === "batch"),
+    ).toHaveLength(6);
+    expect(chat?.capabilities.batch).toBe("unknown");
+    for (const changed of [
+      togetherBundle(togetherCatalog, true).replace(
+        "Models not listed run at standard rates.",
+        "Models not listed require a quote.",
+      ),
+      togetherBundle(togetherCatalog, true).replace(
+        "support batch processing through the",
+        "support interactive processing through the",
+      ),
+    ]) {
+      const parsed = parse("together", changed);
+      expect(
+        parsed.models
+          .find(({ model_id }) => model_id === "Example/Vision-Chat")
+          ?.price_facts.some(({ conditions }) => conditions.operation === "batch"),
+      ).toBe(false);
+      expect(
+        parsed.models.find(({ model_id }) => model_id === "Example/ASR")?.price_facts,
+      ).toContainEqual(
+        expect.objectContaining({ price: "0.005", conditions: { operation: "batch" } }),
+      );
+    }
+    expect(
+      current.models.find(({ model_id }) => model_id === "Example/Video")?.price_facts,
+    ).toEqual([]);
+  });
   async function cacheBundle() {
     const body = togetherCatalog.replace(
       "| Text Chat | Example/Text-Chat | - | Free | - | $2 | - |",
@@ -418,7 +457,7 @@ describe("Together AI Serverless", () => {
         { id: "Example/Inventory-Only", type: "chat", context_length: 65536 },
       ]);
       vi.mocked(fetchSource).mockImplementation(async ({ id }) =>
-        payload(id === "together-api" ? api : togetherBundle()),
+        payload(id === "together-api" ? api : togetherBundle(togetherCatalog, true)),
       );
       const result = await collectProvider(
         providerManifest("together"),
@@ -473,6 +512,43 @@ describe("Together AI Serverless", () => {
         inference?.mapping,
       );
       const whisper = { provider_id: "together", model_id: "Example/ASR" };
+      for (const execution_mode of ["request", "batch"] as const) {
+        const selected = lookup({
+          provider_id: "together",
+          model_id: "Example/Vision-Chat",
+          execution_mode,
+          meter: { namespace: "kmodels", value: "input_text" },
+          selectors: [
+            {
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "endpoint" },
+              value: { namespace: "provider", provider_id: "together", value: "api.together.ai" },
+            },
+          ],
+        });
+        expect(selected.status).toBe("matched");
+        expect(
+          selected.candidates.flatMap(({ offer }) =>
+            offer.terms.flatMap((term) =>
+              term.kind === "rate" ? term.variants.map(({ price }) => price.value) : [],
+            ),
+          ),
+        ).toEqual([{ numerator: "1", denominator: "1000000" }]);
+        if (execution_mode === "batch")
+          expect(
+            selected.candidates.flatMap(({ offer }) =>
+              offer.terms.flatMap((term) =>
+                term.kind === "rate"
+                  ? term.variants.map(({ charge_binding }) => charge_binding)
+                  : [],
+              ),
+            ),
+          ).toEqual([expect.objectContaining({ aggregation: "result_item" })]);
+      }
+      expect(
+        lookup({ provider_id: "together", model_id: "Example/Video", execution_mode: "batch" })
+          .reason,
+      ).toBe("no_applicable_price");
       expect(lookup(whisper)).toMatchObject({
         execution_modes: ["batch", "request"],
         requires_execution_mode_choice: true,

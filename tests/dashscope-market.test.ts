@@ -32,6 +32,64 @@ const fixture: unknown = JSON.parse(
   await readFile(new URL("./fixtures/dashscope/market-prices.json", import.meta.url), "utf8"),
 );
 
+it("normalizes Batch Chat suffixes and speech character tariffs without borrowing token units", async () => {
+  const body: unknown = JSON.parse(
+    await readFile(
+      new URL("./fixtures/dashscope/market-static-tariffs.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const result = parseDashscopeMarket(input, body);
+  const chat = result.models.find(({ model_id }) => model_id === "qwen3.6-flash");
+  expect(chat?.price_facts).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        meter: "input_text",
+        price: "0.165",
+        unit: "million_tokens",
+        conditions: expect.objectContaining({ service_tier: "batch", context_max_tokens: 256000 }),
+      }),
+      expect.objectContaining({
+        meter: "output_text",
+        price: "0.99",
+        conditions: expect.objectContaining({ service_tier: "batch" }),
+      }),
+      expect.objectContaining({
+        meter: "input_text",
+        price: "0.33",
+        conditions: {
+          region: "China (Beijing)",
+          context_min_tokens: 0,
+          context_max_tokens: 256000,
+        },
+      }),
+    ]),
+  );
+  expect(
+    result.models.find(({ model_id }) => model_id === "cosyvoice-v3.5-flash")?.price_facts,
+  ).toEqual([
+    expect.objectContaining({
+      meter: "output_audio",
+      price: "11.6",
+      unit: "million_characters",
+      raw_price: "0.116",
+      raw_unit: "Per 10,000 characters",
+    }),
+  ]);
+  const unreviewed: unknown = JSON.parse(
+    JSON.stringify(body).replaceAll("Per 10,000 characters", "Per voice"),
+  );
+  const voice = parseDashscopeMarket(input, unreviewed).models.find(
+    ({ model_id }) => model_id === "cosyvoice-v3.5-flash",
+  );
+  expect(voice?.price_facts).toEqual([]);
+  expect(voice?.raw_price_facts).toContainEqual(
+    expect.objectContaining({
+      raw: expect.objectContaining({ amount: "0.116", unit: "Per voice" }),
+    }),
+  );
+});
+
 it.each([
   { type: "new_charge_alpha", priceUnit: "Per 1M tokens", tool: false },
   { type: "new_charge_beta", priceUnit: "Per 1M tokens", tool: false },

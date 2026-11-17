@@ -22,6 +22,27 @@ const transport = vi.hoisted(() => {
   return { failures, responses, calls };
 });
 
+it.each([
+  ["model_card_4", "https://gemma.ai/models/gemma-4/model-card/"],
+  ["gemma_on_gemini_api", "https://gemma.ai/deployment/gemini-api/"],
+])(
+  "follows the reviewed Gemma companion redirect for %s and rejects other hosts",
+  async (path, target) => {
+    const original = `https://ai.google.dev/gemma/docs/core/${path}`;
+    const source = reviewedPublicSource("gemini-models", original);
+    transport.responses.set(original, [
+      `HTTP/1.1 301 Moved Permanently\r\nLocation: ${target}\r\n\r\n`,
+    ]);
+    transport.responses.set(target, ["HTTP/1.1 200 OK\r\n\r\nGemma document"]);
+    expect((await fetchSource(source)).body).toBe("Gemma document");
+    transport.responses.set(original, [
+      "HTTP/1.1 301 Moved Permanently\r\nLocation: https://unreviewed.test/gemma\r\n\r\n",
+    ]);
+    await expect(fetchSource(source)).rejects.toThrow("reviewed host allowlist");
+    expect(transport.calls).not.toContain("https://unreviewed.test/gemma");
+  },
+);
+
 it.each([false, true])(
   "fetches a native JSON OpenAPI index with a claim-local cache companion (failed=%s)",
   async (failed) => {

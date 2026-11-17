@@ -153,6 +153,8 @@ it("admits parser repairs and reviewed fixtures while rejecting publication and 
     "src/catalog/catalog-repair.ts",
     "tests/catalog-repair-workflow.test.ts",
     "tests/catalog-snapshot.test.ts",
+    "tests/catalog-maintenance.test.ts",
+    "tests/catalog-independent-verification.test.ts",
     "tests/test-architecture.test.ts",
     "tests/validate-tests.test.ts",
     "tests/validation-plan.test.ts",

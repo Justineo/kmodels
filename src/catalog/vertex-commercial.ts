@@ -79,6 +79,7 @@ export function applyVertexCommercialTopology(
         }
         return [migrated];
       }
+      if (book.scope.resource_key === "context-cache-storage") return [book];
       return requestServices.has(book.scope.resource_key)
         ? [bindRequestService(book, input, inputIndex, models)]
         : [];

@@ -1495,6 +1495,12 @@ function canonicalMeter(context: AdapterContext, rate: SourcePriceFact): PriceMe
     value,
   });
   switch (rate.meter) {
+    case "cache_read":
+      return providerMeter(
+        context,
+        "cache_read",
+        "Provider-published cached input in the tariff's native unit",
+      );
     case "input_data":
     case "output_data":
     case "inference":

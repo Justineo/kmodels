@@ -34,7 +34,7 @@ Included facts are:
 - the provider-published request, terminal response, terminal stream event, asynchronous result,
   and Batch-result fields needed by an external cost calculator.
 
-Training, retained storage, Model Unit/PTU/CU capacity, LoRA deployment charges, plans,
+Training, retained files/artifacts, Model Unit/PTU/CU capacity, LoRA deployment charges, plans,
 subscriptions, free-quota balances, savings commitments, invoices, discounts, and account
 settlement are outside the partition. Their exclusion is intentional and does not create an
 `unknown` price. The shared pricing wire may still decode these concepts while other providers
@@ -137,6 +137,12 @@ Missing companion evidence removes the optional acquisition binding while preser
 
 Every console price cell has a normalized or retained raw disposition. Reviewed token, cache,
 Batch File, image, video, audio and embedding meters preserve their native amounts and units.
+
+Batch Chat's `_batch_chat` suffix and the older `_batch` suffix both identify asynchronous
+token-rate variants, preserving context and thinking predicates independently of online prices.
+The `cosy_tts_number` cell is normalized only with its explicit `Per 10,000 characters`
+denominator, scaled exactly to a million-character audio-output rate. A `Per voice` cell with
+the same native meter remains raw; neither the type name nor TTS capability establishes its unit.
 Unmapped owned price cells also emit `unsupported_pricing_cell_preserved`, independently of
 whether the reason is a new meter, unit or unresolved applicability. Shared reconciliation keeps
 these gaps diagnostic and eligible for repair during accepted or unchanged refreshes. Retaining
@@ -147,7 +153,7 @@ Published tool units map onto the shared unit vocabulary: per-call, per-1K-call,
 per-second and per-page quotes become `request`, `thousand_requests`, `image`, `second` and
 `page`. A `Per page` document-parsing quote is therefore a numeric `tool_call` rate rather than a
 retained raw cell.
-Blank tool units, Batch Chat accounting, combined text/audio output, ambiguous unified Omni
+Blank tool units, Batch Chat quantity acquisition, combined text/audio output, ambiguous unified Omni
 meters, voice/world-operation units and the contradictory `video_ratio_540p`/`480P` label retain
 their literal evidence. They remain explicit normalization limits. Limited-time discount factors
 remain informational evidence; their eligibility and validity are not guessed from an original

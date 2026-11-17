@@ -166,7 +166,7 @@ export async function validateChanges(base: string | undefined, planOnly = false
   if (process.env.GITHUB_OUTPUT !== undefined)
     await appendFile(
       process.env.GITHUB_OUTPUT,
-      `repair_toolchain=${full || paths.some((path) => /^(?:\.github\/|scripts\/(?:catalog-repair|catalog-snapshot|validate-changes|validate-tests|test-timeout-reporter|module-dependencies)|package\.json$|pnpm-lock\.yaml$|\.node-version$)/.test(path))}\n`,
+      `repair_toolchain=${full || paths.some((path) => /^(?:\.github\/|scripts\/(?:repair\/|catalog-repair|catalog-snapshot|validate-changes|validate-tests|test-timeout-reporter|module-dependencies)|package\.json$|pnpm-lock\.yaml$|\.node-version$)/.test(path))}\n`,
     );
   if (planOnly) return;
   for (const args of commands) {

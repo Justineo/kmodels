@@ -276,6 +276,45 @@ function checkInferenceLookup(moduleExports: unknown, suite: LookupFixtures): vo
     JSON.stringify(commercial({ subject, ...selection })),
     JSON.stringify({ subject, ...reference(query) }),
   );
+
+  const dated = structuredClone(data);
+  const input = dated.providers[0]?.books[0]?.offers[0]?.terms.find(
+    (term) => term.kind === "rate" && term.meter.value === "input_text",
+  );
+  const original = input?.kind === "rate" ? input.variants[0] : undefined;
+  if (input?.kind !== "rate" || !original) throw new Error("Missing dated price fixture");
+  input.variants = [
+    { ...original, validity: { until: { value: "2026-11-30", precision: "date" } } },
+    {
+      ...structuredClone(original),
+      price: { ...original.price, value: { numerator: "1", denominator: "500" } },
+      validity: { from: { value: "2026-12-01", precision: "date" } },
+    },
+  ];
+  const datedLookup: unknown = moduleExports.createInferencePriceLookup(dated, mapping);
+  if (typeof datedLookup !== "function") throw new Error("Missing dated lookup function");
+  const datedReference = createInferencePriceLookup(dated, mapping);
+  for (const [evaluated_at, status, denominators] of [
+    ["2026-11-17T00:00:00Z", "matched", ["1000"]],
+    ["2026-11-30T00:00:00Z", "candidates", ["1000", "500"]],
+    ["2026-12-02T00:00:00Z", "candidates", ["500"]],
+    ["2026-12-03T00:00:00Z", "matched", ["500"]],
+  ] as const) {
+    const datedQuery: InferencePriceQuery = { ...query, evaluated_at };
+    const expected = datedReference(datedQuery);
+    assert.equal(expected.status, status);
+    assert.deepEqual(
+      expected.candidates
+        .flatMap(({ offer }) =>
+          offer.terms.flatMap((term) =>
+            term.kind === "rate" ? term.variants.map(({ price }) => price.value.denominator) : [],
+          ),
+        )
+        .sort(),
+      [...denominators].sort(),
+    );
+    assert.equal(JSON.stringify(datedLookup(datedQuery)), JSON.stringify(expected), evaluated_at);
+  }
 }
 
 function rejectNetworkAccess(): never {

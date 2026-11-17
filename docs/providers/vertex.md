@@ -30,15 +30,22 @@ through its Model-as-a-Service offerings. The provider ID remains `vertex`. Agen
 runtimes, registries, gateways, skills, generic self-deployment inventory, and other non-model
 resources do not create catalog rows.
 
-The price book covers public costs attributable to one proxied inference request or its result:
+The price book covers public inference tariffs and their independently metered services:
 
 - online, Priority, Flex, and Batch inference;
-- input, output, cache-read, embedding, image, audio, and video generation rates; and
-- independently metered request components such as grounding, Maps, and Claude web search.
+- input, output, cache-read, embedding, image, audio, and video generation rates;
+- independently metered request components such as grounding, Maps, and Claude web search; and
+- explicit context-cache storage over time.
 
-Training, retained cache storage, Provisioned Throughput, savings plans, agents, CodeMender,
+Training, retained files/vector stores, Provisioned Throughput, savings plans, agents, CodeMender,
 AlphaEvolve, model optimization, account credits, billing export, and settlement are outside
-this boundary. Cache-read inference is in scope; cache storage over time is not.
+this boundary. Cache-read inference and explicit context-cache storage are in scope.
+Storage is a separate `service:context-cache-storage` book with exact model predicates, context
+bands and published date precision. The owned Explicit Caching table's `Price Tok/hr` columns
+normalize to token × second rates; older feature rows require their explicit `/M Tok/hr` cell
+unit. Storage never borrows a generation tier, protocol counter or request duration. Unsupported
+denominators retain their amounts and labels as raw service evidence with repair diagnostics.
+An unrelated storage row cannot cause an entire inference table to be discarded.
 
 Kmodels publishes a price book and calculation-input contracts. It does not own the runtime request
 lifecycle: the Gateway still captures requests, terminal responses or stream events, asynchronous
@@ -209,7 +216,8 @@ from source collection and mapping implementation.
   from the following calendar date. Wrapped partner sections own their notes only when they
   contain one pricing table; neighboring sections and quoted examples cannot supply that note.
   This preserves the paid amounts without inventing a historical free rate or the cutover instant.
-  The calculator retains unresolved date-only validity, and a cache tariff alone does not establish
+  The shared query retains unresolved validity near the date and excludes clearly future or
+  expired schedules. A cache tariff alone does not establish
   a managed partner model's cache quantity binding.
 - An output row under the cached-input price column still prices output tokens. It cannot create
   a cache-read charge. Identical output observations converge to one canonical price; inconsistent

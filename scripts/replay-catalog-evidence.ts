@@ -35,7 +35,7 @@ const contextSchema = z.array(
     })),
 );
 
-export function replayCatalogEvidence(sourceId: string, input: unknown, context?: unknown) {
+export function parseEvidence(sourceId: string, input: unknown, context?: unknown) {
   const evidence = evidenceSchema.parse(input);
   if (evidence.source_id !== sourceId || sha256(evidence.body) !== evidence.source_hash)
     throw new Error("Replay source identity or body hash does not match its evidence");
@@ -59,6 +59,15 @@ export function replayCatalogEvidence(sourceId: string, input: unknown, context?
     onContractFinding: findings.add,
     onPricingReconciliation: (item) => reconciliation.push(item),
   });
+  return { result, evidence, source, catalogModels, findings, reconciliation };
+}
+
+export function replayCatalogEvidence(sourceId: string, input: unknown, context?: unknown) {
+  const { result, evidence, source, catalogModels, findings, reconciliation } = parseEvidence(
+    sourceId,
+    input,
+    context,
+  );
   return {
     schema_version: 1,
     stage: "parse",

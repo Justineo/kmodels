@@ -32,7 +32,7 @@ The following are outside the rate-book boundary and are not preserved as raw or
 - provisioned throughput and CPU/GPU capacity;
 - `ai_query` Batch DBU-per-hour compute, because the billable duration is a Databricks job/account
   quantity rather than a proxied request or completed asynchronous inference-item quantity;
-- training, AI Runtime, storage, ingestion, subscriptions, commitments, and credits;
+- training, AI Runtime, retained artifact/index storage, ingestion, subscriptions, commitments, and credits;
 - Unity AI Gateway logging/observability, Agent Bricks, Agent Evaluation, Genie, and other platform
   orchestration products;
 - account DBU-to-currency settlement, discounts, invoices, and private prices; and

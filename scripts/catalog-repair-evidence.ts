@@ -30,6 +30,7 @@ export const refreshExecutionSchema = z.object({
   verification_failure: z.literal("test_timeout").optional(),
   report_path: z.string().optional(),
   log_path: z.string().optional(),
+  reproduction_directory: z.string().optional(),
 });
 
 export type GitHubCommand = (args: string[], timeout?: number) => Promise<string>;
@@ -138,8 +139,65 @@ export async function loadRefreshExecution(
     const log = await gh([...view, "--log-failed"]);
     if (log.trim() === "") throw new Error("Failed refresh has no readable failure log");
     logPath = join(directory, "refresh-failure.log");
-    await writeFile(logPath, log.slice(-65_536));
+    await writeFile(logPath, boundedFailureLog(log));
   }
+  const reproductionDirectory = join(directory, "reproduction");
+  // Exact attempt binding is mandatory; raw authenticated response bodies are never uploaded.
+  const evidenceNames = [...available].filter((name) =>
+    name.startsWith(`catalog-public-evidence-${runId}-attempt-${run.attempt}-`),
+  );
+  const planName = `catalog-plan-${runId}-attempt-${run.attempt}`;
+  if (failedSteps.includes("Assemble collected providers") && available.has(planName)) {
+    await gh([
+      "run",
+      "download",
+      runId,
+      "--repo",
+      repository,
+      "--name",
+      planName,
+      "--dir",
+      join(reproductionDirectory, "plan"),
+    ]);
+    const planText = await readFile(join(reproductionDirectory, "plan", "plan.json"), "utf8");
+    const { parseCollectionPlan, collectionPlanId } =
+      await import("../src/catalog/collection-shards.ts");
+    const plan = parseCollectionPlan(JSON.parse(planText));
+    if (plan.revision !== run.headSha)
+      throw new Error("Refresh reproduction plan has another revision");
+    for (const name of [...available].filter((name) =>
+      name.startsWith(`catalog-shard-${runId}-${collectionPlanId(plan)}-`),
+    ))
+      await gh(
+        [
+          "run",
+          "download",
+          runId,
+          "--repo",
+          repository,
+          "--name",
+          name,
+          "--dir",
+          join(reproductionDirectory, "shards"),
+        ],
+        180_000,
+      );
+  }
+  for (const name of evidenceNames)
+    await gh(
+      [
+        "run",
+        "download",
+        runId,
+        "--repo",
+        repository,
+        "--name",
+        name,
+        "--dir",
+        join(reproductionDirectory, "public", name),
+      ],
+      180_000,
+    );
   return {
     run,
     failed_steps: failedSteps,
@@ -152,7 +210,17 @@ export async function loadRefreshExecution(
     ...(verificationFailure === undefined ? {} : { verification_failure: verificationFailure }),
     ...(reportPath === undefined ? {} : { report_path: reportPath }),
     ...(logPath === undefined ? {} : { log_path: logPath }),
+    ...(evidenceNames.length === 0 && !available.has(planName)
+      ? {}
+      : { reproduction_directory: reproductionDirectory }),
   };
+}
+
+export function boundedFailureLog(log: string): string {
+  if (log.length <= 65_536) return log;
+  const error = log.search(/(?:##\[error\]|FATAL ERROR|Error:|AssertionError)/);
+  const start = Math.max(0, error - 4096);
+  return `${log.slice(start, start + 24_000)}\n[Log middle omitted; first error context and tail retained]\n${log.slice(-40_000)}`;
 }
 
 async function main(): Promise<void> {

@@ -27,7 +27,9 @@ it("routes repair and threat detection to DeepSeek without exposing the inferenc
     const phase = job(workflow, name);
     expect(phase).toContain("COPILOT_MODEL: deepseek-flash");
     expect(phase).toContain("COPILOT_PROVIDER_BASE_URL: https://api.deepseek.com");
-    expect(phase).toContain("COPILOT_PROVIDER_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}");
+    expect(phase).toContain(
+      "COPILOT_PROVIDER_API_KEY: ${{ secrets.CATALOG_REPAIR_DEEPSEEK_API_KEY }}",
+    );
     expect(phase).toContain("COPILOT_PROVIDER_TYPE: openai");
     expect(phase).toContain("COPILOT_PROVIDER_WIRE_API: responses");
     expect(phase).toContain("--exclude-env COPILOT_PROVIDER_API_KEY");
@@ -119,6 +121,46 @@ function job(workflow: string, name: string): string {
   return body;
 }
 
+it("isolates OpenAI spending and keeps semantic review ahead of trusted publication", async () => {
+  const workflow = await readFile(compiled, "utf8");
+  const agent = job(workflow, "agent");
+  const broker = agent
+    .split(/\n      - /)
+    .find((step) => step.includes("Start the isolated expert broker"));
+  expect(broker).toContain(
+    "CATALOG_REPAIR_OPENAI_API_KEY: ${{ secrets.CATALOG_REPAIR_OPENAI_API_KEY }}",
+  );
+  expect(broker).toContain('private="$RUNNER_TEMP/repair-expert"');
+  expect(broker).toContain('cp -R scripts src "$private/runtime/"');
+  const execute = agent.split(/\n      - /).find((step) => step.includes("awf --config"));
+  expect(execute).toBeDefined();
+  expect(execute).not.toContain("CATALOG_REPAIR_OPENAI_API_KEY");
+  expect(execute).not.toContain("repair-expert");
+  expect(agent.indexOf("kill -TERM")).toBeLessThan(agent.indexOf("Upload trusted expert spending"));
+  expect(agent).toContain("!/tmp/gh-aw/agent/previous/**");
+  const reviewer = job(workflow, "semantic_review");
+  expect(reviewer).toContain("contents: read");
+  expect(reviewer).not.toContain("contents: write");
+  expect(reviewer).not.toContain("GH_TOKEN:");
+  expect(reviewer).toContain("if: needs.agent.result == 'success'");
+  expect(reviewer).toContain("scripts/repair/codex-runner.ts");
+  expect(reviewer).toContain("independently-verified-catalog-repair");
+  expect(reviewer).not.toContain("scripts/repair/risk-review.ts");
+  expect(job(workflow, "publish_repair")).toContain("needs.semantic_review.result == 'success'");
+  expect(job(workflow, "maintenance_prepare")).toContain("group: catalog-maintenance-state");
+  const finish = job(workflow, "maintenance_finish");
+  expect(finish).toContain("MAINTENANCE_REVIEW_RESULT:");
+  expect(finish).toContain("MAINTENANCE_PUBLISHED_REVISION:");
+  expect(finish).not.toContain("CATALOG_REPAIR_OPENAI_API_KEY");
+  const observer = await readFile(
+    new URL("../.github/workflows/catalog-maintenance.yml", import.meta.url),
+    "utf8",
+  );
+  expect(observer).toContain("head_repository.full_name == github.repository");
+  expect(observer).toContain("ref: main");
+  expect(observer).not.toContain("secrets.");
+});
+
 it("loads completed refresh evidence before selecting repair work", async () => {
   const workflow = await readFile(compiled, "utf8");
   const agent = job(workflow, "agent");
@@ -177,7 +219,7 @@ it("checks candidate coverage using trusted code before admitting an outcome and
     agent.indexOf("Capture and admit the repair outcome"),
   );
   const artifact = steps.find((step) => step.includes("name: Preserve investigation evidence\n"));
-  expect(artifact).toContain("if: always() && steps.repair_context.outputs.repairable == 'true'");
+  expect(artifact).toContain("if: always()");
   expect(artifact).toContain("/tmp/gh-aw/agent/");
   expect(artifact).toContain("${{ runner.temp }}/gh-aw/repair-admission.json");
 });
@@ -213,10 +255,11 @@ it("feeds threat detection the immutable publication artifact before the detecto
   expect(supply).toBeGreaterThan(download);
   expect(supply).toBeLessThan(detection.indexOf("Setup threat detection"));
   expect(detection.indexOf("Verify the detected repair patch")).toBeGreaterThan(execute);
-  expect(detection).toContain("name: admitted-catalog-repair");
+  expect(detection).toContain("name: independently-verified-catalog-repair");
   expect(detection).toContain("sha256sum --check");
   expect(detection).toContain('cp "$artifact/repair.patch" "$detection/aw-catalog-repair.patch"');
-  expect(detection).toContain("needs.agent.outputs.output_types == 'commit_repair'");
+  expect(detection).toContain("needs.semantic_review.outputs.outcome == 'commit_repair'");
+  expect(detection).toContain("needs.semantic_review.result == 'success'");
 });
 
 it("queues one retry only after the publication checks reject an admitted patch", async () => {
@@ -292,7 +335,7 @@ it("gates automatic publication on exact-patch validation and threat detection",
   );
   expect(agent).toContain("admitted-catalog-repair");
   expect(agent).toContain('catalog-repair-publication.ts" verify');
-  expect(commit).toContain("admitted-catalog-repair");
+  expect(commit).toContain("independently-verified-catalog-repair");
   expect(commit.split("\n    steps:")[0]).not.toContain("${{ runner.");
   expect(commit).toContain('export REPAIR_ARTIFACT_DIR="$RUNNER_TEMP/catalog-repair-validation"');
   expect(intent).toContain("needs.safe_outputs.result == 'success'");
@@ -331,7 +374,7 @@ it("gates automatic publication on exact-patch validation and threat detection",
   expect(delivery).toContain("always() && needs.agent.result == 'success'");
   expect(delivery).toContain("${{ needs.safe_outputs.result }}");
   expect(delivery).toContain("${{ needs.publish_repair.result }}");
-  expect(delivery).toContain("${{ needs.agent.outputs.output_types }}");
+  expect(delivery).toContain("${{ needs.semantic_review.outputs.outcome }}");
   expect(agent).toContain("output_types: ${{ steps.collect_output.outputs.output_types }}");
 });
 

@@ -345,8 +345,7 @@ it("preserves free moderation and model-specific page and audio units without bo
       execution_mode: "request",
       selectors: [...selectors],
     });
-    // Published cached non-token cells have no reviewed meter; their unknowns remain visible.
-    expect(result.status).toBe("candidates");
+    expect(result.status).toBe("matched");
     expect(
       result.candidates.flatMap(({ offer }) =>
         offer.terms.flatMap((term) =>
@@ -356,11 +355,17 @@ it("preserves free moderation and model-specific page and audio units without bo
         ),
       ),
     ).toEqual([{ numerator, denominator }]);
+    expect(result.candidates.flatMap(({ gaps }) => gaps)).toEqual([]);
     expect(
-      result.candidates.some(({ gaps }) =>
-        gaps.some(({ code }) => code === "unsupported_structure"),
-      ),
-    ).toBe(true);
+      result.candidates
+        .flatMap(({ offer }) => offer.terms)
+        .filter(
+          (term) =>
+            term.kind === "rate" &&
+            term.meter.namespace === "provider" &&
+            term.meter.value === "cache_read",
+        ),
+    ).toHaveLength(1);
   }
 });
 

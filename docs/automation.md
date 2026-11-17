@@ -31,9 +31,9 @@ Status: implemented
   keep old prices outside the queue; investigation can establish a source successor or an honest
   operational block. The gate excludes transient fetch failures, missing credentials and unresolved
   pricing by itself. Admission records the observed symptoms and leaves reproduction to
-  investigation. Preparation admits one error-driven provider per run, using a stable
-  rotation over configured providers by six-hour UTC slot. A complete incident rotation has one
-  six-hour slot per configured provider; its duration follows the current manifest inventory.
+  investigation. Preparation admits one error-driven provider per run using trusted task severity,
+  cooldown and age. Work waiting seven days precedes new high-severity work. Local invocation
+  without maintenance state retains the deterministic six-hour provider rotation.
   All candidates for that error provider stay together. The context and immutable admission retain
   every deferred candidate; they remain unreviewed and are re-evaluated from the latest refresh on
   later runs. A batch outcome does not establish that the deferred queue or whole catalog is healthy.
@@ -102,8 +102,8 @@ Status: implemented
   consumer receipts; parser counts cannot close either boundary. Blocked areas keep their next
   action and prevent a healthy no-op, while an independent verified repair can still publish.
   The trusted terminal summary tracks pending, blocked, and completed work separately from patch
-  delivery. An unfinished periodic review remains visible in Actions and is revisited
-  on its next cycle. `gh workflow run catalog-repair.lock.yml -f periodic=true` reruns that day's review.
+  delivery. An unfinished periodic review persists in the trusted maintenance state and can resume
+  in an idle incident slot. `gh workflow run catalog-repair.lock.yml -f periodic=true` reruns that day's review.
   Error-driven candidates continue to be investigated every six hours regardless of the selected
   review provider.
 - Repair runs are serialized and do not wait on existing pull requests. A repair changes only
@@ -114,7 +114,7 @@ Status: implemented
   [stateless Responses API](https://api-docs.deepseek.com/guides/responses_api/). As of
   2026-10-18 the alias serves DeepSeek-V4.1-Flash-1017; use the current official alias rather than
   the retired `deepseek-v4-flash` name; [DeepSeek's model table](https://api-docs.deepseek.com/quick_start/pricing/)
-  owns the current alias mapping. The DeepSeek account behind `DEEPSEEK_API_KEY` pays inference
+  owns the current alias mapping. The DeepSeek account behind `CATALOG_REPAIR_DEEPSEEK_API_KEY` pays inference
   directly; a zero Copilot-credit report for BYOK does not mean inference was free. Use DeepSeek's
   usage/billing records for spend. The repair agent's model fallback is disabled to preserve the
   requested model ID; the pinned compiler does not propagate this setting to its separate detection
@@ -185,8 +185,20 @@ Status: implemented
   Failed or incomplete runs leave their diagnostics in Actions; the next scheduled run re-evaluates
   the latest completed refresh evidence and retries remaining candidates. There is no issue-based queue,
   automatic success disposition, or immediate unbounded retry loop. DeepSeek inference uses
-  `DEEPSEEK_API_KEY`, not Copilot's included inference allowance. The key is passed only to the
+  `CATALOG_REPAIR_DEEPSEEK_API_KEY`, not Copilot's included inference allowance. The key is passed only to the
   API proxy, excluded from the agent container, and sent only to `https://api.deepseek.com`.
+- [Catalog maintenance](catalog-maintenance.md) defines the trusted work ledger, fair scheduling,
+  difficulty routing, isolated OpenAI expert and the USD 120 monthly allocation. GPT independently
+  verifies every repaired and no-defect conclusion in fresh Codex sessions. Specific evidenced
+  errors permit one Sol high Codex takeover and fresh verification; insufficient evidence cannot
+  close a candidate. Threat detection and publication consume only the final verified patch,
+  including when a rejected no-defect conclusion becomes a repair. No risk-based bypass applies.
+  `CATALOG_REPAIR_OPENAI_API_KEY` is available only to trusted host brokers. Codex runs without
+  network access or publication credentials; its host gateway controls source access and spending.
+  State writes use a separate orphan branch and concurrency group; they cannot publish catalog
+  code or data. Public response captures and exact-attempt plan/shard evidence are retained for
+  14 days. A successful-refresh observer detects structural discovery leads and records actual
+  data adoption; a successful-deployment receipt binds delivery to the exact snapshot hash.
 - Agentic workflow Markdown is the reviewed source and `gh aw compile` produces the matching
   `.lock.yml`; generated lock files are not reformatted or edited by hand. Use gh-aw v0.89.21
   for compilation, including its supported `threat-detection.report-as-issue` switch. Compile with
@@ -281,7 +293,7 @@ Status: implemented
   Neither can establish that a repair is impossible. Incomplete reports record the corrected
   commands, actual parser results, examined source sections and concrete remaining blockers.
   Preparation also writes a runner-owned admission containing every candidate ID (including failed
-  refresh execution), the base commit, and a 20-minute investigation deadline. The agent updates
+  refresh execution), the base commit, and a difficulty-based 20/30/35-minute investigation deadline. The agent updates
   `/tmp/gh-aw/agent/catalog-repair-review.json`, bound to that exact admission's SHA-256. Missing,
   duplicate, stale, or extra candidates fail the investigation check. Each reviewed candidate has
   source artifact hashes, explained diagnostic checks, and a `repaired`, `not_a_defect`, or
@@ -318,7 +330,7 @@ Status: implemented
   [frontmatter timeout](https://github.github.com/gh-aw/reference/frontmatter/#run-configuration-run-name-runs-on-runs-on-slim-timeout-minutes)
   bounds inference and its tool calls; the job limit separately leaves time for setup,
   evidence checks, and artifact upload. The agent submits promptly after an independent repair's
-  focused evidence is ready. The 20-minute deadline is used to account for interruption when no
+  focused evidence is ready. The prepared deadline is used to account for interruption when no
   repair is ready. An engine timeout or failure skips outcome capture,
   preserving the primary error instead of adding a missing-output-file error; publication still
   requires a successful agent job and a fully validated completed outcome.
@@ -345,8 +357,9 @@ Status: implemented
   actual fields to linked parameter/result types; inspect those types before declaring omission.
   The repair engine uses Copilot CLI through gh-aw, with multi-turn tool execution and BYOK;
   it is not an application built on Copilot SDK. The SDK also exposes custom tools and MCP,
-  so a different agent runtime is not required merely to support research. Current repair tools
-  provide bounded first-party fetch/navigation, not a general web search engine. The
+  so a different agent runtime is not required merely to support research. The isolated OpenAI
+  expert supplies bounded search over reviewed first-party domains; original-source evidence
+  still comes through the public fetch/navigation CLI. The
   [provider research method](agent-provider-research.md#discover-and-judge-sources) applies to
   missing and conflicting claims as well as broken URLs. Record claim-specific source authority
   and unresolved acquisition limits; passing receipt checks cannot prove semantic completeness.
@@ -355,8 +368,8 @@ Status: implemented
   merely because an older compiler accepts it; that is not proof of a usable runtime tool. The
   evidence CLI is the supported acquisition path here. Switching to SDK mode would not supply native
   search; [web search requires a separately configured MCP service](https://github.github.com/gh-aw/reference/web-search/).
-  No general search service is configured in this workflow. Do not claim full web discovery or
-  convert that limitation into evidence that the provider does not publish a fact.
+  Native Copilot search remains unconfigured. The separate expert's search answers are leads,
+  not evidence of exhaustive discovery or proof that a provider does not publish a fact.
   For a linked-document source without a custom transport, `SOURCE_ID --index` saves only its
   reviewed index when discovery rejects the bundle. The same host/redirect restrictions and the
   smaller source/document byte limit apply; collection count guards remain unchanged. Artifacts
@@ -411,7 +424,7 @@ Status: implemented
   reading generated data. Hydration verifies the entire archive before replacing the mirrors.
   It resets interrupted collector state when the checkout selects a different snapshot.
   Preparation freezes the exact code revision, accepted snapshot pointer hash, shared observation
-  time and provider assignment in a one-day plan artifact. Five collection runners own SageMaker,
+  time and provider assignment in a 14-day plan artifact. Five collection runners own SageMaker,
   Bedrock, Azure, NVIDIA and the remaining providers respectively. New providers join the remaining
   group automatically. Each runner hydrates that same accepted snapshot, reads only its model
   catalog and fetch state, and exports parsed provider results without loading or publishing the

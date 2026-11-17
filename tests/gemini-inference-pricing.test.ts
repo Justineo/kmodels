@@ -1,4 +1,5 @@
 import { gunzipSync } from "node:zlib";
+import { readFile } from "node:fs/promises";
 import { load } from "cheerio";
 import { beforeAll, expect, it, vi } from "vite-plus/test";
 import type { LinkedBundle } from "../src/catalog/bundle.ts";
@@ -17,6 +18,8 @@ import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-c
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
 import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
+import { createCommercialPriceLookup } from "../src/pricing/commercial.ts";
+import { modelPricingView } from "../src/catalog/pricing-presentation.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
@@ -93,6 +96,35 @@ function lookup(candidate = baseline) {
   );
 }
 
+it("preserves exact hosted Gemma identities through the redirected documentation layout", async () => {
+  const api = await readFile(
+    new URL("./fixtures/gemini/gemma-redirect.html", import.meta.url),
+    "utf8",
+  );
+  const card = await readFile(
+    new URL("./fixtures/gemini/gemma-card-redirect.html", import.meta.url),
+    "utf8",
+  );
+  const candidate = await collect(undefined, undefined, (bundle) => {
+    for (const document of bundle.documents) {
+      if (document.url.endsWith("/gemma_on_gemini_api")) document.body = api;
+      if (document.url.endsWith("/model_card_4")) document.body = card;
+    }
+  });
+  const hosted = candidate.catalog.models.filter(({ model_id }) => model_id.startsWith("gemma-4-"));
+  expect(hosted.map(({ model_id }) => model_id).sort()).toEqual([
+    "gemma-4-26b-a4b-it",
+    "gemma-4-31b-it",
+  ]);
+  for (const model of hosted) {
+    expect(model.limits.context_tokens).toBe(256000);
+    expect(model.modalities).toEqual({ input: ["text", "image"], output: ["text"] });
+    expect(lookup(candidate)({ provider_id: "gemini", model_id: model.model_id }).status).toBe(
+      "candidates",
+    );
+  }
+});
+
 function condition(
   dimension: "account_eligibility" | "served_service_tier",
   value: string,
@@ -111,6 +143,64 @@ const context: Selector = {
 };
 const paid = condition("account_eligibility", "paid_tier");
 const standard = condition("served_service_tier", "standard");
+
+it("exports model-qualified cache storage with a token-time denominator independently of invocation", () => {
+  const data = priceDataExport(baseline.catalog, baseline.pricing);
+  const book = data.providers[0]?.books.find(
+    ({ book_key }) => book_key === "service:context-cache-storage",
+  );
+  if (!book) throw new Error("Missing Gemini cache storage book");
+  const result = createCommercialPriceLookup(
+    data,
+    baseline.inference?.mapping,
+  )({
+    subject: { kind: "resource", provider_id: "gemini", book_ref: book.id },
+    meter: { namespace: "kmodels", value: "storage" },
+    selectors: [
+      paid,
+      { ...standard, dimension: { namespace: "kmodels", value: "service_tier" } },
+      {
+        kind: "categorical",
+        dimension: { namespace: "kmodels", value: "model" },
+        value: { namespace: "kmodels", value: "gemini/gemini-3.1-pro-preview" },
+      },
+    ],
+  });
+  expect(result.status).toBe("matched");
+  expect(
+    result.candidates.flatMap(({ offer }) =>
+      offer.terms.flatMap((term) =>
+        term.kind === "rate" ? term.variants.map(({ price }) => price) : [],
+      ),
+    ),
+  ).toEqual([
+    {
+      value: { numerator: "1", denominator: "800000000" },
+      denomination: { kind: "fiat", currency: "USD" },
+      per: {
+        factors: [
+          { unit: { namespace: "kmodels", value: "second" }, power: 1 },
+          { unit: { namespace: "kmodels", value: "token" }, power: 1 },
+        ],
+      },
+    },
+  ]);
+  expect(
+    lookup()({
+      provider_id: "gemini",
+      model_id: "gemini-3.1-pro-preview",
+      selectors: [paid, standard, context],
+      execution_mode: "request",
+    }).status,
+  ).toBe("matched");
+  const model = baseline.catalog.models.find(({ uid }) => uid === "gemini/gemini-3.1-pro-preview");
+  if (!model) throw new Error("Missing Gemini storage model");
+  expect(
+    modelPricingView(baseline.pricing.data, model).optionalServices.some(({ terms }) =>
+      terms.some((term) => term.kind === "rate" && term.meter.value === "storage"),
+    ),
+  ).toBe(true);
+});
 
 it("selects independent account programs with canonical ownership and preserves their execution choices", () => {
   const query = lookup();
@@ -328,12 +418,13 @@ it("leaves Contributor raw when its required program evidence changes while pres
     }).reason,
   ).toBe("unresolved_price");
 }, 15000);
-it("returns date-only promotion rates with unresolved effective time", () => {
+it("returns date-only promotion rates with unresolved effective time near their boundary", () => {
   const result = lookup()({
     provider_id: "gemini",
     model_id: "gemini-4-argon",
     execution_mode: "request" as const,
     selectors: [paid, standard],
+    evaluated_at: "2026-11-30T00:00:00Z",
   });
   expect(result.status).toBe("candidates");
   expect(result.candidates.flatMap(({ gaps }) => gaps)).toContainEqual(
@@ -345,6 +436,63 @@ it("returns date-only promotion rates with unresolved effective time", () => {
       .flatMap((term) => (term.kind === "rate" ? term.variants : []))
       .map(({ validity }) => validity?.until),
   ).toContainEqual({ value: "2026-11-30", precision: "date" });
+});
+it("selects distant dated schedules through collection, portable export and the website without rewriting dates", async () => {
+  const projected = await projectCatalogPair(baseline);
+  const detail = projected.ui.manifest.assets
+    .filter(({ file_name }) => file_name.includes("details"))
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projected.ui.pack, asset)).toString()))
+        .details.map(restoreWebsiteInferenceDetail),
+    )
+    .find(({ model_ref }) => model_ref === "gemini/gemini-4-argon");
+  const price = detail?.inference_prices?.find(({ model_id }) => model_id === "gemini-4-argon");
+  if (!price) throw new Error("Missing dated Gemini website tariff");
+  const query = lookup();
+  for (const [evaluated_at, status, denominators] of [
+    ["2026-11-17T06:45:00.000Z", "matched", ["500000"]],
+    ["2026-11-30T12:00:00.000Z", "candidates", ["250000", "500000"]],
+    ["2026-12-02T00:00:00.000Z", "candidates", ["250000"]],
+    ["2026-12-03T00:00:00.000Z", "matched", ["250000"]],
+  ] as const) {
+    const result = query({
+      provider_id: "gemini",
+      model_id: "gemini-4-argon",
+      execution_mode: "request",
+      meter: { namespace: "kmodels", value: "input_text" },
+      selectors: [paid, standard],
+      evaluated_at,
+    });
+    expect(result.status).toBe(status);
+    expect(
+      result.candidates
+        .flatMap(({ offer }) =>
+          offer.terms.flatMap((term) =>
+            term.kind === "rate" ? term.variants.map(({ price }) => price.value.denominator) : [],
+          ),
+        )
+        .sort(),
+    ).toEqual([...denominators].sort());
+    const selected = result.candidates[0];
+    if (!selected) throw new Error("Missing dated Gemini candidate");
+    expect(
+      queryWebsiteInferencePrice(price, selected.selectors, evaluated_at, selected.offer.id).status,
+    ).toBe(status);
+  }
+  const rates = priceDataExport(baseline.catalog, baseline.pricing).providers.flatMap(({ books }) =>
+    books.flatMap(({ offers }) =>
+      offers.flatMap(({ terms }) =>
+        terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
+      ),
+    ),
+  );
+  expect(rates.map(({ validity }) => validity)).toEqual(
+    expect.arrayContaining([
+      { until: { value: "2026-11-30", precision: "date" } },
+      { from: { value: "2026-12-01", precision: "date" } },
+    ]),
+  );
 });
 it("does not borrow prices for latest aliases, regional IDs, agents or private resources", () => {
   for (const model_id of [

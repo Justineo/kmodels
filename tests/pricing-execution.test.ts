@@ -39,6 +39,83 @@ it("requires adapter-owned commercial evidence and supports several mechanisms o
   ).toMatchObject({ coverage: "partial", alternatives: [] });
 });
 
+it.each(["responses.", "realtime."])(
+  "keeps an owned %s execution contract when a sibling tariff lacks acquisition",
+  (prefix) => {
+    const atomic = input();
+    const owner = atomic.books[0]?.offers[0];
+    const term = owner?.terms[0];
+    if (!owner || term?.kind !== "rate") throw new Error("Missing execution fixture");
+    const known = rate("sync");
+    known.applicability = { any_of: [{ all_of: [] }] };
+    known.observation.establishes_applicability = known.applicability;
+    if (!known.charge_binding) throw new Error("Missing binding fixture");
+    known.charge_binding.observations = [
+      {
+        source_ref: "catalog",
+        locator: { kind: "provider_key", value: `${prefix}input_tokens` },
+        raw: { label: "Owned execution contract" },
+      },
+    ];
+    term.variants = [known];
+    owner.states = [
+      { state: "numeric", applicability: known.applicability, observation: known.observation },
+    ];
+    const unbound = rate("sync");
+    unbound.applicability = { any_of: [{ all_of: [] }] };
+    unbound.observation.establishes_applicability = unbound.applicability;
+    delete unbound.charge_binding;
+    owner.terms.push({
+      ...term,
+      term_key: "cache-write",
+      meter: { namespace: "kmodels", value: "cache_write_text" },
+      variants: [unbound],
+    });
+    const book = assembleProviderPricing(atomic).books[0];
+    const offer = book?.offers[0];
+    if (!book || !offer) throw new Error("Missing assembled execution fixture");
+    const policy = {
+      offers: { usage: { request: ["responses."], realtime: ["realtime."] } },
+      values: {},
+    };
+    expect(
+      commercialSelection(offer, book.scope, policy).find(
+        ({ dimension }) => dimension === "execution",
+      ),
+    ).toMatchObject({
+      coverage: "complete",
+      alternatives: [
+        {
+          value: { namespace: "kmodels", value: prefix === "responses." ? "request" : "realtime" },
+        },
+      ],
+    });
+    const binding =
+      offer.terms[1]?.kind === "rate" ? offer.terms[1].variants[0]?.charge_binding : undefined;
+    expect(binding).toBeUndefined();
+    const sibling = offer.terms[1];
+    if (sibling?.kind !== "rate" || !sibling.variants[0]) throw new Error("Missing sibling rate");
+    sibling.variants[0].charge_binding = {
+      ...known.charge_binding,
+      observations: [
+        {
+          source_ref: "catalog",
+          locator: {
+            kind: "provider_key",
+            value: prefix === "responses." ? "realtime.input_tokens" : "responses.input_tokens",
+          },
+          raw: { label: "Other execution contract" },
+        },
+      ],
+    };
+    expect(
+      commercialSelection(offer, book.scope, policy).find(
+        ({ dimension }) => dimension === "execution",
+      ),
+    ).toMatchObject({ coverage: "partial", alternatives: [] });
+  },
+);
+
 function scope(operation: string): PriceApplicability {
   return {
     any_of: [

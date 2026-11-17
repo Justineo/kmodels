@@ -1656,8 +1656,91 @@ function excludedPricingTable(table: Selection, headers: string[]): boolean {
       section,
     ) ||
     headers.some((header) => /training|storage|GSU/i.test(header)) ||
-    /\b(?:training|storage)\b/i.test(text(table.text()))
+    /\btraining\b/i.test(text(table.text()))
   );
+}
+
+function cacheStorageTables(
+  models: Map<string, Evidence>,
+  sourceId: string,
+  $: LoadedDocument,
+  tableContexts: PricingTableContexts,
+  reconcile?: Reconcile,
+): void {
+  $(".devsite-article-body table").each((_index, tableElement) => {
+    const table = $(tableElement);
+    const context = tableContexts.get(tableElement) ?? pricingTableContext($, table);
+    const headers = tableHeaders($, table);
+    const dedicated = /^Context Cache Storage price for Explicit Caching$/i.test(
+      context.section ?? "",
+    );
+    const featureIndex = headers.indexOf("Feature");
+    if (!dedicated && featureIndex < 0) return;
+    if (headers[0] !== "Model") return;
+    table
+      .find("tr")
+      .slice(1)
+      .each((_rowIndex, row) => {
+        const cells = $(row).find("th,td");
+        if (!dedicated && cellText(cells.eq(featureIndex)) !== "Context Cache Storage") return;
+        const label = cellText(cells.eq(0));
+        const quotes = modelPriceQuotes(models, label, context, reconcile);
+        for (let index = 1; index < headers.length; index += 1) {
+          const header = headers[index] ?? "";
+          if (header === "Type" || header === "Feature") continue;
+          const raw = cellText(cells.eq(index));
+          if (raw === "" || /^(?:N\/?A|Not available)$/i.test(raw)) continue;
+          const price = raw.match(/^\$(\d+(?:\.\d+)?)(?: \(\/M Tok\/hr\))?$/)?.[1];
+          const tokenHour = dedicated && /^Price\s+Tok\/hr\s*(?:[<>=≤≥]|$)/i.test(header);
+          const millionTokenHour = !dedicated && raw.endsWith("(/M Tok/hr)");
+          const bounds = contextTokenBounds(header, context.notes);
+          const scope = pricingScope("", context);
+          for (const quote of quotes) {
+            const conditions = { ...quote.conditions, ...bounds?.conditions, ...scope?.conditions };
+            if ((!tokenHour && !millionTokenHour) || price === undefined) {
+              quote.model.raw_price_facts.push({
+                term_key: "cache_storage",
+                impact: "base_price",
+                reason: price === undefined ? "unknown_amount" : "unknown_unit",
+                source_ref: sourceId,
+                conditions,
+                raw: {
+                  label,
+                  amount: raw,
+                  denomination: "USD",
+                  meter: "cache_storage",
+                  unit: header,
+                },
+              });
+              reconcile?.({
+                disposition: "raw",
+                reason_code: "unsupported_pricing_cell_preserved",
+                sample: `${label}; ${header}; ${raw}`.slice(0, 256),
+              });
+              continue;
+            }
+            addPriceQuote(
+              quote.model,
+              {
+                ...publishedRate(
+                  "cache_storage",
+                  tokenHour ? scaleDecimal(price, 6) : price,
+                  "million_tokens_per_hour",
+                  sourceId,
+                  `${header}; ${raw}`,
+                  conditions,
+                ),
+                raw_price: price,
+              },
+              `${label}; ${header}; ${raw}`,
+              scope === undefined ? "location" : bounds === undefined ? "context" : quote.issue,
+              context,
+              reconcile,
+            );
+          }
+        }
+      });
+  });
 }
 
 function abbreviatedTokenTable(headers: string[], section: string): boolean {
@@ -1712,6 +1795,9 @@ function tokenTables(
       .slice(1)
       .each((_rowIndex, row) => {
         const cells = $(row).find("th,td");
+        const featureIndex = headers.indexOf("Feature");
+        if (featureIndex >= 0 && cellText(cells.eq(featureIndex)) === "Context Cache Storage")
+          return;
         if (cells.length === 1) {
           const label = cellText(cells.eq(0));
           current = modelPriceQuotes(models, label, tableContext, reconcile);
@@ -2771,6 +2857,7 @@ function applyPricing(
   reconcile?: Reconcile,
 ): VertexGroundingClaim[] {
   const claims: VertexGroundingClaim[] = [];
+  cacheStorageTables(models, sourceId, $, tableContexts, reconcile);
   tokenTables(models, sourceId, $, tableContexts, evidence, reconcile);
   labeledTables(models, sourceId, $, tableContexts, evidence, reconcile);
   mediaTables(models, sourceId, $, tableContexts, reconcile);

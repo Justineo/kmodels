@@ -6,7 +6,7 @@ Status: implemented
 
 [Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
 
-Standard and the documented discounted Batch audio operation share the public Serverless usage relationship. Execution and endpoint geography qualify rates; Batch keeps successful-result-item accounting and never inherits synchronous source paths. Preserve exact source operation evidence in context mappings. Dedicated inference, commitments, unproved Batch prices and estimated media quotes are not promoted into offers.
+Standard and the documented Batch rate policy share the public Serverless usage relationship. Execution and endpoint geography qualify rates; Batch keeps successful-result-item accounting and never inherits synchronous source paths. Preserve exact source operation evidence in context mappings. Dedicated inference, commitments and estimated media quotes are not promoted into offers.
 
 The source authorities and evidence limits below remain authoritative. Adapter keys such as
 `sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
@@ -76,16 +76,24 @@ keeps its endpoint selector separate from the standard endpoint. Exact API IDs b
 offers through the shared inference-price lookup.
 
 Image estimates, step-dependent megapixel rates and video examples remain raw when the
-published headline does not establish a complete executable billing rule. The
+published headline does not establish an exact tariff configuration or default-step scope. Missing
+runtime quantity acquisition alone cannot suppress a known unit price. The
 [Seedance 2.0 card](https://www.together.ai/models/seedance-2-0) identifies the structured
 catalog's per-video quote as an estimate. The dated per-second launch quote describes a
 specific configuration and does not supply a current tariff across supported configurations.
 
 The [Batch overview](https://docs.together.ai/docs/inference/batch/overview) joins an exact
-discounted audio ID to its Serverless per-minute rate. The standard and discounted rates
+discounted audio ID to its Serverless per-minute rate. Its independently owned statement that
+models outside the discount list run at standard rates also establishes conditional Batch token
+prices for admitted Chat/Vision IDs. Exact discount-list membership selects the published multiplier;
+other Chat token prices retain their standard amount, endpoint and cache partition. This tariff
+rule does not claim that every model is accessible through Batch or set a positive model capability.
+The standard and Batch rates
 are extracted with separate source operation selectors and assembled as `usage` and `batch` extraction contexts, then combined into one relationship offer. Their canonical selection claims describe `request` and `batch` execution; mechanism
 operation predicates are removed from rate applicability and retained in raw evidence. Endpoint
 geography remains a price condition. Batch bills successful result items and the discount
 excludes dedicated inference. The guide also establishes the audio translation route where
-it names the model. Other Batch terms, provisioned throughput, dedicated capacity and
+it names the model. Missing or changed default-rate/Chat-endpoint evidence removes only the
+generic token-price supplement; the exact discounted audio rule remains independent. Media
+estimates, unestablished Batch operations, provisioned throughput, dedicated capacity and
 negotiated account terms are outside this source's commercial scope.

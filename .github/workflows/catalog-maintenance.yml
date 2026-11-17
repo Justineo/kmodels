@@ -1,0 +1,36 @@
+name: Observe catalog maintenance
+
+on:
+  workflow_run:
+    workflows: [Refresh catalog, Deploy to Void]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: catalog-maintenance-state
+  queue: max
+
+jobs:
+  observe:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VP_HOME: /tmp/kmodels-vite-plus
+    steps:
+      - name: Checkout the trusted publication branch
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install the trusted toolchain and hydrate the current snapshot
+        uses: ./.github/actions/setup-repair-toolchain
+      - name: Observe accepted data, discovery leads and successful deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: vp node scripts/repair/maintenance.ts observe

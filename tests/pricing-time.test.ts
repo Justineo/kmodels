@@ -79,7 +79,7 @@ describe("pricing published time", () => {
     ).toBe(false);
   });
 
-  it("resolves exact effective times without executing imprecise labels", () => {
+  it("resolves exact effective times and excludes clearly future calendar labels", () => {
     const transition = "2026-08-16T16:00:00.000Z";
     const before = "2026-08-15T00:00:00.000Z";
     const currentPlan = {
@@ -102,6 +102,94 @@ describe("pricing published time", () => {
     ).toBe("upcoming");
     expect(
       publishedValidityStatus({ from: { value: "2026-08-17", precision: "date" } }, before),
+    ).toBe("upcoming");
+  });
+
+  it.each([
+    ["2026-11-17T06:45:00.000Z", "current", "upcoming"],
+    ["2026-11-29T23:59:59.999Z", "unresolved", "upcoming"],
+    ["2026-11-30T00:00:00.000Z", "unresolved", "unresolved"],
+    ["2026-12-01T23:59:59.999Z", "unresolved", "unresolved"],
+    ["2026-12-02T00:00:00.000Z", "expired", "unresolved"],
+    ["2026-12-03T00:00:00.000Z", "expired", "current"],
+  ])("bounds date-only uncertainty at %s without inventing a cutover", (instant, old, next) => {
+    expect(
+      publishedValidityStatus({ until: { value: "2026-11-30", precision: "date" } }, instant),
+    ).toBe(old);
+    expect(
+      publishedValidityStatus({ from: { value: "2026-12-01", precision: "date" } }, instant),
+    ).toBe(next);
+  });
+
+  it.each([true, false, undefined])(
+    "keeps ambiguous coarse endpoints unresolved with inclusivity %s",
+    (inclusive) => {
+      for (const precision of ["date", "month", "year"] as const) {
+        const value = { date: "2026-11-30", month: "2026-11", year: "2026" }[precision];
+        const boundary = { value, precision, inclusive };
+        for (const validity of [{ from: boundary }, { until: boundary }])
+          expect(publishedValidityStatus(validity, "2026-11-30T12:00:00.000Z")).toBe("unresolved");
+      }
+    },
+  );
+
+  it.each([
+    ["month", "2026-11", "2026-10-01T00:00:00.000Z", "2026-12-02T00:00:00.000Z"],
+    ["year", "2026", "2025-12-01T00:00:00.000Z", "2027-01-02T00:00:00.000Z"],
+    ["date", "2024-02-29", "2024-02-27T23:59:59.999Z", "2024-03-02T00:00:00.000Z"],
+  ] as const)(
+    "resolves %s labels only outside the whole guarded period",
+    (precision, value, before, after) => {
+      const boundary = { value, precision };
+      expect(publishedValidityStatus({ from: boundary }, before)).toBe("upcoming");
+      expect(publishedValidityStatus({ until: boundary }, before)).toBe("current");
+      expect(publishedValidityStatus({ from: boundary }, after)).toBe("current");
+      expect(publishedValidityStatus({ until: boundary }, after)).toBe("expired");
+    },
+  );
+
+  it("lets a definite exclusion dominate an uncertain sibling boundary", () => {
+    expect(
+      publishedValidityStatus(
+        {
+          from: { value: "2026-11", precision: "month" },
+          until: { value: "2026-11-15T00:00:00.000Z", precision: "datetime" },
+        },
+        "2026-11-17T00:00:00.000Z",
+      ),
+    ).toBe("expired");
+    expect(
+      publishedValidityStatus(
+        {
+          from: { value: "2026-11-20T00:00:00.000Z", precision: "datetime" },
+          until: { value: "2026-11", precision: "month" },
+        },
+        "2026-11-17T00:00:00.000Z",
+      ),
+    ).toBe("upcoming");
+    expect(
+      publishedValidityStatus(
+        {
+          from: { value: "2026-11-01", precision: "date" },
+          until: { value: "2026-11-30", precision: "date" },
+        },
+        "2026-11-17T00:00:00.000Z",
+      ),
+    ).toBe("current");
+  });
+
+  it("handles calendar limits without turning boundary uncertainty into a match", () => {
+    expect(
+      publishedValidityStatus(
+        { from: { value: "0001", precision: "year" } },
+        "0001-01-01T00:00:00.000Z",
+      ),
+    ).toBe("unresolved");
+    expect(
+      publishedValidityStatus(
+        { until: { value: "9999", precision: "year" } },
+        "9999-12-31T23:59:59.999Z",
+      ),
     ).toBe("unresolved");
   });
 });

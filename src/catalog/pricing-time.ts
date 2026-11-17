@@ -126,19 +126,42 @@ export function publishedValidityStatus(
     precision: "datetime",
   };
   const { from, until } = validity;
-  if (from?.precision === "datetime") {
-    const comparison = comparePublishedTimes(current, from);
-    if (comparison < 0 || (comparison === 0 && from.inclusive === false)) return "upcoming";
-  }
-  if (until?.precision === "datetime") {
-    const comparison = comparePublishedTimes(current, until);
-    if (comparison > 0 || (comparison === 0 && until.inclusive === false)) return "expired";
-  }
-  return [from, until].some(
-    (boundary) => boundary !== undefined && boundary.precision !== "datetime",
-  )
-    ? "unresolved"
-    : "current";
+  const start = from === undefined ? 1 : compareCurrentToBoundary(current, from);
+  const end = until === undefined ? -1 : compareCurrentToBoundary(current, until);
+  if (start !== undefined && (start < 0 || (start === 0 && from?.inclusive === false)))
+    return "upcoming";
+  if (end !== undefined && (end > 0 || (end === 0 && until?.inclusive === false))) return "expired";
+  return start === undefined || end === undefined ? "unresolved" : "current";
+}
+
+function compareCurrentToBoundary(
+  current: PublishedTimeBoundaryLike,
+  boundary: PublishedTimeBoundaryLike,
+): number | undefined {
+  if (boundary.precision === "datetime") return comparePublishedTimes(current, boundary);
+
+  // A coarse label locates a transition within its calendar period, not at UTC midnight.
+  // Adjacent UTC dates cover every known RFC 3339 offset (strictly less than 24 hours).
+  const date = current.value.slice(0, 10);
+  const shifted = (direction: -1 | 1): PublishedTimeBoundaryLike => {
+    if ((date === "0001-01-01" && direction === -1) || (date === "9999-12-31" && direction === 1))
+      return { value: date, precision: "date" };
+    const value = shiftDate(
+      {
+        year: Number(date.slice(0, 4)),
+        month: Number(date.slice(5, 7)),
+        day: Number(date.slice(8, 10)),
+      },
+      direction,
+    );
+    return {
+      value: `${pad(value.year, 4)}-${pad(value.month)}-${pad(value.day)}`,
+      precision: "date",
+    };
+  };
+  if (comparePublishedTimes(shifted(1), boundary) < 0) return -1;
+  if (comparePublishedTimes(shifted(-1), boundary) > 0) return 1;
+  return undefined;
 }
 
 function endsBefore(

@@ -384,6 +384,7 @@ it("binds a promotion note whose marker is longer than the row marker", async ()
     provider_id: "databricks",
     model_id: "databricks-gemini-3-6-flash",
     selectors: [standard],
+    evaluated_at: "2026-12-31T00:00:00Z",
   });
   expect(gemini.status).toBe("candidates");
   expect(gemini.missing_conditions).toContainEqual({ namespace: "kmodels", value: "promotion" });
@@ -400,6 +401,7 @@ it("binds a promotion note whose marker is longer than the row marker", async ()
       provider_id: "databricks",
       model_id,
       selectors: [standard, condition("deployment_scope", "non_regional_processing")],
+      evaluated_at: "2026-12-31T00:00:00Z",
     });
     expect(result.status).toBe("candidates");
     expect(result.missing_conditions).toEqual([{ namespace: "kmodels", value: "promotion" }]);

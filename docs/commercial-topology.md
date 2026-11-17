@@ -8,7 +8,7 @@ identity matching, and vocabulary mappings.
 
 ## Purpose
 
-Kmodels publishes conditional unit prices for inference and provider-hosted capacity:
+Kmodels publishes conditional unit prices for inference, explicit inference-cache storage and provider-hosted capacity:
 `price(subject, meter, conditions) -> applicable unit price(s)`. Amounts, denominations, denominators,
 validity and source evidence accompany the result. Missing conditions and conflicting evidence
 remain explicit. No billable quantities, usage ledger or request-cost total are required.
@@ -38,7 +38,7 @@ inference relationship and public billing basis before publishing a capacity cha
 Admit a commercial fact only when all of these are true:
 
 1. it prices a callable inference operation, a component attributable to one proxied request or
-   result item, or the running provider-hosted endpoint resource used to serve an admitted model;
+   result item, explicit context-cache storage for an admitted model, or the running provider-hosted endpoint resource used to serve an admitted model;
 2. the public rate is established by first-party evidence;
 3. its applicability can be selected from request or deployment configuration, or established from
    provider-reported usage; and
@@ -49,6 +49,8 @@ This includes:
 
 - on-demand, Batch, and realtime model inference;
 - input, output, cache, media, request, and duration rates used by those operations;
+- explicit context-cache storage with a published token-time denominator, independently of
+  generation charges and runtime quantity acquisition;
 - request-visible dimensions such as model, route, region, endpoint, service tier, context band,
   cache mode, modality, quality, and resolution;
 - provider-published recurring billing periods when the exact daily UTC rule is recorded beside a
@@ -63,7 +65,7 @@ This includes:
 Exclude:
 
 - training, fine-tuning jobs, checkpoints, model import, and artifact distribution;
-- storage retained beyond the request and general data-transfer products;
+- retained files, vector stores, training artifacts and general data-transfer products;
 - reserved throughput commitments, subscriptions, seats, support plans, and prepaid capacity;
 - account resources, balances, credits, private offers, negotiated discounts, taxes, invoices, and
   settlement order;
@@ -80,6 +82,9 @@ unlinked regional rates remain provider resources.
 An excluded fact is outside scope, not `unknown` pricing. It is discarded rather than preserved as
 raw commercial data. A temporarily missing or unsupported fact inside the boundary remains unknown
 or raw at the smallest affected scope.
+Scope exclusions still limit coverage of a provider's complete published tariff. Report that
+static coverage separately from correctness of the prices actually exported; an exclusion does
+not establish completeness against an external all-published-prices denominator.
 
 ## Shared model
 

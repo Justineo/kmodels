@@ -661,13 +661,16 @@ function applyGemma(
   cardBody: string,
 ): void {
   const api = load(apiBody);
-  const heading = api(".devsite-article-body h2")
-    .filter((_index, element) => text(api(element).text()) === "Supported Models")
+  const article = api(".devsite-article-body, article.md-content__inner");
+  article.find(".headerlink").remove();
+  const heading = article
+    .find("h2")
+    .filter((_index, element) => text(api(element).text()).toLowerCase() === "supported models")
     .first();
   const ids = unique(
     heading
       .nextUntil("h2")
-      .find("ul code")
+      .find("ul code, table code")
       .map((_index, element) => text(api(element).text()))
       .get()
       .filter((id) => /^gemma-4-[a-z0-9-]+-it$/.test(id) && modelIdSchema.safeParse(id).success),
@@ -677,28 +680,34 @@ function applyGemma(
   for (const id of ids) {
     const item = ensure(models, input, id, ["text_generation"]);
     const needle = id.includes("26b-a4b") ? /26B A4B/i : /31B/i;
-    card(".devsite-article-body table").each((_tableIndex, table) => {
-      const headers = card(table).find("tr").first().find("th,td");
-      let column = -1;
-      headers.each((index, cell) => {
-        if (needle.test(text(card(cell).text()))) column = index;
-      });
-      if (column < 1) return;
-      card(table)
-        .find("tr")
-        .each((_rowIndex, row) => {
-          const cells = card(row).find("th,td");
-          const label = text(cells.eq(0).text());
-          const value = text(cells.eq(column).text());
-          if (label === "Context Length") {
-            const context = scaledTokenCount(value.replace(/\s*tokens?$/i, ""));
-            if (context !== undefined)
-              item.limits = { ...item.limits, context_tokens: context, max_input_tokens: context };
-          }
-          if (label === "Supported Modalities")
-            item.modalities = { input: media(value), output: ["text"] };
+    card(".devsite-article-body table, article.md-content__inner table").each(
+      (_tableIndex, table) => {
+        const headers = card(table).find("tr").first().find("th,td");
+        let column = -1;
+        headers.each((index, cell) => {
+          if (needle.test(text(card(cell).text()))) column = index;
         });
-    });
+        if (column < 1) return;
+        card(table)
+          .find("tr")
+          .each((_rowIndex, row) => {
+            const cells = card(row).find("th,td");
+            const label = text(cells.eq(0).text());
+            const value = text(cells.eq(column).text());
+            if (label === "Context Length") {
+              const context = scaledTokenCount(value.replace(/\s*tokens?$/i, ""));
+              if (context !== undefined)
+                item.limits = {
+                  ...item.limits,
+                  context_tokens: context,
+                  max_input_tokens: context,
+                };
+            }
+            if (label === "Supported Modalities")
+              item.modalities = { input: media(value), output: ["text"] };
+          });
+      },
+    );
     item.capabilities.reasoning = true;
     item.capabilities.tool_call = true;
     item.status = "active";
@@ -827,17 +836,17 @@ function applyGemmaFreePricing(
           "Gemma 4 Free Tier: Context caching price; Free of charge",
           { account_eligibility: "free_tier" },
         ),
-        publishedRate(
-          "cache_storage",
-          "0",
-          "million_tokens_per_hour",
-          sourceId,
-          "Gemma 4 Free Tier: Context caching (storage); Free of charge",
-          { account_eligibility: "free_tier", modality },
-        ),
       );
     }
     model.price_facts.push(
+      publishedRate(
+        "cache_storage",
+        "0",
+        "million_tokens_per_hour",
+        sourceId,
+        "Gemma 4 Free Tier: Context caching (storage); Free of charge",
+        { account_eligibility: "free_tier" },
+      ),
       publishedRate(
         "output_text",
         "0",
@@ -942,9 +951,9 @@ function meterRates(
       },
     ];
   if (lower.includes("storage") || segment.toLowerCase().includes("storage price")) {
-    const selected = priceModalities(row, segment, descriptor, model.modalities.input);
-    const selectedOrText: Modality[] = selected.length === 0 ? ["text"] : selected;
-    return selectedOrText.map((modality) => ({
+    const selected = priceModalities(row, segment, descriptor, []);
+    if (selected.length === 0) return [{ meter: "cache_storage", conditions: baseConditions }];
+    return selected.map((modality) => ({
       meter: "cache_storage",
       conditions: { ...baseConditions, modality },
     }));
@@ -1110,7 +1119,11 @@ function preserveRawPricing(
     reason,
     conditions: conditions(tier, accountEligibility, "", row),
     source_ref: sourceId,
-    raw: { label: row, fragment },
+    raw: {
+      label: row,
+      fragment,
+      ...(/storage|storage price/i.test(`${row} ${fragment}`) ? { meter: "cache_storage" } : {}),
+    },
   });
   onPricingReconciliation?.({
     disposition: "raw",
