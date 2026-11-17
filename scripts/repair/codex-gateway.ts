@@ -7,7 +7,7 @@ import { fetchSource } from "../../src/catalog/fetch.ts";
 import { researchPublicSource, reviewedPublicSource } from "../../src/catalog/public-evidence.ts";
 import { manifests } from "../../src/catalog/manifests.ts";
 import { digest, type BudgetLease } from "./state.ts";
-import { requestReservation, responseCost } from "./openai.ts";
+import { catalogRepairModel, requestReservation, responseCost } from "./openai.ts";
 import { writePrivateJson } from "./files.ts";
 
 export async function boundedBody(stream: AsyncIterable<unknown>, limit: number): Promise<string> {
@@ -27,7 +27,7 @@ export async function boundedBody(stream: AsyncIterable<unknown>, limit: number)
 export function codexRequest(input: unknown): { body: string; reservation: number } {
   const request = z
     .object({
-      model: z.literal("gpt-6.1-sol"),
+      model: z.literal(catalogRepairModel),
       input: z.array(z.unknown()),
       instructions: z.string().optional(),
       tools: z.array(z.unknown()).max(100).optional(),
@@ -60,7 +60,7 @@ export function codexRequest(input: unknown): { body: string; reservation: numbe
   // No hosted tools, images, conversation handles, background calls, websocket or alternate endpoints.
   const body = JSON.stringify({
     ...request,
-    model: "gpt-6.1-sol",
+    model: catalogRepairModel,
     reasoning: { effort: "high" },
     stream: true,
     store: false,
@@ -70,7 +70,10 @@ export function codexRequest(input: unknown): { body: string; reservation: numbe
   });
   if (Buffer.byteLength(body) > 160_000 || /"type"\s*:\s*"(?:input_image|input_file)"/.test(body))
     throw new Error("Narrow the Codex context to bounded text evidence");
-  return { body, reservation: requestReservation("gpt-6.1-sol", false, Buffer.byteLength(body)) };
+  return {
+    body,
+    reservation: requestReservation(catalogRepairModel, false, Buffer.byteLength(body)),
+  };
 }
 export function streamCharge(text: string): number {
   const events = text
@@ -92,12 +95,17 @@ export function streamCharge(text: string): number {
       .safeParse(event);
     return result.success ? [result.data.response] : [];
   });
-  if (completed.length !== 1 || !completed[0] || !/^gpt-6\.1-sol(?:-|$)/.test(completed[0].model))
+  const response = completed[0];
+  if (
+    completed.length !== 1 ||
+    !response ||
+    (response.model !== catalogRepairModel && !response.model.startsWith(`${catalogRepairModel}-`))
+  )
     throw new Error("Missing unique completed Codex usage; reservation retained");
   return responseCost(
-    "gpt-6.1-sol",
-    completed[0].usage.input_tokens,
-    completed[0].usage.output_tokens,
+    catalogRepairModel,
+    response.usage.input_tokens,
+    response.usage.output_tokens,
     false,
   );
 }

@@ -193,8 +193,8 @@ function request(purpose: "research" | "repair" = "research") {
 }
 it("routes by difficulty and reserves before a bounded official-domain search", async () => {
   expect(assistanceModel("research", "routine")).toBe("gpt-6-luna");
-  expect(assistanceModel("repair", "routine")).toBe("gpt-6.1-sol");
-  expect(assistanceModel("research", "complex")).toBe("gpt-6.1-sol");
+  expect(assistanceModel("repair", "routine")).toBe("gpt-6.2-sol");
+  expect(assistanceModel("research", "complex")).toBe("gpt-6.2-sol");
   const order: string[] = [];
   const reserve = vi.fn(async () => {
     order.push("reserve");

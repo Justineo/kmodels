@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const catalogRepairModel = "gpt-6.2-sol";
+
 export const assistanceRequest = z.strictObject({
   id: z.string().uuid(),
   candidate_id: z.string().min(1).max(300),
@@ -10,7 +12,7 @@ export const assistanceRequest = z.strictObject({
 export type AssistanceRequest = z.infer<typeof assistanceRequest>;
 export type Difficulty = "routine" | "semantic" | "complex";
 export function assistanceModel(purpose: AssistanceRequest["purpose"], level: Difficulty) {
-  return purpose === "research" && level === "routine" ? "gpt-6-luna" : "gpt-6.1-sol";
+  return purpose === "research" && level === "routine" ? "gpt-6-luna" : catalogRepairModel;
 }
 const answerSchema = z.object({
   status: z.enum(["completed", "incomplete", "failed"]),
@@ -29,8 +31,8 @@ const answerSchema = z.object({
 
 // USD per million tokens = micro-USD per token. Charge all input at the largest cache-write
 // rate, including long-context pricing; unknown/failed requests retain their full reservation.
-export const inputCeiling = { "gpt-6-luna": 0.5, "gpt-6.1-sol": 10 };
-export const outputCeiling = { "gpt-6-luna": 0.75, "gpt-6.1-sol": 15 };
+export const inputCeiling = { "gpt-6-luna": 0.5, [catalogRepairModel]: 10 };
+export const outputCeiling = { "gpt-6-luna": 0.75, [catalogRepairModel]: 15 };
 export function requestReservation(
   model: keyof typeof inputCeiling,
   search: boolean,

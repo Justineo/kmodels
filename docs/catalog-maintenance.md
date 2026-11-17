@@ -7,7 +7,7 @@ Status: implemented
 Catalog repair keeps the pinned gh-aw Copilot CLI executor, AWF isolation, DeepSeek BYOK,
 mandatory threat detection, automatic patch allowlist and exact-patch publication checks.
 DeepSeek proposes repairs and no-defect conclusions. A separate trusted job runs pinned Codex CLI
-0.163.0 with `gpt-6.1-sol` high to investigate and verify every proposed closed conclusion. A
+0.163.0 with `gpt-6.2-sol` high to investigate and verify every proposed closed conclusion. A
 specific evidenced error permits one Codex repair attempt, followed by fresh independent
 verification. Missing evidence is incomplete work. No model evaluation, benchmark or paid
 experiment is added.
@@ -58,7 +58,7 @@ unknown, no-defect, code publication, data adoption and deployment remain differ
 Configure repository secrets `CATALOG_REPAIR_DEEPSEEK_API_KEY` and
 `CATALOG_REPAIR_OPENAI_API_KEY`. DeepSeek pays the executor and threat detector separately.
 OpenAI is reserved for independent verification and concrete-error takeover, both using
-`gpt-6.1-sol` high with Codex CLI. Optional GPT assistance during DeepSeek investigation is disabled.
+`gpt-6.2-sol` high with Codex CLI. Optional GPT assistance during DeepSeek investigation is disabled.
 
 | Stage                                                    | Total run reservation                    |
 | -------------------------------------------------------- | ---------------------------------------- |
@@ -138,6 +138,7 @@ endpoint and accounting; hosted tools and conversation handles are rejected. Pri
 controller decisions are outside all model mounts. The Docker base, CLI release and downloaded
 archive digest are pinned. Install the complete official CLI package with its companion executables,
 including the Code Mode host, and create its writable state directory before starting a session.
+The runner supplies a local model catalog to select Code Mode for GPT-6.2 Sol on the pinned CLI.
 
 Model-writable directories are not uploaded directly. After a container stops, the controller
 checks evidence for regular files only, bounded to 10,000 entries and 1 GiB, before copying it

@@ -127,7 +127,7 @@ it("requires a bound concrete-error checkpoint before additional budget or takeo
 });
 it("bounds real Codex requests and prevents alternate models and hidden paid tools", () => {
   const request = codexRequest({
-    model: "gpt-6.1-sol",
+    model: "gpt-6.2-sol",
     input: [],
     max_output_tokens: 999999,
     store: true,
@@ -135,7 +135,7 @@ it("bounds real Codex requests and prevents alternate models and hidden paid too
     tools: [{ type: "function", name: "shell" }],
   });
   expect(JSON.parse(request.body)).toMatchObject({
-    model: "gpt-6.1-sol",
+    model: "gpt-6.2-sol",
     reasoning: { effort: "high" },
     store: false,
     service_tier: "default",
@@ -143,6 +143,7 @@ it("bounds real Codex requests and prevents alternate models and hidden paid too
   });
   expect(request.reservation).toBeGreaterThan(0);
   for (const extra of [
+    { model: "gpt-6.1-sol" },
     { model: "gpt-6-astra" },
     { previous_response_id: "secret-handle" },
     { tools: [{ type: "web_search" }] },
@@ -157,17 +158,21 @@ it("bounds real Codex requests and prevents alternate models and hidden paid too
     { input: [{ type: "input_image", image_url: "data:image/png;base64,AAAA" }] },
     { instructions: "x".repeat(170000) },
   ])
-    expect(() => codexRequest({ model: "gpt-6.1-sol", input: [], ...extra })).toThrow();
+    expect(() => codexRequest({ model: "gpt-6.2-sol", input: [], ...extra })).toThrow();
 });
 it("settles only one completed SSE response and charges reasoning output", async () => {
   const event =
     "data: " +
     JSON.stringify({
       type: "response.completed",
-      response: { model: "gpt-6.1-sol", usage: { input_tokens: 10, output_tokens: 20 } },
+      response: { model: "gpt-6.2-sol", usage: { input_tokens: 10, output_tokens: 20 } },
     }) +
     "\n\n";
   expect(streamCharge(event)).toBe(400);
+  expect(streamCharge(event.replace("gpt-6.2-sol", "gpt-6.2-sol-2026-11-17"))).toBe(400);
+  expect(() => streamCharge(event.replace("gpt-6.2-sol", "gpt-6.1-sol"))).toThrow(
+    "reservation retained",
+  );
   expect(() => streamCharge(event + event)).toThrow("unique completed");
   expect(() => streamCharge('data: {"type":"response.failed"}\n\n')).toThrow();
   await expect(
@@ -205,7 +210,7 @@ it("isolates Codex from host secrets, external networks, Git metadata and public
   expect(args.join(" ")).not.toMatch(
     /OPENAI_API_KEY|GH_TOKEN|docker.sock|--privileged|--network host/,
   );
-  expect(codexArguments()).toContain("gpt-6.1-sol");
+  expect(codexArguments()).toContain("gpt-6.2-sol");
   expect(codexArguments()).toContain('model_reasoning_effort="high"');
   expect(codexArguments().join(" ")).toContain("request_max_retries=0");
 });
