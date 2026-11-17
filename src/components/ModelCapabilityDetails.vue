@@ -38,14 +38,16 @@ const hasConflict = computed(() => {
           </template>
           <template v-else>
             <dt>Reasoning effort</dt>
-            <dd v-if="statement.supported_values">
-              Documented levels: <code>{{ statement.supported_values.join(", ") }}</code>
-            </dd>
-            <dd v-if="statement.default_value">
-              Default: <code>{{ statement.default_value }}</code>
-            </dd>
-            <dd v-if="statement.unsupported_values">
-              Unsupported levels: <code>{{ statement.unsupported_values.join(", ") }}</code>
+            <dd class="effort-values">
+              <span v-if="statement.supported_values">
+                Documented levels: <code>{{ statement.supported_values.join(", ") }}</code>
+              </span>
+              <span v-if="statement.default_value">
+                Default: <code>{{ statement.default_value }}</code>
+              </span>
+              <span v-if="statement.unsupported_values">
+                Unsupported levels: <code>{{ statement.unsupported_values.join(", ") }}</code>
+              </span>
             </dd>
           </template>
           <dd class="capability-scope">{{ statement.scope }}</dd>
@@ -65,5 +67,8 @@ const hasConflict = computed(() => {
 }
 .capability-scope {
   grid-column: 1 / -1;
+}
+.effort-values {
+  display: grid;
 }
 </style>
