@@ -297,7 +297,7 @@ const websitePricingSelectorSchema = z.discriminatedUnion("kind", [
     ...selectorBase,
     kind: z.literal("decimal_buckets"),
     unit: unitExpressionSchema,
-    values: z.array(websiteDecimalBucketSchema).min(2),
+    values: z.array(websiteDecimalBucketSchema).min(1),
   }),
   z.strictObject({
     ...selectorBase,

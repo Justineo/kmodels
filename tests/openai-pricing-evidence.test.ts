@@ -428,7 +428,8 @@ describe("OpenAI source pricing evidence", () => {
     );
     const { source, report } = modelsSource;
     expect(report.observed_items).toBe(3);
-    expect(report.disposition_counts.raw).toBe(1);
+    expect(report.disposition_counts.unsupported).toBe(1);
+    expect(report.diagnostic_count).toBe(1);
     expect(
       (modelsSource.commercial_facts ?? []).flatMap(({ raw_price_facts }) => raw_price_facts),
     ).toContainEqual(

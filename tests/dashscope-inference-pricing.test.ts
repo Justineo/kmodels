@@ -24,6 +24,10 @@ import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
 import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
+import { fixedPricingSelections } from "../src/catalog/pricing-selector-input.ts";
+import InferencePrices from "../src/components/InferencePrices.vue";
+import { renderComponent } from "./render-component.ts";
+import { websiteModelDetail } from "../src/catalog/website-data.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/catalog/fetch.ts")>()),
@@ -469,4 +473,128 @@ it("publishes exact console cache tariffs through collection, portable lookup an
   expect(JSON.stringify(queryWebsiteInferencePrice(price, selectors, at))).not.toContain(
     "unpublished_cache_read",
   );
+}, 20000);
+
+it("publishes single-band models and TTL-specific cache tariffs through the real consumers", async () => {
+  const market: unknown = JSON.parse(
+    await readFile(new URL("./fixtures/dashscope/qwen4-market.json", import.meta.url), "utf8"),
+  );
+  const cache = await readFile(
+    new URL("./fixtures/dashscope/qwen4-cache.md", import.meta.url),
+    "utf8",
+  );
+  const change = (bundles: Map<string, LinkedBundle>, withAccounting: boolean) => {
+    const bundle = bundles.get("dashscope-pricing");
+    if (!bundle) throw new Error("Missing fixture");
+    bundle.index.body += `<section><h4>Singapore</h4><table><thead><tr>
+      <th>Model ID</th><th>Deployment scope</th><th>Mode</th><th>Input tokens per request</th>
+      <th>Input price (per 1 million tokens)</th><th>Output price (per 1 million tokens)</th>
+      </tr></thead><tbody><tr><td>qwen4-max</td><td>International</td><td>Non-Thinking and Thinking modes</td>
+      <td>0&lt;Token≤1M</td><td>$1.5</td><td>$4.5</td></tr></tbody></table></section>`;
+    if (withAccounting)
+      bundle.documents.push({
+        url: "https://www.alibabacloud.com/help/en/model-studio/explicit-cache-qwen4.md",
+        body: cache,
+      });
+    const updated = { ...bundle, market };
+    bundles.set("dashscope-pricing", updated);
+  };
+  const candidate = await collect((bundles) => change(bundles, true));
+  const query = lookup(candidate);
+  const base = [
+    condition("region", "Singapore"),
+    condition("deployment_scope", "International"),
+    condition("operation", "non_thinking_and_thinking_modes"),
+    context("1000000"),
+  ];
+  const mode = (value: string): Selector => ({
+    kind: "categorical",
+    dimension: { namespace: "provider", provider_id: "dashscope", value: "cache_mode" },
+    value: { namespace: "provider", provider_id: "dashscope", value },
+  });
+  const ttl = (value: string): Selector => ({
+    kind: "decimal",
+    dimension: { namespace: "kmodels", value: "cache_ttl_seconds" },
+    value,
+    unit: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] },
+  });
+  for (const [seconds, value, field] of [
+    ["300", { numerator: "3", denominator: "1600000" }, "ephemeral_5m_input_tokens"],
+    ["3600", { numerator: "3", denominator: "1000000" }, "ephemeral_1h_input_tokens"],
+  ] as const) {
+    const result = query({
+      provider_id: "dashscope",
+      model_id: "qwen4-max",
+      selectors: [...base, mode("explicit"), ttl(seconds)],
+    });
+    expect(result.status, JSON.stringify(result.missing_conditions)).toBe("matched");
+    const terms = result.candidates.flatMap(({ offer }) => offer.terms);
+    const writes = terms.flatMap((term) =>
+      term.kind === "rate" && term.meter.value === "cache_write_text" ? term.variants : [],
+    );
+    expect(writes.map(({ price }) => price.value)).toEqual([value]);
+    const pointers = writes.flatMap(
+      ({ charge_binding }) =>
+        charge_binding?.quantity_methods?.flatMap(
+          ({ input_sources }) => input_sources?.map(({ locator }) => locator.value) ?? [],
+        ) ?? [],
+    );
+    expect(pointers).toContain(`/usage/prompt_tokens_details/cache_creation/${field}`);
+    expect(pointers).not.toContain("/usage/cache_creation_input_tokens");
+    expect(pointers).not.toContain("/usage/prompt_tokens_details/cache_creation_input_tokens");
+    expect(
+      terms.some((term) => term.kind === "rate" && term.meter.value === "cache_read_text"),
+    ).toBe(true);
+  }
+  expect(
+    query({
+      provider_id: "dashscope",
+      model_id: "qwen4-max",
+      selectors: [...base, mode("implicit")],
+    }).status,
+  ).toBe("matched");
+
+  const withoutAccounting = await collect((bundles) => change(bundles, false));
+  const retainedPrice = lookup(withoutAccounting)({
+    provider_id: "dashscope",
+    model_id: "qwen4-max",
+    selectors: [...base, mode("explicit"), ttl("3600")],
+  });
+  const unboundWrites = retainedPrice.candidates
+    .flatMap(({ offer }) => offer.terms)
+    .flatMap((term) =>
+      term.kind === "rate" && term.meter.value === "cache_write_text" ? term.variants : [],
+    );
+  expect(unboundWrites).toHaveLength(1);
+  expect(unboundWrites[0]?.charge_binding?.quantity_methods).toBeUndefined();
+
+  const projection = await projectCatalogPair(candidate);
+  const detail = projection.ui.manifest.assets
+    .filter(({ file_name }) => file_name.includes("/details/"))
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(projection.ui.pack, asset)).toString("utf8")))
+        .details.map(restoreWebsiteInferenceDetail),
+    )
+    .find(({ model_ref }) => model_ref === "dashscope/qwen4-max");
+  const price = detail?.inference_prices?.find(({ model_id }) => model_id === "qwen4-max");
+  if (!detail?.pricing || !price?.pricing_options) throw new Error("Missing Qwen4 website detail");
+  const contextOption = price.pricing_options.find(
+    ({ dimension }) => dimension.value === "context_tokens",
+  );
+  expect(contextOption).toMatchObject({ kind: "decimal_buckets", values: [{ label: "≤ 1M" }] });
+  const fixed = fixedPricingSelections(price.pricing_options);
+  expect(
+    queryWebsiteInferencePrice(price, [...base.slice(0, 2), ...fixed, mode("implicit")], at).status,
+  ).toBe("matched");
+  const model = candidate.catalog.models.find(({ uid }) => uid === detail.model_ref);
+  if (!model) throw new Error("Missing Qwen4 model");
+  const html = await renderComponent(InferencePrices, {
+    modelRef: detail.model_ref,
+    prices: detail.inference_prices,
+    offers: websiteModelDetail(candidate.pricing.data, model).pricing?.offers ?? [],
+  });
+  expect(html).toContain("≤ 1M");
+  expect(html).not.toContain('placeholder="Enter value"');
+  expect(html).not.toContain("Some prices are unresolved");
 }, 20000);

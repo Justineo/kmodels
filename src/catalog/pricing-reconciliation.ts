@@ -143,9 +143,14 @@ export function sourcePricingReconciliation(
   allowSamples: boolean,
 ): SourcePricingReconciliation {
   const basis = sourceItems.length > 0 ? "source_item" : "model_output";
-  const items = (sourceItems.length > 0 ? sourceItems : models.map(modelOutputItem)).map((item) =>
-    pricingReconciliationItemSchema.parse(item),
-  );
+  const items = (sourceItems.length > 0 ? sourceItems : models.map(modelOutputItem)).map((item) => {
+    const parsed = pricingReconciliationItemSchema.parse(item);
+    // Retaining a quote preserves evidence; it does not complete its owned price mapping.
+    return parsed.disposition === "raw" &&
+      parsed.reason_code === "unsupported_pricing_cell_preserved"
+      ? { ...parsed, disposition: "unsupported" as const }
+      : parsed;
+  });
   const dispositionCounts = emptyDispositionCounts();
   const reasonCounts: Record<string, number> = {};
   for (const { disposition, reason_code } of items) {

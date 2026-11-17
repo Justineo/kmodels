@@ -565,6 +565,58 @@ describe("website data projection", () => {
     });
   });
 
+  it("projects a single numeric band as fixed scope without losing its bounds", () => {
+    for (const upper of [
+      { value: "1000000", inclusive: true },
+      { value: "1000000", inclusive: false },
+      { value: "1000001", inclusive: true },
+      { value: "1001000", inclusive: true },
+    ]) {
+      const condition: DecimalCondition = {
+        kind: "decimal_range",
+        dimension: { namespace: "kmodels", value: "context_tokens" },
+        unit: { factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }] },
+        lower: { value: "1", inclusive: true },
+        upper,
+      };
+      const selector = detail([condition]).pricing?.offers[0]?.selectors[0];
+      expect(selector).toMatchObject({
+        kind: "decimal_buckets",
+        values: [
+          {
+            label: `${upper.inclusive ? "≤" : "<"} ${upper.value === "1000000" ? "1M" : upper.value === "1001000" ? "1.001M" : "1,000,001"}`,
+            lower: condition.lower,
+            upper,
+          },
+        ],
+      });
+      for (const value of ["0", "1", "1000000", "1000001"]) {
+        const applicability = { any_of: [{ all_of: [condition] }] };
+        const selection = {
+          kind: "decimal" as const,
+          dimension: condition.dimension,
+          unit: condition.unit,
+          value,
+        };
+        expect(evaluateApplicability(applicability, [selection]).state).toBe(
+          value === "0" ||
+            BigInt(value) > BigInt(upper.value) ||
+            (value === upper.value && !upper.inclusive)
+            ? "false"
+            : "true",
+        );
+      }
+    }
+    expect(
+      numericDetail([
+        { lower: { value: "1", inclusive: true }, upper: { value: "10", inclusive: false } },
+      ]).pricing?.offers[0]?.selectors[0],
+    ).toMatchObject({
+      kind: "decimal_buckets",
+      values: [{ label: "≥ 1 and < 10" }],
+    });
+  });
+
   it("splits overlapping regional token bands into choices that resolve every predicate", () => {
     const dimension = { namespace: "kmodels", value: "context_tokens" } as const;
     const unit: UnitExpression = {

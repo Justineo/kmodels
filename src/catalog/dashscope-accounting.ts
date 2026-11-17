@@ -25,6 +25,7 @@ const nativePath = "/help/en/model-studio/qwen-api-via-dashscope";
 const responsesPath = "/help/en/model-studio/qwen-api-via-openai-responses";
 const batchPath = "/help/en/model-studio/batch-interfaces-compatible-with-openai";
 const cachePath = "/help/en/model-studio/context-cache";
+const qwen4CachePath = "/help/en/model-studio/explicit-cache-qwen4";
 const anthropicPath = "/help/en/model-studio/anthropic-api-messages";
 const imagePath = "/help/en/model-studio/qwen-image-api";
 const videoPath = "/help/en/model-studio/text-to-video-api-reference";
@@ -229,7 +230,87 @@ export function extractDashscopePricingInputs(
     reason_code: complete ? "pricing_input_contract_bound" : "pricing_input_contract_partial",
     sample: `${bound.size}/${keys.size} DashScope pricing inputs`,
   });
-  return uniquePricingInputFacts(facts);
+  return uniquePricingInputFacts([...facts, ...qwen4CacheInputs(documents, sourceRef, onFinding)]);
+}
+
+function qwen4CacheInputs(
+  documents: readonly Document[],
+  sourceRef: string,
+  onFinding?: (evidence: SourceContractEvidence) => void,
+): SourcePricingInputFact[] {
+  const body = documents.find(
+    ({ url }) => normalizePath(new URL(url).pathname) === qwen4CachePath,
+  )?.body;
+  if (body === undefined) return [];
+  const missing = (path: string) =>
+    onFinding?.(contractExtensionEvidence([`/documents${qwen4CachePath}/${path}`]));
+  if (!body.includes("`qwen4-max`")) {
+    missing("model");
+    return [];
+  }
+  const start = body.search(/^## View cache usage\b/m);
+  if (start < 0) {
+    missing("usage");
+    return [];
+  }
+  const usage = body.slice(start).split(/\n## /)[0] ?? "";
+  const introduction = usage.split("<Tabs>")[0] ?? "";
+  const tabs = new Map<string, string | undefined>();
+  for (const match of usage.matchAll(/<Tab title="([^"]+)">([\s\S]*?)<\/Tab>/g)) {
+    const [, title, content] = match;
+    if (title !== undefined && content !== undefined)
+      tabs.set(title, tabs.has(title) ? undefined : accountingEvidence(content));
+  }
+  const facts: SourcePricingInputFact[] = [];
+  for (const [title, protocol, prefix] of [
+    ["OpenAI compatible Chat Completions", "chat", "prompt_tokens_details.cache_creation"],
+    ["OpenAI compatible Responses", "responses", "input_tokens_details.cache_write_tokens_details"],
+    ["Anthropic compatible", "anthropic", "cache_creation"],
+  ] as const) {
+    const evidence = tabs.get(title);
+    if (evidence === undefined) {
+      missing(protocol);
+      continue;
+    }
+    const streamingEvidence = `${introduction}\n${evidence}`;
+    const streaming =
+      protocol === "chat"
+        ? /stream_options/.test(streamingEvidence) &&
+          /include_usage/.test(streamingEvidence) &&
+          /last chunk/i.test(streamingEvidence)
+        : protocol === "responses" && /response\.completed/.test(evidence);
+    for (const ttl of ["5m", "1h"]) {
+      const field = `${prefix}.${protocol === "responses" ? `ttl_${ttl}_tokens` : `ephemeral_${ttl}_input_tokens`}`;
+      if (!marker(field).test(evidence)) {
+        missing(`${protocol}/${ttl}`);
+        continue;
+      }
+      const key = `${protocol}.cache_creation_${ttl}_input_tokens`;
+      const locator = `/usage/${pointer(field)}`;
+      const fact = {
+        key,
+        channel: "response",
+        locator: { kind: "json_pointer", value: locator },
+        availability: "conditional",
+        source_ref: sourceRef,
+        model_refs: ["dashscope/qwen4-max"],
+      } satisfies SourcePricingInputFact;
+      facts.push(fact);
+      if (streaming)
+        facts.push({
+          ...fact,
+          key: `${protocol}.stream.cache_creation_${ttl}_input_tokens`,
+          channel: "stream_event",
+          locator: {
+            kind: "json_pointer",
+            value: protocol === "responses" ? `/response${locator}` : locator,
+          },
+          availability: "terminal_only",
+          model_refs: [...fact.model_refs],
+        });
+    }
+  }
+  return facts;
 }
 
 function chatUsage(field: string, key: string): Contract[] {

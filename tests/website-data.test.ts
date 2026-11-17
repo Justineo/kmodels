@@ -9,6 +9,7 @@ import { defaultProjectionPaths } from "../src/catalog/projection-paths.ts";
 import type { PriceDimension } from "../src/catalog/pricing-schema.ts";
 import { websiteDataVersion } from "../src/catalog/projections.ts";
 import { withPricingCanonicalCache } from "../src/catalog/pricing-canonical.ts";
+import { fixedPricingSelection } from "../src/catalog/pricing-selector-input.ts";
 import { websiteInferencePrices } from "../src/catalog/website-inference-pricing.ts";
 import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 import {
@@ -357,7 +358,9 @@ describe("website data", () => {
         expect(new Set(selector.values.map(({ key }) => key)).size, selector.key).toBe(
           selector.values.length,
         );
-        expect(selector.values.length, selector.key).toBeGreaterThan(1);
+        expect(selector.values.length, selector.key).toBeGreaterThan(0);
+        if (selector.values.length === 1)
+          expect(fixedPricingSelection(selector)?.kind, selector.key).toBe("decimal_range");
         continue;
       }
       if (selector.kind !== "decimal_range") continue;

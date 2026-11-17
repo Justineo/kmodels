@@ -88,6 +88,20 @@ resolutions and remaining evidence limits in the provider guide.
 
 ## Extract and prove the result
 
+- Classify new pricing semantics before choosing a patch. A new amount, categorical value,
+  numerical boundary or option count is data within an existing contract; it does not justify
+  a new shared enum, model-specific UI branch or separate agreement. A new charge, dimension
+  or unit needs an owned semantic mapping, using the shared primitives and reviewed provider
+  vocabulary where appropriate. A rule that the model cannot express exactly remains an explicit
+  representation limit with retained source evidence; do not force it into a familiar meter.
+- Reconcile every owned tariff cell with its normalized representation, retained mapping gap,
+  explicit nonnumeric state or justified exclusion. A known quote kept as raw is evidence
+  conservation, not mapping completion. Report an unrepresented owned tariff through
+  `unsupported_pricing_cell_preserved` so it enters repair investigation even when the source
+  or successful publication is unchanged. Ordinary metadata extensions and absent unpublished
+  prices do not establish such a gap. Source-specific fixtures prove the reviewed mapping;
+  parameter-independent checks separately prove that renaming vocabulary, varying amounts and
+  boundaries, or moving between one and several options does not require consumer code changes.
 - Apply the [offer boundary](commercial-topology.md#offers-and-dimensions) before normalizing prices.
   Record evidence of a separate enrollment, obligation, resource commitment, seller/account billing
   relationship or data-use program. Separate tariffs, operation names and aggregation alone

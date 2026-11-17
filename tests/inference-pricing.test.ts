@@ -18,10 +18,10 @@ import {
   websiteInferencePrices,
   websiteInferencePrice,
 } from "../src/catalog/website-inference-pricing.ts";
-import { websitePublication } from "../src/catalog/website-data.ts";
+import { websiteModelDetail, websitePublication } from "../src/catalog/website-data.ts";
 import { restoreInferencePrices } from "../src/catalog/website-inference-storage.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
-import type { PricingCatalogEnvelope } from "../src/catalog/pricing-schema.ts";
+import type { PricingCatalogEnvelope, PriceCondition } from "../src/catalog/pricing-schema.ts";
 import { renderComponent } from "./render-component.ts";
 import InferencePrices from "../src/components/InferencePrices.vue";
 import { lookupFixtureSchema } from "./pricing-lookup-fixture.ts";
@@ -36,6 +36,7 @@ import {
   linkedConditionValues,
 } from "../src/catalog/inference-price-options.ts";
 import { multiplyRationals } from "../src/catalog/pricing-rational.ts";
+import { canonicalJson, compareUtf8Sequences } from "../src/catalog/canonical-value.ts";
 import { projectCommercialSelections } from "../src/catalog/commercial-selection-compilation.ts";
 import { inferencePricingPublication } from "../src/catalog/inference-pricing.ts";
 const at = "2026-10-30T00:00:00.000Z";
@@ -228,6 +229,187 @@ it("finds actual TypeSafe ID and reviewed aliases without any invocation graph",
     });
   }
 });
+
+it.each([
+  { name: "alpha", values: 1, numeric: false, step: 17, amount: 7 },
+  { name: "beta", values: 3, numeric: false, step: 941, amount: 13 },
+  { name: "gamma", values: 2, numeric: true, step: 37, amount: 19 },
+  { name: "delta", values: 1, numeric: true, step: 941, amount: 23 },
+])(
+  "carries new provider vocabulary through canonical validation, public lookup and UI: $name",
+  async ({ name, values, numeric, step, amount }) => {
+    const original = fixturePairs.get("typesafe");
+    if (!original) throw new Error("Missing canonical fixture");
+    const catalog = catalogSchema.parse(JSON.parse(JSON.stringify(original.catalog)));
+    const canonical = structuredClone(original.envelope.data);
+    const book = canonical.books.find(({ scope }) =>
+      scope.model_refs.includes("typesafe/jev-1.13.0"),
+    );
+    const offer = book?.offers[0];
+    const term = offer?.terms.find((entry) => entry.kind === "rate");
+    const vocabulary = canonical.provider_vocabularies.find(
+      ({ provider_id }) => provider_id === "typesafe",
+    );
+    const first = term?.kind === "rate" ? term.variants[0] : undefined;
+    if (!book || !offer || term?.kind !== "rate" || !vocabulary || !first)
+      throw new Error("Missing price fixture");
+    const dimension = {
+      namespace: "provider",
+      provider_id: "typesafe",
+      value: `new_dimension_${name}`,
+    } as const;
+    const meter = {
+      namespace: "provider",
+      provider_id: "typesafe",
+      value: `new_charge_${name}`,
+    } as const;
+    const unit = {
+      factors: [
+        {
+          unit: {
+            namespace: "provider" as const,
+            provider_id: "typesafe",
+            value: `new_unit_${name}`,
+          },
+          power: 1,
+        },
+      ],
+    };
+    vocabulary.atoms.push(
+      {
+        kind: "dimension",
+        key: dimension.value,
+        definition: "Synthetic provider price selector",
+        resolution_phase: "request",
+      },
+      { kind: "meter", key: meter.value, definition: "Synthetic independently defined charge" },
+      { kind: "unit", key: `new_unit_${name}`, definition: "Synthetic provider billing unit" },
+    );
+    const cases = Array.from({ length: values }, (_, index) => {
+      const value = {
+        namespace: "provider",
+        provider_id: "typesafe",
+        value: `${name}_${index}`,
+      } as const;
+      if (!numeric)
+        vocabulary.atoms.push({
+          kind: "categorical_value",
+          key: value.value,
+          dimension,
+          definition: `Synthetic option ${index}`,
+          label: `Option ${name} ${index}`,
+        });
+      const condition: PriceCondition = numeric
+        ? {
+            kind: "decimal_range",
+            dimension,
+            unit,
+            lower: { value: String(index * step), inclusive: index === 0 },
+            upper: { value: String((index + 1) * step), inclusive: true },
+          }
+        : { kind: "categorical", dimension, values: [value] };
+      const selector: Selector = numeric
+        ? { kind: "decimal", dimension, unit, value: String((index + 1) * step) }
+        : { kind: "categorical", dimension, value };
+      return {
+        condition,
+        selector,
+        price: { numerator: String(index + amount), denominator: "1" },
+      };
+    });
+    const { charge_binding: _binding, selector_sources: _selectors, ...unbound } = first;
+    term.meter = meter;
+    term.variants = cases.map(({ condition, price }) => {
+      const applicability = { any_of: [{ all_of: [condition] }] };
+      return {
+        ...unbound,
+        price: { value: price, denomination: { kind: "fiat", currency: "USD" }, per: unit },
+        applicability,
+        observations: first.observations.map((observation) => ({
+          ...observation,
+          establishes_applicability: applicability,
+        })),
+      };
+    });
+    term.raw_variants = [];
+    offer.terms = [term];
+    offer.relations = [];
+    offer.enrollment = [];
+    offer.settlement = [];
+    offer.selection = [];
+    book.offers = [offer];
+    canonical.books = [book];
+    canonical.model_dispositions = [];
+    if (!numeric)
+      vocabulary.atoms.push({
+        kind: "categorical_value",
+        key: "unpriced_option",
+        dimension,
+        definition: "Synthetic option without a tariff for this subject",
+      });
+    const atomKey = (atom: (typeof vocabulary.atoms)[number]) => [
+      atom.kind,
+      ...("dimension" in atom ? ["1", canonicalJson(atom.dimension)] : ["0"]),
+      atom.key,
+    ];
+    vocabulary.atoms.sort((left, right) => compareUtf8Sequences(atomKey(left), atomKey(right)));
+    const envelope = createPricingCatalogEnvelope(canonical, catalog);
+    const data = priceDataExport(catalog, envelope);
+    const association: InferencePriceRule = {
+      provider_id: "typesafe",
+      model_id: `future-request-${name}`,
+      model_ref: "typesafe/jev-1.13.0",
+      offer_refs: [offer.id],
+      fixed_selectors: [],
+      evidence: [
+        {
+          source_ref: term.source_refs[0] ?? "",
+          locator: { kind: "fragment", value: "Synthetic source mapping" },
+        },
+      ],
+    };
+    const associations = mapping(data, [association]);
+    const lookup = createInferencePriceLookup(data, associations);
+    const query = { provider_id: association.provider_id, model_id: association.model_id };
+    expect(lookup(query).missing_conditions).toEqual([dimension]);
+    const model = catalog.models.find(({ uid }) => uid === association.model_ref);
+    const price = websiteInferencePrices(catalog, envelope, associations).get(
+      association.model_ref,
+    )?.[0];
+    if (!model || !price) throw new Error("Missing generic UI mapping");
+    for (const example of cases) {
+      const result = lookup({ ...query, selectors: [example.selector] });
+      expect(result.status).toBe("matched");
+      expect(
+        result.candidates
+          .flatMap(({ offer }) => offer.terms)
+          .flatMap((entry) =>
+            entry.kind === "rate" ? entry.variants.map(({ price }) => price.value) : [],
+          ),
+      ).toEqual([example.price]);
+      expect(queryWebsiteInferencePrice(price, [example.selector], at).status).toBe(result.status);
+    }
+    const unknown: Selector = numeric
+      ? { kind: "decimal", dimension, unit, value: "9999" }
+      : {
+          kind: "categorical",
+          dimension,
+          value: { namespace: "provider", provider_id: "typesafe", value: "unpriced_option" },
+        };
+    expect(lookup({ ...query, selectors: [unknown] }).reason).toBe("no_applicable_price");
+    expect(queryWebsiteInferencePrice(price, [unknown], at).reason).toBe("no_applicable_price");
+    const html = await renderComponent(InferencePrices, {
+      modelRef: model.uid,
+      prices: [price],
+      offers: websiteModelDetail(canonical, model).pricing?.offers ?? [],
+    });
+    expect(html).not.toContain('placeholder="Enter value"');
+    expect(html.includes("<select")).toBe(values > 1);
+    if (!numeric)
+      for (let index = 0; index < values; index++)
+        expect(html).toContain(`Option ${name} ${index}`);
+  },
+);
 it("preserves same-ID tariff candidates and reports actual missing conditions", () => {
   const lookup = createInferencePriceLookup(bedrock, mapping(bedrock, [profileRule("us")]));
   const result = lookup({ provider_id: "amazon-bedrock", model_id: "us.openai.gpt-6-astra" });

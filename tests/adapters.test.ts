@@ -11946,7 +11946,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v30",
+      extractorVersion: "dashscope-pricing-v31",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "beijing-pricing", optional: true, claimLocal: true }),
@@ -11957,6 +11957,11 @@ describe("DashScope adapters", () => {
           expect.objectContaining({ id: "chat-accounting", optional: true, claimLocal: true }),
           expect.objectContaining({ id: "native-accounting", optional: true }),
           expect.objectContaining({ id: "anthropic-accounting", optional: true }),
+          expect.objectContaining({
+            id: "qwen4-cache-accounting",
+            optional: true,
+            claimLocal: true,
+          }),
           expect.objectContaining({ id: "responses-accounting", optional: true }),
           expect.objectContaining({ id: "batch-accounting", optional: true }),
           expect.objectContaining({ id: "image-accounting", optional: true }),

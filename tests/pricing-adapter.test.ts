@@ -296,6 +296,32 @@ describe("parsed-source canonical pricing adapter", () => {
       diagnostics: [{ disposition: "unresolved", reason_code: "parser_output_unknown" }],
     });
   });
+  it("keeps owned mapping gaps diagnostic even when their quote is safely retained as raw", () => {
+    for (const sample of ["new-operation", "new-unit", "new-applicability"]) {
+      const item = {
+        disposition: "raw" as const,
+        reason_code: "unsupported_pricing_cell_preserved",
+        sample,
+      };
+      const result = sourcePricingReconciliation([model()], [item], true);
+      expect(result).toMatchObject({
+        observed_items: 1,
+        diagnostic_count: 1,
+        disposition_counts: { unsupported: 1 },
+        diagnostics: [{ reason_code: item.reason_code, sample }],
+      });
+      expect(
+        sourcePricingReconciliation([model()], [item], false).diagnostics[0],
+      ).not.toHaveProperty("sample");
+    }
+    expect(
+      sourcePricingReconciliation(
+        [model()],
+        [{ disposition: "raw", reason_code: "unknown_meter" }],
+        true,
+      ),
+    ).toMatchObject({ diagnostic_count: 0, disposition_counts: { raw: 1 } });
+  });
   it("classifies every pricing source as reviewed first-party evidence", () => {
     const providerManifests: readonly ProviderManifest[] = manifests;
     for (const manifest of providerManifests)

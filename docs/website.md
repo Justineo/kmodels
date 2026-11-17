@@ -294,6 +294,13 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   each choice resolves every original condition without guessing a representative
   value. Ranges with gaps or continuous-decimal overlaps accept an exact value and
   reject invalid or non-integral count/TTL input.
+  A single contiguous band is one bucket and resolves as fixed Price scope in both
+  pricing views; it never requires a fabricated usage count. Context labels abbreviate
+  exact thousands and millions as K/M without rounding a boundary. The first positive
+  token band may omit its lower bound in the label (`≤ 1M` for `0 < tokens ≤ 1M`),
+  while its matching predicate retains that bound and the inclusive upper boundary.
+  Changes to the projected selector contract advance the UI projection version and rebuild its
+  snapshot, so an unchanged canonical price book cannot retain stale cached controls.
 - The model rate matrix shows only the meter, rate, unit, and unresolved validity qualification. Driver metadata
   remains in the canonical audit; a missing driver never hides a rate. Labels identify the meter,
   not an optional usage counter. TTL and other rate-changing facts remain conditions. Selecting

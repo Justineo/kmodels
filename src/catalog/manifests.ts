@@ -3954,7 +3954,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "dashscope-pricing", maxModels: 500 },
-        extractorVersion: "dashscope-pricing-v30",
+        extractorVersion: "dashscope-pricing-v31",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -4026,6 +4026,11 @@ export const manifests = [
             [
               "anthropic-accounting",
               "https://www.alibabacloud.com/help/en/model-studio/anthropic-api-messages.md",
+              1,
+            ],
+            [
+              "qwen4-cache-accounting",
+              "https://www.alibabacloud.com/help/en/model-studio/explicit-cache-qwen4.md",
               1,
             ],
             [

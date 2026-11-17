@@ -20,6 +20,12 @@ Numeric zero, explicit free usage, `not_published`, `not_supported` and `not_app
 positive commercial evidence. An unobserved price remains unknown. Catalog-only evidence creates
 no commercial partition; Meta's registry and hosted SDK illustrate this boundary.
 
+Evidence conservation and semantic mapping completeness are independent. An owned tariff
+preserved as raw remains a mapping gap and must stay visible to repair, even alongside numeric
+sibling rates. Parameter changes are handled by the existing typed price contract; new semantics
+use reviewed provider vocabulary or an explicit representation limit. An extensible schema does
+not establish that an adapter discovered or correctly interpreted a new source option.
+
 ## Current coverage resources
 
 The versioned `/pricing/lookup/coverage.json` export is the snapshot-specific inventory. It

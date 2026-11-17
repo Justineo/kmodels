@@ -294,6 +294,8 @@ repeated predicates require the full evaluation.
 The UI derives status, missing conditions and visible rows from the same match result, and
 reevaluates at precise validity boundaries. A decimal bucket selects the published range; it does
 not invent a representative token count. Public query inputs retain exact decimal selectors.
+One contiguous published band also becomes a bucket. Its sole range resolves internally as
+fixed Price scope, preserving the original bounds rather than requiring a numerical usage input.
 
 The stored model-detail payload shares identical offer-matching data across that model's request
 IDs. Each ID retains its own rules and fixed selectors; the loader restores the complete matcher

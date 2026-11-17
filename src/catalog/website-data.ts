@@ -1409,14 +1409,13 @@ function decimalBuckets(
   dimension: PriceCondition["dimension"],
   ranges: WebsiteDecimalRange[],
 ): WebsiteDecimalBucket[] | undefined {
-  if (ranges.length < 2) return undefined;
   const partition = isWholeNumberDimension(dimension)
     ? integerPartition(ranges)
     : continuousPartition(ranges);
-  if (partition === undefined || partition.length < 2) return undefined;
+  if (partition === undefined || partition.length === 0) return undefined;
   return partition.map((range) => ({
     key: canonicalJsonKey(range),
-    label: decimalBucketLabel(range),
+    label: decimalBucketLabel(range, dimension),
     ...range,
   }));
 }
@@ -1427,6 +1426,7 @@ function integerPartition(ranges: WebsiteDecimalRange[]): WebsiteDecimalRange[] 
     upper: integerUpper(range.upper),
   }));
   if (normalized.some(({ lower, upper }) => upper !== undefined && upper < lower)) return undefined;
+  if (ranges.length === 1) return ranges;
   // Split at every predicate boundary, including boundaries inside wider regional
   // bands. Each choice is then wholly contained in or disjoint from every rule.
   const boundaries = [
@@ -1507,7 +1507,21 @@ function compareRangeLower(left: WebsiteDecimalRange, right: WebsiteDecimalRange
   );
 }
 
-function decimalBucketLabel({ lower, upper }: WebsiteDecimalRange): string {
+function decimalBucketLabel(
+  { lower, upper }: WebsiteDecimalRange,
+  dimension: PriceCondition["dimension"],
+): string {
+  if (lower === undefined && upper === undefined) return "≥ 0";
+  const context = dimension.namespace === "kmodels" && dimension.value === "context_tokens";
+  const format = (value: string) => {
+    // Pricing boundaries must stay exact; the model-limit formatter rounds compact numbers.
+    if (context && /^\d+000$/.test(value)) {
+      const places = value.length > 6 ? 6 : 3;
+      const fraction = value.slice(-places).replace(/0+$/, "");
+      return `${value.slice(0, -places)}${fraction === "" ? "" : `.${fraction}`}${places === 6 ? "M" : "K"}`;
+    }
+    return formatDecimal(value);
+  };
   if (
     lower !== undefined &&
     upper !== undefined &&
@@ -1515,15 +1529,20 @@ function decimalBucketLabel({ lower, upper }: WebsiteDecimalRange): string {
     lower.inclusive &&
     upper.inclusive
   )
-    return formatDecimal(lower.value);
-  if (lower?.value === "0" && lower.inclusive && upper !== undefined)
-    return `${upper.inclusive ? "≤" : "<"} ${formatDecimal(upper.value)}`;
+    return format(lower.value);
+  if (
+    upper !== undefined &&
+    (lower === undefined ||
+      (lower.value === "0" && (lower.inclusive || context)) ||
+      (context && lower.value === "1" && lower.inclusive))
+  )
+    return `${upper.inclusive ? "≤" : "<"} ${format(upper.value)}`;
   if (lower !== undefined && upper === undefined)
-    return `${lower.inclusive ? "≥" : ">"} ${formatDecimal(lower.value)}`;
+    return `${lower.inclusive ? "≥" : ">"} ${format(lower.value)}`;
   if (lower === undefined || upper === undefined) throw new Error("Incomplete decimal bucket");
-  return `${lower.inclusive ? "≥" : ">"} ${formatDecimal(lower.value)} and ${
+  return `${lower.inclusive ? "≥" : ">"} ${format(lower.value)} and ${
     upper.inclusive ? "≤" : "<"
-  } ${formatDecimal(upper.value)}`;
+  } ${format(upper.value)}`;
 }
 
 function offerStateSummary(offer: PricingOffer, modelRef: string | undefined): string {

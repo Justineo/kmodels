@@ -227,11 +227,14 @@ function tierConditions(label: string): SourcePriceFact["conditions"] {
 function tokenMeter(type: string, id: string): SourcePriceFact["meter"] | undefined {
   if (type === "input_token") return "input_text";
   if (type === "output_token") return "output_text";
-  if (type === "input_token_cache" || type === "input_token_cache_read") return "cache_read_text";
-  if (type === "input_token_cache_creation_5m") return "cache_write_text";
   if (type === "embedding_token") return /rerank/.test(id) ? "input_text" : "embedding";
   return undefined;
 }
+
+const cacheCreationTtls = new Map([
+  ["input_token_cache_creation_5m", 300],
+  ["input_token_cache_creation_1h", 3600],
+]);
 
 function marketMeters(
   type: string,
@@ -245,6 +248,19 @@ function marketMeters(
   | undefined {
   const token = tokenMeter(type, id);
   if (token !== undefined) return { meters: [token], unit: "million_tokens" };
+  if (type === "input_token_cache" || type === "input_token_cache_read")
+    return {
+      meters: ["cache_read_text"],
+      unit: "million_tokens",
+      conditions: { cache_mode: type === "input_token_cache" ? "implicit" : "explicit" },
+    };
+  const ttl = cacheCreationTtls.get(type);
+  if (ttl !== undefined)
+    return {
+      meters: ["cache_write_text"],
+      unit: "million_tokens",
+      conditions: { cache_mode: "explicit", cache_ttl_seconds: ttl },
+    };
   const textInput = ["text_input_token", "audio_text_input_token", "tts_input_token"];
   const textOutput = [
     "omni_text_output_token",
@@ -415,10 +431,7 @@ export function parseDashscopeMarket(input: SourceParseInput, value: unknown) {
             ...(price.timeBand === undefined || price.timeBand === "standard"
               ? {}
               : { billing_period: price.timeBand }),
-            ...(type === "input_token_cache" ? { cache_mode: "implicit" } : {}),
-            ...(type === "input_token_cache_read" || type === "input_token_cache_creation_5m"
-              ? { cache_mode: "explicit", cache_ttl_seconds: 300 }
-              : {}),
+            ...(type.startsWith("input_token_cache_creation_") ? { cache_mode: "explicit" } : {}),
           };
           if (
             mapping !== undefined &&
@@ -473,8 +486,12 @@ export function parseDashscopeMarket(input: SourceParseInput, value: unknown) {
             });
             input.onPricingReconciliation?.({
               disposition: "raw",
-              reason_code: "market_price_not_normalized",
-              sample: `${scopeKey}:${row.model}:${price.type}`,
+              reason_code: "unsupported_pricing_cell_preserved",
+              sample:
+                `${scopeKey}:${row.model}:${price.type}:${price.price} ${price.priceUnit}`.slice(
+                  0,
+                  256,
+                ),
             });
           }
           if (price.discount !== undefined) {
@@ -552,8 +569,11 @@ export function parseDashscopeMarket(input: SourceParseInput, value: unknown) {
         });
         input.onPricingReconciliation?.({
           disposition: normalized.length === tool.prices.length ? "normalized" : "raw",
-          reason_code: "market_tool_price",
-          sample: `${scopeKey}:${row.model}:${tool.type}`,
+          reason_code:
+            normalized.length === tool.prices.length
+              ? "market_tool_price"
+              : "unsupported_pricing_cell_preserved",
+          sample: `${scopeKey}:${row.model}:${tool.type}`.slice(0, 256),
         });
       }
     }

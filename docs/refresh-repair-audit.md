@@ -153,8 +153,20 @@ billing policy becoming unreadable. The native reconciliation reason and bounded
 even when accepted source bytes and a retained commercial partition are unchanged. Generic usage
 envelopes and unused SDK/promotion types are not monitored as pricing contracts.
 `unsupported_pricing_cell_preserved` identifies an owned published price cell retained as raw
-evidence and enters admission even when its canonical fallback is `unknown_meter`. Generic unknown
+evidence and enters admission even when its canonical fallback is `unknown_meter`. Reconciliation
+classifies that cell as unsupported and retains its bounded source sample in the diagnostic;
+the independent raw fact retains its original quote. A successful sibling rate or accepted
+publication cannot close this mapping gap. Generic unknown
 meters without this source-owned diagnostic remain insufficient to establish a parser defect.
+
+Repair of a new pricing option must distinguish changed parameter values from new billing
+semantics and from a limitation of the shared representation. Reuse typed conditions and provider
+vocabulary when they express the source exactly. Verify the source amount, denomination, unit,
+applicability correlations and validity through assembly and the public/UI consumers; preservation
+as raw alone is not a completed mapping. If exact representation is unavailable, name the missing
+semantic capability and keep the quote and investigation explicitly unresolved. Specific source
+fixtures remain necessary evidence, but fixed model names, tariff keys or parameter values do
+not establish that the shared model supports future options.
 
 A public source or dependency with two consecutive HTTP 404/410 failures enters relocation review.
 Native status is authoritative; prose matching exists only for older reports without that field.

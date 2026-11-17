@@ -146,6 +146,18 @@ function modelInputs(
   model: PublishedModel | undefined,
   inputIndex: PricingInputIndex,
 ): PricingInputIndex {
+  const scoped = [...inputIndex.values()].flat();
+  if (scoped.some(({ model_refs }) => model_refs !== undefined))
+    inputIndex = indexPricingInputs(
+      scoped.flatMap((fact) => {
+        const { model_refs, ...input } = fact;
+        return model_refs === undefined
+          ? [fact]
+          : model !== undefined && model_refs.includes(model.uid)
+            ? [input]
+            : [];
+      }),
+    );
   const paths = model?.api_endpoints?.map((e) => e.path) ?? [];
   const realtime =
     model?.delivery_modes?.includes("realtime") === true ||
@@ -216,8 +228,9 @@ function partitionOffer(
           },
         ];
   });
+  const allowAggregateCacheWrites = allowsAggregateCacheWrites(offer);
   const terms = offer.terms.flatMap((term) =>
-    partitionTerm(term, mechanism, hasCache, input, inputIndex),
+    partitionTerm(term, mechanism, hasCache, input, inputIndex, allowAggregateCacheWrites),
   );
   if (states.length === 0 && terms.length === 0) return;
   return {
@@ -237,6 +250,7 @@ function partitionTerm(
   hasCache: boolean,
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
+  allowAggregateCacheWrites: boolean,
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
     const variants = term.variants.flatMap((variant) => partitionRaw(variant, mechanism));
@@ -252,7 +266,15 @@ function partitionTerm(
       applicability,
       observation: withApplicability(variant.observation, applicability),
     };
-    const charge_binding = modelBinding(term.meter, next, mechanism, hasCache, input, inputIndex);
+    const charge_binding = modelBinding(
+      term.meter,
+      next,
+      mechanism,
+      hasCache,
+      input,
+      inputIndex,
+      allowAggregateCacheWrites,
+    );
     const selector_sources = selectorSources(next.applicability, mechanism, inputIndex);
     return [
       {
@@ -300,6 +322,7 @@ function modelBinding(
   hasCache: boolean,
   input: AtomicProviderPricing,
   inputIndex: PricingInputIndex,
+  allowAggregateCacheWrites: boolean,
 ): ChargeBinding | undefined {
   if (
     meter.namespace === "provider" &&
@@ -413,7 +436,7 @@ function modelBinding(
       return quantityBinding(
         signal,
         aggregation,
-        directMethods(signal, cacheWriteKeys, inputIndex),
+        cacheWriteMethods(variant.applicability, inputIndex, allowAggregateCacheWrites),
         variant,
       );
     }
@@ -642,6 +665,53 @@ const cacheWriteKeys = [
   "anthropic.cache_creation_input_tokens",
   "anthropic.stream.cache_creation_input_tokens",
 ];
+
+function cacheWriteTtl(applicability: PriceApplicability): string | undefined {
+  const values = applicability.any_of.map(({ all_of }) => {
+    const condition = all_of.find(
+      ({ dimension }) =>
+        dimension.namespace === "kmodels" && dimension.value === "cache_ttl_seconds",
+    );
+    return condition?.kind === "decimal_range" &&
+      condition.lower?.inclusive &&
+      condition.upper?.inclusive &&
+      condition.lower.value === condition.upper.value
+      ? condition.lower.value
+      : undefined;
+  });
+  return values.every((value) => value === values[0]) ? values[0] : undefined;
+}
+
+function allowsAggregateCacheWrites(offer: AtomicPricingOffer): boolean {
+  return !offer.terms.some((term) => {
+    if (term.kind === "raw") return term.term_key.startsWith("market:input_token_cache_creation_");
+    return (
+      term.kind === "rate" &&
+      term.meter.namespace === "kmodels" &&
+      term.meter.value === "cache_write_text" &&
+      term.variants.some(({ applicability }) => cacheWriteTtl(applicability) !== "300")
+    );
+  });
+}
+
+function cacheWriteMethods(
+  applicability: PriceApplicability,
+  inputIndex: PricingInputIndex,
+  allowAggregate: boolean,
+): MethodsAndFacts {
+  const ttl = cacheWriteTtl(applicability);
+  const suffix = ttl === "300" ? "5m" : ttl === "3600" ? "1h" : undefined;
+  if (suffix === undefined) return emptyMethods();
+  const exactKeys = ["chat", "native", "responses", "anthropic"].flatMap((protocol) => [
+    `${protocol}.cache_creation_${suffix}_input_tokens`,
+    `${protocol}.stream.cache_creation_${suffix}_input_tokens`,
+  ]);
+  return directMethods(
+    standardSignal("cache_write_tokens"),
+    allowAggregate && ttl === "300" ? [...exactKeys, ...cacheWriteKeys] : exactKeys,
+    inputIndex,
+  );
+}
 const batchInputKeys = ["batch.chat.input_tokens"];
 const batchOutputKeys = ["batch.chat.output_tokens"];
 

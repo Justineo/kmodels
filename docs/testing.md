@@ -154,6 +154,16 @@ after each test, including failures.
   identifiers must never enter samples, unrelated root extensions must be stripped and signaled,
   and malformed owned semantics must reject the complete provider candidate.
 
+## Pricing evolution
+
+Shared pricing evolution checks introduce synthetic provider-owned meters, units, dimensions and
+values through canonical validation, export, public lookup and UI projection. Vary vocabulary names,
+amounts, numeric bounds and option cardinality rather than declaring particular commercial values
+permanent. Include missing and unsupported selections and public/UI matching parity. Separately,
+adapter regressions send a previously unmapped owned quote through raw retention, reconciliation
+and repair admission while preserving known siblings. Native fixtures still establish the actual
+provider mapping; generic representation tests cannot prove its source interpretation.
+
 ## Pricing interaction performance
 
 `vp run test:pricing-performance` builds a production browser harness around the actual

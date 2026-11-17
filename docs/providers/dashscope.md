@@ -117,8 +117,30 @@ Console-only regional meters and literal IDs enter the same price and inference-
 Tier labels use the pricing guide's decimal K/M billing convention. The console's power-of-two
 `rangeStart`/`rangeEnd` UI metadata does not override those published billing labels.
 
+Cache creation maps the reviewed `input_token_cache_creation_5m` and
+`input_token_cache_creation_1h` meters to separate 300- and 3,600-second conditions on
+`cache_write_text`. Explicit cache reads have no creation-TTL restriction: the
+[Qwen4 explicit-cache guide](https://www.alibabacloud.com/help/en/model-studio/explicit-cache-qwen4.md)
+publishes one read tariff and separate creation tiers. Unreviewed creation suffixes remain
+raw, with their amount, denominator and explicit-cache scope retained; no TTL or multiplier
+is guessed. A future creation meter therefore cannot make implicit-cache prices incomplete.
+
+That optional guide also owns Qwen4's per-TTL usage. Read its `View cache usage` protocol
+tabs independently: Chat uses `prompt_tokens_details.cache_creation.ephemeral_*_input_tokens`,
+Responses uses `input_tokens_details.cache_write_tokens_details.ttl_*_tokens`, and Anthropic
+uses `cache_creation.ephemeral_*_input_tokens`. These inputs apply only to the exact
+`qwen4-max` identity. Chat streaming requires the documented final usage chunk; Responses
+streaming uses `response.completed`. This page does not establish a native DashScope or
+Anthropic streaming locator. Multiple creation tiers require their own TTL-specific counters;
+aggregate creation counters remain eligible only for the legacy single-5-minute tariff.
+Missing companion evidence removes the optional acquisition binding while preserving prices.
+
 Every console price cell has a normalized or retained raw disposition. Reviewed token, cache,
 Batch File, image, video, audio and embedding meters preserve their native amounts and units.
+Unmapped owned price cells also emit `unsupported_pricing_cell_preserved`, independently of
+whether the reason is a new meter, unit or unresolved applicability. Shared reconciliation keeps
+these gaps diagnostic and eligible for repair during accepted or unchanged refreshes. Retaining
+the raw quote does not complete that mapping, and numeric sibling prices remain usable.
 Tool prices have independent service subjects with exact model, region, deployment and API
 compatibility; a known per-call quote does not require an invented runtime counter binding.
 Blank tool units, Batch Chat accounting, combined text/audio output, ambiguous unified Omni
@@ -150,9 +172,17 @@ it to Frankfurt or derive either cache price from a generic multiplier.
 The historical `unpublished_cache_read` key means the accepted collection lacks an exact price;
 it does not establish that Alibaba has not published one. Display it as a missing catalog price,
 not an extra user-selectable condition. Known ordinary input/output rates remain usable.
+An unqualified Beijing guide row is broader than a console quote explicitly scoped to Chinese
+mainland. The quote does not close a missing cache claim for that broader row. The
+[Beijing access guide](https://www.alibabacloud.com/help/en/model-studio/beijing-access-information)
+also distinguishes Chinese mainland from China Elastic Zone, so a missing deployment scope
+cannot be filled from the single Beijing filter currently collected by the market adapter.
+Preserve this scope uncertainty until the source supplies an exact bridge.
 
 A parsed numeric context band is one condition, not both a token range and an independently
 selectable tier label. Unparsed labels remain categorical conditions; no numeric range is guessed.
+One parsed band is fixed browsing scope, displayed as `≤ 1M` when its exact predicate is
+`0 < tokens ≤ 1M`; this does not establish the caller's actual input quantity.
 
 Literal price-table associations survive removal of optional API/accounting guides. Source refresh
 replaces the captured associations, so removing a model's price row withdraws its mapping even if a

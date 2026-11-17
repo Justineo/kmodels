@@ -7,6 +7,13 @@ import {
 import { manifests } from "../src/catalog/manifests.ts";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { dashscopeInferenceFixture } from "./dashscope-inference-fixture.ts";
+import { extractDashscopePricingInputs } from "../src/catalog/dashscope-accounting.ts";
+import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
+import { catalogRepairCandidates } from "../src/catalog/catalog-repair.ts";
+import {
+  sourcePricingReconciliation,
+  type PricingReconciliationItem,
+} from "../src/catalog/pricing-reconciliation.ts";
 import {
   sourcePriceFactSchema,
   sourceRawPricingFactSchema,
@@ -24,6 +31,261 @@ const input = {
 const fixture: unknown = JSON.parse(
   await readFile(new URL("./fixtures/dashscope/market-prices.json", import.meta.url), "utf8"),
 );
+
+it.each([
+  { type: "new_charge_alpha", priceUnit: "Per 1M tokens", tool: false },
+  { type: "new_charge_beta", priceUnit: "Per 1M tokens", tool: false },
+  { type: "input_token", priceUnit: "Per new billing unit", tool: false },
+  { type: "new_service", priceUnit: "Per new service unit", tool: true },
+])(
+  "routes an owned unmapped quote to repair while preserving known siblings: $type / $priceUnit",
+  ({ type, priceUnit, tool }) => {
+    const items: PricingReconciliationItem[] = [];
+    const parsed = parseDashscopeMarket(
+      { ...input, onPricingReconciliation: (item) => items.push(item) },
+      {
+        market: [
+          {
+            region: "ap-southeast-1",
+            scope: "international",
+            models: [
+              {
+                model: "new-public-model",
+                scope: "PUBLIC",
+                serviceSites: ["international"],
+                supports: { inference: true },
+                prices: [
+                  {
+                    type: "output_token",
+                    priceName: "Output",
+                    price: "8.3",
+                    priceUnit: "Per 1M tokens",
+                  },
+                  ...(tool
+                    ? []
+                    : [{ type, priceName: "New provider tariff", price: "2.7", priceUnit }]),
+                ],
+                builtInToolMultiPrices: tool
+                  ? [
+                      {
+                        type,
+                        name: "New provider tariff",
+                        supportedApi: "Responses API",
+                        prices: [{ price: "2.7", priceUnit, currency: "USD" }],
+                      },
+                    ]
+                  : [],
+              },
+            ],
+          },
+        ],
+      },
+    );
+    const model = parsed.models[0];
+    if (!model) throw new Error("Missing model");
+    expect(model.price_facts).toMatchObject([{ meter: "output_text", price: "8.3" }]);
+    const raw = tool
+      ? parsed.commercial.flatMap(({ raw_price_facts }) => raw_price_facts)
+      : model.raw_price_facts;
+    expect(raw).toMatchObject([
+      {
+        conditions: { region: "Singapore", deployment_scope: "International" },
+        raw: {
+          amount: "2.7",
+          denomination: "USD",
+          label: "New provider tariff",
+          unit: priceUnit,
+          meter: type,
+        },
+      },
+    ]);
+    const pricing_reconciliation = sourcePricingReconciliation(parsed.models, items, true);
+    expect(pricing_reconciliation.diagnostic_count).toBe(1);
+    expect(pricing_reconciliation.diagnostics[0]?.sample).toContain(type);
+    for (const outcome of ["changed", "unchanged"]) {
+      const candidates = catalogRepairCandidates({
+        schema_version: 2,
+        generated_at: input.observedAt,
+        providers: [
+          {
+            provider_id: "dashscope",
+            signals: [],
+            attempt: {
+              outcome: "accepted",
+              pricing: { outcome: "accepted" },
+              sources: [{ source_id: source.id, outcome, pricing_reconciliation }],
+            },
+          },
+        ],
+      });
+      expect(candidates).toMatchObject([
+        { source_id: source.id, trigger: "source_pricing_structure" },
+      ]);
+      expect(candidates[0]?.message).toContain(type);
+    }
+  },
+);
+
+it("normalizes each published cache TTL and keeps reads independent of creation TTL", async () => {
+  const market: unknown = JSON.parse(
+    await readFile(new URL("./fixtures/dashscope/qwen4-market.json", import.meta.url), "utf8"),
+  );
+  const parsed = parseDashscopeMarket(input, { market });
+  for (const model of parsed.models) {
+    expect(model.raw_price_facts).toEqual([]);
+    for (const rate of model.price_facts.filter(({ meter }) => meter === "cache_read_text"))
+      expect(rate.conditions).not.toHaveProperty("cache_ttl_seconds");
+  }
+  expect(
+    parsed.models.flatMap(({ price_facts }) =>
+      price_facts
+        .filter(({ meter }) => meter === "cache_write_text")
+        .map(({ price, conditions }) => [conditions.region, conditions.cache_ttl_seconds, price]),
+    ),
+  ).toEqual([
+    ["Singapore", 300, "1.875"],
+    ["Singapore", 3600, "3"],
+    ["Germany (Frankfurt)", 300, "1.767"],
+    ["Germany (Frankfurt)", 3600, "2.827"],
+  ]);
+});
+
+it("retains cache creation evidence when the duration semantics are unreviewed", () => {
+  const parsed = parseDashscopeMarket(input, {
+    market: [
+      {
+        region: "ap-southeast-1",
+        scope: "international",
+        models: [
+          {
+            model: "future-model",
+            scope: "PUBLIC",
+            serviceSites: ["international"],
+            supports: { inference: true },
+            prices: [
+              {
+                type: "input_token_cache_creation_custom",
+                priceName: "Explicit Cache Creation: provider-defined retention",
+                price: "4",
+                priceUnit: "Per 1M tokens",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  expect(parsed.models[0]?.raw_price_facts).toMatchObject([
+    {
+      reason: "unknown_meter",
+      conditions: {
+        cache_mode: "explicit",
+        region: "Singapore",
+        deployment_scope: "International",
+      },
+      raw: { amount: "4", unit: "Per 1M tokens" },
+    },
+  ]);
+  expect(parsed.models[0]?.raw_price_facts[0]?.conditions).not.toHaveProperty("cache_ttl_seconds");
+});
+
+it("reads TTL-specific quantities only from their own protocol usage section", async () => {
+  const body = await readFile(
+    new URL("./fixtures/dashscope/qwen4-cache.md", import.meta.url),
+    "utf8",
+  );
+  const url = "https://www.alibabacloud.com/help/en/model-studio/explicit-cache-qwen4.md";
+  const facts = extractDashscopePricingInputs([{ url, body }], source.id);
+  expect(
+    new Set(
+      facts
+        .filter(({ key }) => key.endsWith("1h_input_tokens"))
+        .map(({ key, locator }) => [key, locator.value]),
+    ),
+  ).toEqual(
+    new Set([
+      [
+        "chat.cache_creation_1h_input_tokens",
+        "/usage/prompt_tokens_details/cache_creation/ephemeral_1h_input_tokens",
+      ],
+      [
+        "chat.stream.cache_creation_1h_input_tokens",
+        "/usage/prompt_tokens_details/cache_creation/ephemeral_1h_input_tokens",
+      ],
+      [
+        "responses.cache_creation_1h_input_tokens",
+        "/usage/input_tokens_details/cache_write_tokens_details/ttl_1h_tokens",
+      ],
+      [
+        "responses.stream.cache_creation_1h_input_tokens",
+        "/response/usage/input_tokens_details/cache_write_tokens_details/ttl_1h_tokens",
+      ],
+      [
+        "anthropic.cache_creation_1h_input_tokens",
+        "/usage/cache_creation/ephemeral_1h_input_tokens",
+      ],
+    ]),
+  );
+  const withoutResponses = extractDashscopePricingInputs(
+    [{ url, body: body.replace(/<Tab title="OpenAI compatible Responses">[\s\S]*?<\/Tab>/, "") }],
+    source.id,
+  );
+  expect(withoutResponses.some(({ key }) => key.startsWith("responses."))).toBe(false);
+  expect(withoutResponses.some(({ key }) => key === "chat.cache_creation_1h_input_tokens")).toBe(
+    true,
+  );
+  expect(facts.some(({ key }) => key.startsWith("native."))).toBe(false);
+  expect(facts.every(({ model_refs }) => model_refs?.includes("dashscope/qwen4-max"))).toBe(true);
+  const findings: unknown[] = [];
+  expect(
+    extractDashscopePricingInputs(
+      [{ url, body: body.replace("## View cache usage", "## Usage examples") }],
+      source.id,
+      (finding) => findings.push(finding),
+    ),
+  ).toEqual([]);
+  expect(findings.length).toBeGreaterThan(0);
+});
+
+it("does not transfer Qwen4 cache counters to another model with the same tariff shape", async () => {
+  const market: unknown = JSON.parse(
+    await readFile(new URL("./fixtures/dashscope/qwen4-market.json", import.meta.url), "utf8"),
+  );
+  const model = parseDashscopeMarket(input, { market }).models[0];
+  if (!model) throw new Error("Missing Qwen4 market fixture");
+  const models = [
+    model,
+    { ...model, uid: "dashscope/unrelated-model", model_id: "unrelated-model" },
+  ];
+  const body = await readFile(
+    new URL("./fixtures/dashscope/qwen4-cache.md", import.meta.url),
+    "utf8",
+  );
+  const pricing_inputs = extractDashscopePricingInputs(
+    [{ url: "https://www.alibabacloud.com/help/en/model-studio/explicit-cache-qwen4.md", body }],
+    source.id,
+  );
+  const partition = assembleParsedProviderPricing(
+    "dashscope",
+    input.observedAt,
+    [{ source, models, pricing_inputs }],
+    models,
+  );
+  const books = partition?.books.filter(({ scope }) => scope.kind === "models");
+  expect(books).toHaveLength(2);
+  for (const book of books ?? []) {
+    const writes = book.offers.flatMap(({ terms }) =>
+      terms.flatMap((term) =>
+        term.kind === "rate" && term.meter.value === "cache_write_text" ? term.variants : [],
+      ),
+    );
+    expect(writes).toHaveLength(2);
+    const methods = writes.flatMap(({ charge_binding }) => charge_binding?.quantity_methods ?? []);
+    expect(methods.length > 0).toBe(
+      book.scope.kind === "models" && book.scope.model_refs.includes("dashscope/qwen4-max"),
+    );
+  }
+});
 
 it("keeps regional cache tariffs, scope-specific prices and decimal billing tiers", () => {
   const parsed = parseDashscopeMarket(input, { market: fixture });
