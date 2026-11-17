@@ -1,0 +1,28 @@
+> ## AI Agent Context
+> - Full documentation index: https://aistudio.google.com/llms.txt
+
+# Context caching
+
+## Implicit caching  {% id="implicit-caching" %}
+
+Implicit caching is enabled by default for all Gemini 2.5 and newer models.
+
+| Model | Min token limit |
+| :--- | :--- |
+| Gemini 4 Carbon | 4,096 |
+| Gemini 3.8 Flash | 4,096 |
+
+## Explicit caching  {% id="explicit-caching" %}
+
+Explicit context caching is currently in Beta. Endpoints and SDK methods are
+available under `v1beta`. Explicit caching is not supported for Gemini 4 models.
+
+### Generate content using a cache  {% id="generate-content" %}
+
+  {% tab label="REST" %}
+  ```shell
+  echo '{"model": "models/gemini-3.8-flash"}' > request.json
+  curl -X POST "https://generativelanguage.googleapis.com/v1beta/cachedContents?key=$GEMINI_API_KEY" -d @request.json > cache.json
+  curl -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=$GEMINI_API_KEY" -d '{"cachedContent":"some-cache"}'
+  ```
+  {% /tab %}

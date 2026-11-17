@@ -123,6 +123,19 @@ table and REST route. The engine has no inferred model-specific rate: STT remain
 metered provider resource, so admitting an engine cannot duplicate that tariff. Internal service
 configuration labels alone do not establish additional TTS/STT model identities.
 
+The same source owns optional Responses effort and exact API cache-mode claims. For Responses
+effort, the named reasoning summary row must agree with the public language-model registry's
+options and default, and an owned Responses request or a named text-generation route must bind
+the exact model. A documented fallback is shown as a qualification. For example, the Grok 4.5
+fallback does not advertise a distinct xhigh effort level. Multi-agent controls describe a different
+effect and are not part of this claim. The registry alone cannot establish Chat Completions effort.
+
+The cache guide's automatic-prefix and language-model support declarations are joined to exact
+Chat Completions or Responses requests in its API-specific sections. A routing hint alone does
+not establish caching, a cache object mode or a hit. These facts use the complete source documents'
+URLs and hashes. Conflicting effort options withhold detail for the affected model and leave
+independent pricing, cache and identity observations available.
+
 ## Tool-calling evidence
 
 The [Models page](https://docs.x.ai/developers/models) payload's

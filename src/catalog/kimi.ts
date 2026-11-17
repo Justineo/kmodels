@@ -3,6 +3,7 @@ import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody, type LinkedBundle } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { markdownProse } from "./markdown.ts";
+import type { CapabilityStatement } from "./model-capability-details.ts";
 import {
   extractKimiCommercialFacts,
   bindKimiBatchPrices,
@@ -21,6 +22,11 @@ import type {
   SourceCommercialPricingFact,
 } from "./pricing-source.ts";
 import { assertItemCount, recognizeItems } from "./source-contract.ts";
+import {
+  addCapabilityDetailGroup,
+  capabilityDetailFinding,
+  capabilityDocumentEvidence,
+} from "./source-capability-details.ts";
 import { unknownCapabilities } from "./schema.ts";
 import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 
@@ -86,6 +92,7 @@ const propertiesSchema = z.object({ properties: z.record(z.string(), z.unknown()
 const referenceSchema = z.object({ $ref: refSchema });
 const modelPropertySchema = z.object({ enum: z.array(modelIdSchema).min(1) });
 const enumSchema = z.object({ enum: z.array(z.string()).min(1) });
+const effortPropertySchema = enumSchema.extend({ default: z.string().optional() });
 const maxCompletionSchema = z.object({
   type: z.literal("integer"),
   description: z.string().min(1),
@@ -321,6 +328,8 @@ function requestFacts(
   ids: string[];
   reasoning: boolean;
   effort: boolean;
+  effortProperty: unknown;
+  cacheOptions: unknown;
   outputLimits: { names: string[]; max: number }[];
 } {
   const component = schemas[componentName(ref)];
@@ -363,19 +372,212 @@ function requestFacts(
   const efforts = effortClaim === undefined ? undefined : enumSchema.parse(effortClaim).enum;
   if (efforts !== undefined && !["low", "high", "max"].every((value) => efforts.includes(value)))
     throw new Error(`Kimi OpenAPI request ${ref} changed reasoning effort`);
+  const effort = efforts !== undefined;
   const thinkingClaim = ownProperties.thinking ?? common.thinking;
   const reasoning =
     thinkingClaim === undefined
-      ? efforts !== undefined
+      ? effort
       : enumSchema.parse(properties(thinkingClaim).type).enum.includes("enabled");
   if (thinkingClaim !== undefined && !reasoning)
     throw new Error(`Kimi OpenAPI request ${ref} changed thinking schema`);
   return {
     ids,
     reasoning,
-    effort: efforts !== undefined,
+    effort,
+    effortProperty: effortClaim,
+    cacheOptions: ownProperties.prompt_cache_options ?? common.prompt_cache_options,
     outputLimits: outputLimits(common.max_completion_tokens),
   };
+}
+
+const routeRequestSchema = z.object({
+  post: z.object({
+    requestBody: z.object({
+      content: z.object({
+        "application/json": z.object({ schema: referenceSchema }),
+      }),
+    }),
+  }),
+});
+const kimiDetailRoutes = [
+  { key: "chat", path: chatPath, label: "Chat Completions", field: "reasoning_effort" },
+  { key: "responses", path: "/v1/responses", label: "Responses", field: "reasoning" },
+  {
+    key: "messages",
+    path: "/anthropic/v1/messages",
+    label: "Anthropic Messages",
+    field: "output_config",
+  },
+] as const;
+
+const kimiImplicitCache = z.object({
+  properties: z.object({ mode: z.object({ enum: z.tuple([z.literal("implicit")]) }) }),
+});
+
+function applyKimiCapabilityDetails(
+  input: Input,
+  models: ProviderModel[],
+  spec: z.infer<typeof openApiSchema>,
+  facts: ReadonlyMap<string, ReturnType<typeof requestFacts>>,
+  mapping: Record<string, string>,
+  document: LinkedBundle["index"],
+  cacheGuide: LinkedBundle["index"] | undefined,
+): void {
+  const market = spec.servers[0]?.url === "https://api.moonshot.cn" ? "China" : "international";
+  const cacheProse = markdownProse(cacheGuide?.body ?? "");
+  const cacheList = [
+    ...cacheProse.matchAll(/^> (.+?) (?:support Cache Write\.|支持 Cache Write。)$/gm),
+  ];
+  const cacheListLine = cacheList.length === 1 ? cacheList[0]?.[0] : undefined;
+  const cacheIds = [...(cacheListLine ?? "").matchAll(/\x60([a-z0-9.-]+)\x60/g)].map((m) => m[1]);
+  const automatic = cacheProse
+    .split("\n")
+    .find((line) =>
+      /^(?:The Chat Completions API and Responses API write to the cache with a \x60[1-9]\d*[mh]\x60 TTL by default when \x60prompt_cache_options\x60 is omitted\.|Chat Completions API 和 Responses API 在省略 \x60prompt_cache_options\x60 时默认按 \x60[1-9]\d*[mh]\x60 TTL 写入缓存。)/.test(
+        line,
+      ),
+    );
+  const messagesAutomatic = cacheProse
+    .split("\n")
+    .find((line) =>
+      /^(?:The Anthropic Messages API uses the top-level \x60cache_control\x60 field to set the cache TTL\. When the field is omitted, cache reads and writes use the \x60[1-9]\d*[mh]\x60 TTL by default[;.]|Anthropic Messages API 使用顶层 \x60cache_control\x60 设置缓存 TTL。省略该字段时，默认按 \x60[1-9]\d*[mh]\x60 TTL 读写缓存[；。])/.test(
+        line,
+      ),
+    );
+  const modeOnly = cacheProse
+    .split("\n")
+    .find((line) =>
+      /^\x60prompt_cache_options\.mode\x60 (?:currently supports only \x60implicit\x60|当前仅支持 \x60implicit\x60)/.test(
+        line,
+      ),
+    );
+  const cache = new Map<ProviderModel, Map<string, CapabilityStatement[]>>();
+  for (const route of kimiDetailRoutes) {
+    const claim = route.key + "_reasoning_effort";
+    try {
+      const operation = routeRequestSchema.safeParse(spec.paths[route.path]);
+      const request = operation.success
+        ? resolvedProperties(
+            operation.data.post.requestBody.content["application/json"].schema.$ref,
+            spec.components.schemas,
+          )
+        : undefined;
+      const nested = propertiesSchema.safeParse(request?.[route.field]);
+      const scope = `Kimi ${route.label} API (${market}, POST ${route.path}).`;
+      for (const model of models) {
+        if (!model.api_endpoints?.some(({ path }) => path === route.path)) continue;
+        const ref = mapping[model.model_id];
+        const chat = ref === undefined ? undefined : facts.get(ref);
+        const cacheOptions =
+          route.key === "chat" ? chat?.cacheOptions : request?.prompt_cache_options;
+        const implicit =
+          route.key === "messages"
+            ? messagesAutomatic !== undefined &&
+              propertiesSchema.safeParse(request?.cache_control).success
+            : automatic !== undefined &&
+              modeOnly !== undefined &&
+              kimiImplicitCache.safeParse(cacheOptions).success;
+        if (implicit && cacheIds.includes(model.model_id)) {
+          const routes = cache.get(model) ?? new Map<string, CapabilityStatement[]>();
+          const statements: CapabilityStatement[] = [
+            {
+              kind: "prompt_cache",
+              mode: "implicit",
+              supported: true,
+              scope: scope + " Automatic prefix caching is enabled by default.",
+            },
+          ];
+          if (route.key !== "messages")
+            statements.push({
+              kind: "prompt_cache",
+              mode: "explicit",
+              supported: false,
+              scope: scope + " The request cache-mode parameter supports implicit placement only.",
+            });
+          routes.set(route.key, statements);
+          cache.set(model, routes);
+        }
+        const field =
+          route.key === "chat"
+            ? chat?.effortProperty
+            : nested.success
+              ? nested.data.properties.effort
+              : undefined;
+        if (field === undefined) continue;
+        const effort = effortPropertySchema.safeParse(field);
+        if (
+          !effort.success ||
+          (effort.data.default !== undefined && !effort.data.enum.includes(effort.data.default))
+        ) {
+          capabilityDetailFinding(input, claim);
+          continue;
+        }
+        const fieldPath = route.key === "chat" ? route.field : route.field + ".effort";
+        addCapabilityDetailGroup(input, model, {
+          claim,
+          statements: [
+            {
+              kind: "reasoning_effort",
+              scope,
+              supported_values: effort.data.enum,
+              ...(effort.data.default === undefined ? {} : { default_value: effort.data.default }),
+            },
+          ],
+          evidence: [
+            capabilityDocumentEvidence(
+              input,
+              document,
+              `POST ${route.path} / ${fieldPath}; model ${model.model_id}`,
+              JSON.stringify({ enum: effort.data.enum, default: effort.data.default }),
+            ),
+          ],
+        });
+      }
+    } catch {
+      capabilityDetailFinding(input, claim);
+    }
+  }
+  if (!cacheGuide || !cacheListLine) return;
+  for (const model of models.filter(({ model_id }) => cacheIds.includes(model_id)))
+    for (const { claim, keys, lines } of [
+      {
+        claim: "chat_responses_cache_modes",
+        keys: ["chat", "responses"],
+        lines: [automatic, modeOnly],
+      },
+      {
+        claim: "messages_cache_modes",
+        keys: ["messages"],
+        lines: [messagesAutomatic],
+      },
+    ]) {
+      const routes = cache.get(model);
+      if (keys.some((key) => !routes?.has(key)) || lines.some((line) => !line)) {
+        capabilityDetailFinding(input, claim);
+        continue;
+      }
+      addCapabilityDetailGroup(input, model, {
+        claim,
+        statements: keys.flatMap((key) => routes?.get(key) ?? []),
+        evidence: [
+          capabilityDocumentEvidence(
+            input,
+            document,
+            "Owned model IDs, operations and request cache options",
+            [
+              model.model_id,
+              ...kimiDetailRoutes.filter(({ key }) => keys.includes(key)).map(({ path }) => path),
+            ].join("\n"),
+          ),
+          capabilityDocumentEvidence(
+            input,
+            cacheGuide,
+            "Cache Write supported models and API request settings",
+            [cacheListLine, ...lines].join("\n"),
+          ),
+        ],
+      });
+    }
 }
 
 export function parseKimiOpenApi(input: Input): SourceParseResult {
@@ -389,7 +591,8 @@ export function parseKimiOpenApi(input: Input): SourceParseResult {
         ({ url }) => url === new URL("/docs/guide/context-caching.md", input.source.url).href,
       )
     : [];
-  const cacheGuide = cacheGuides.length === 1 ? cacheGuides[0]?.body : undefined;
+  const cacheDocument = cacheGuides.length === 1 ? cacheGuides[0] : undefined;
+  const cacheGuide = cacheDocument?.body;
   const extractor = input.source.extractor;
   if (extractor.kind !== "kimi-openapi") throw new Error("Wrong kimi-openapi extractor");
   if (spec.servers[0]?.url !== extractor.baseUrl)
@@ -474,6 +677,15 @@ export function parseKimiOpenApi(input: Input): SourceParseResult {
       status: "active",
     } satisfies ProviderModel;
   });
+  applyKimiCapabilityDetails(
+    input,
+    models,
+    spec,
+    facts,
+    mapping,
+    bundle.success ? bundle.data.index : { url: input.source.url, body: input.body },
+    cacheDocument,
+  );
   return {
     models: bounded(input, "kimi-openapi", models),
     pricing_inputs: accounting.pricingInputs,

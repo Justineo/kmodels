@@ -7403,7 +7403,7 @@ describe("xAI adapter", () => {
 
   it("cross-checks official prices independently of unused model API reference fields", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v29");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v30");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);
@@ -12099,7 +12099,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/openapi.json",
       allowedHosts: ["platform.kimi.ai"],
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-openapi-v10",
+      extractorVersion: "kimi-openapi-v11",
       fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
     });
     expect(source("kimi-china-openapi")).toMatchObject({

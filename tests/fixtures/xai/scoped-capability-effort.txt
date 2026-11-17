@@ -1,0 +1,27 @@
+===/developers/model-capabilities/text/reasoning===
+# Reasoning
+
+> Such models, such as `grok-4.5`, requests with `"xhigh"` are treated as `"high"`.
+
+```bash
+curl https://api.x.ai/v1/responses -d '{"model": "grok-4.7", "reasoning": {"effort": "high"}}'
+```
+
+### Summary table
+
+| Model | `reasoning` parameter | Behavior |
+|---|---|---|
+| `grok-4.7` | `reasoning.effort`: `"low"` / `"medium"` / `"high"` (default) / `"xhigh"` | Controls reasoning depth (cannot be disabled) |
+| `grok-4.6` | `reasoning.effort`: `"low"` / `"medium"` / `"high"` (default) / `"xhigh"` | Controls reasoning depth (cannot be disabled) |
+| `grok-4.5` | `reasoning.effort`: `"low"` / `"medium"` / `"high"` (default) | Controls reasoning depth (cannot be disabled) |
+
+===/developers/advanced-api-usage/watermarking===
+# Output Watermarking
+
+## Which outputs are watermarked
+
+* grok-4.7
+* grok-4.6
+* grok-4.5
+
+Watermarking applies to outputs from every text generation API, including the Responses API and the Chat Completions API.

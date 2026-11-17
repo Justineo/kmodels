@@ -116,6 +116,20 @@ Markdown tables accept one or more hyphens in each delimiter cell, with optional
 Compact separators preserve catalog, official-tool and release identities; header and row widths
 and the semantic labels remain validated.
 
+The international and China OpenAPI documents each own scoped reasoning effort for their exact
+Chat Completions, Responses and Anthropic Messages requests. Preserve the native enum and the
+explicit default separately. The Chat discriminator and component Model IDs must agree.
+Responses and Messages use their independent operation model declarations. An older model's
+thinking toggle does not provide native effort values.
+
+The same market's cache guide owns its exact Cache Write model list, default placement, and the
+implicit-only Chat Completions and Responses request mode. Those two APIs share one cache claim
+because the guide states a common mode contract. Messages has a separate claim because it uses
+a distinct top-level cache setting and does not document an explicit cache-object exclusion.
+The OpenAPI request and the guide must agree. Missing evidence for one cache claim does not
+withdraw the other, and one market's source cannot qualify the other market. A cache routing key,
+TTL, or known cache tariff does not establish a cache mode or guarantee a hit.
+
 ## Current public price book
 
 ### Inference model ID pricing

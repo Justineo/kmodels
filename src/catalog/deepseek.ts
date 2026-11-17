@@ -3,6 +3,11 @@ import { z } from "zod";
 import { extractDeepseekPricingInputs } from "./deepseek-accounting.ts";
 import { deepseekApiDocument } from "./deepseek-api-document.ts";
 import {
+  addCapabilityDetailGroup,
+  capabilityDetailFinding,
+  capabilityDocumentEvidence,
+} from "./source-capability-details.ts";
+import {
   deepseekBillingRule,
   deepseekBillingVocabulary,
   type DeepseekBillingRule,
@@ -47,6 +52,32 @@ const apiListItemSchema = z.object({
 const chatEndpoint = { name: "Chat Completions", path: "/chat/completions" };
 const responsesEndpoint = { name: "Responses", path: "/responses" };
 const anthropicEndpoint = { name: "Anthropic Messages", path: "/anthropic/v1/messages" };
+const effortOperations = [
+  {
+    claim: "chat_reasoning_effort",
+    reference: "/api/create-chat-completion",
+    endpoint: chatEndpoint,
+    field: [["reasoning_effort", "string"]],
+  },
+  {
+    claim: "responses_reasoning_effort",
+    reference: "/api/create-response",
+    endpoint: responsesEndpoint,
+    field: [
+      ["reasoning", "object"],
+      ["effort", "string"],
+    ],
+  },
+  {
+    claim: "messages_reasoning_effort",
+    reference: "/api/create-message",
+    endpoint: anthropicEndpoint,
+    field: [
+      ["output_config", "object"],
+      ["effort", "string"],
+    ],
+  },
+] as const;
 const fimReferenceEndpoint = { name: "FIM Completion (Beta)", path: "/completions" };
 const fimEndpoint = { name: "FIM Completion (Beta)", path: "/beta/completions" };
 const baseUrls = [
@@ -165,6 +196,105 @@ function endpointEvidence(
   if (!ids.success || new Set(ids.data).size !== ids.data.length)
     throw new Error("DeepSeek " + endpoint.name + " reference returned invalid model IDs");
   return { modelIds: new Set(ids.data), api };
+}
+
+function applyDeepseekEffort(input: Input, bundle: Bundle, models: readonly ProviderModel[]): void {
+  for (const { claim, reference, endpoint, field } of effortOperations) {
+    const documents = bundle.documents.filter(({ url }) => {
+      const parsed = new URL(url);
+      return (
+        parsed.origin === "https://api-docs.deepseek.com" &&
+        !parsed.search &&
+        parsed.pathname.replace(/\/$/, "") === reference
+      );
+    });
+    if (documents.length === 0) continue;
+    const document = documents[0];
+    try {
+      if (documents.length !== 1 || !document) throw new Error("Duplicate DeepSeek effort source");
+      const api = deepseekApiDocument(document.body, endpoint.path);
+      const modelField = [["model", "string"]] as const;
+      const identity = api.text("request", modelField);
+      const ids =
+        api.values("request", modelField) ??
+        (endpoint === anthropicEndpoint
+          ? /ID of the model to use\. Use (.+?)\.(?: Claude model-name aliases|$)/
+              .exec(identity ?? "")?.[1]
+              ?.split(" or ")
+          : undefined);
+      const values = api.values("request", field);
+      const native = api.text("request", field);
+      if (native === undefined) continue;
+      if (
+        !ids?.length ||
+        ids.some((id) => !modelIdSchema.safeParse(id).success) ||
+        new Set(ids).size !== ids.length ||
+        !values?.length
+      )
+        throw new Error("Missing DeepSeek operation model or effort evidence");
+      const defaults = [
+        ...native.matchAll(
+          /(?:The default effort is ([a-z][a-z0-9_-]*)|with ([a-z][a-z0-9_-]*) as the default effort)\./g,
+        ),
+      ];
+      if (defaults.length > 1) throw new Error("Ambiguous DeepSeek effort default");
+      const defaultValue = defaults[0]?.[1] ?? defaults[0]?.[2];
+      const aliases =
+        /(?:Compatibility aliases:|For compatibility with existing software,) ([^.]+)\./.exec(
+          native,
+        )?.[0];
+      const aliasPairs = [
+        ...(aliases ?? "").matchAll(
+          /([a-z][a-z0-9_-]*(?: (?:\/|and) [a-z][a-z0-9_-]*)*) (?:is accepted and mapped|are accepted and mapped|maps?|both map) to ([a-z][a-z0-9_-]*)/g,
+        ),
+      ];
+      const aliasValues = aliasPairs.flatMap((match) => (match[1] ?? "").split(/ (?:\/|and) /));
+      if (
+        aliases !== undefined &&
+        (!aliasPairs.length || aliasPairs.some((match) => !values.includes(match[2] ?? "")))
+      )
+        throw new Error("Unknown DeepSeek effort alias mapping");
+      const options = values.filter((value) => value !== "null" && !aliasValues.includes(value));
+      if (defaultValue !== undefined && !options.includes(defaultValue))
+        throw new Error("DeepSeek effort default lies outside its owned enum");
+      const precedence =
+        endpoint !== responsesEndpoint &&
+        (native.includes("An explicit thinking.type determines whether thinking is enabled.") ||
+          api.text("request", [["thinking", "object"]])?.includes("takes precedence") === true)
+          ? " Explicit thinking settings take precedence when selecting the thinking mode."
+          : "";
+      for (const model of models) {
+        if (
+          !ids.includes(model.model_id) ||
+          !model.api_endpoints?.some(({ path }) => path === endpoint.path) ||
+          model.status !== "active"
+        )
+          continue;
+        const name = field.map(([part]) => part).join(".");
+        addCapabilityDetailGroup(input, model, {
+          claim,
+          statements: [
+            {
+              kind: "reasoning_effort",
+              scope: `DeepSeek ${endpoint.name} API (POST ${endpoint.path}, ${name}).${precedence}${aliases === undefined ? "" : " " + aliases}`,
+              supported_values: options,
+              ...(defaultValue === undefined ? {} : { default_value: defaultValue }),
+            },
+          ],
+          evidence: [
+            capabilityDocumentEvidence(
+              input,
+              document,
+              `POST ${endpoint.path} / model and ${name}`,
+              [identity, native].filter(Boolean).join("\n"),
+            ),
+          ],
+        });
+      }
+    } catch {
+      capabilityDetailFinding(input, claim);
+    }
+  }
 }
 
 interface ChatClaims {
@@ -1146,6 +1276,7 @@ export function parseDeepseekCatalog(input: Input): SourceParseResult {
 
   const billingRule = attachPricing(input, bundle, models, table);
   attachLegacyRedirects(input, bundle.index.body, models);
+  applyDeepseekEffort(input, bundle, models);
   const pricingInputs = extractDeepseekPricingInputs(
     bundle.documents,
     input.source.id,

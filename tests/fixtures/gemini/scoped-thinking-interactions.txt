@@ -1,0 +1,23 @@
+> ## AI Agent Context
+> - Full documentation index: https://aistudio.google.com/llms.txt
+
+# Gemini thinking
+
+Interactions API surfaces this reasoning via thought steps.
+
+## Controlling thinking  {% id="thinking-levels" %}
+
+Control the behavior using the `thinking_level` parameter.
+
+| Model | Default Thinking | Levels Supported |
+| --- | --- | --- |
+| gemini-4-carbon | On (medium) | low, medium, high |
+| gemini-3.8-flash | On (medium) | low, medium, high |
+| gemini-2.5-flash-lite | Off | low, medium, high |
+| gemini-3.7-flash | On (high) | low, medium, high |
+
+### Understanding thinking levels
+
+| Thinking level | Token use | When to use |
+| :--- | :--- | :--- |
+| `minimal` | Near-off thinking | Not supported on Gemini 4 models or `gemini-3.8-flash`. |

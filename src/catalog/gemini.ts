@@ -1,6 +1,10 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
+import {
+  applyGeminiCapabilityDetails,
+  type GeminiCapabilityPage,
+} from "./gemini-capability-details.ts";
 import { extractGeminiCommercialFacts } from "./gemini-commercial-source.ts";
 import { geminiInferencePrices } from "./gemini-inference-pricing.ts";
 import { applyGeminiLimitDetails } from "./gemini-limit-details.ts";
@@ -2266,6 +2270,7 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
   const indexCards = cards(bundle.index.body);
   const models = new Map<string, ProviderModel>();
   const versionIds = new Map<string, string[]>();
+  const capabilityPages: GeminiCapabilityPage[] = [];
   const modelDocuments = bundle.documents
     .filter((item) =>
       /^\/(?:gemini-api\/)?docs\/(?:models\/[a-z0-9.-]+|robotics-overview)$/.test(
@@ -2280,6 +2285,7 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
       page.body,
       indexCards.get(path),
     )) {
+      capabilityPages.push({ model, document: page });
       if (models.has(model.model_id)) continue;
       models.set(model.model_id, model);
       versionIds.set(model.model_id, aliases);
@@ -2308,6 +2314,7 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
     left.model_id.localeCompare(right.model_id),
   );
   applyGeminiLimitDetails(input, values, bundle);
+  applyGeminiCapabilityDetails(input, capabilityPages, bundle, geminiStudioMarkdown);
   assertItemCount("Gemini model catalog", values.length, extractor.minModels, extractor.maxModels);
   return values;
 }

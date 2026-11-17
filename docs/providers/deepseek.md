@@ -75,6 +75,16 @@ provenance to exact public matches but cannot create or remove global rows. Fami
 the consumer app, open weights, status pages, and third-party catalogs are not identity or price
 sources.
 
+The Chat Completions, Responses, and Anthropic Messages request references each own an optional
+effort detail for exact callable IDs. The requested operation and native request-field location
+must match, and Chat Completions and Responses use their own model enums. Messages also accepts an
+explicit native model declaration and retains the catalog's independent Messages ownership check.
+Compatibility aliases that map to a documented mode are qualified in the scope, rather than
+appearing as additional effort levels. An explicit thinking setting can take precedence over the
+effort toggle. A default-on thinking statement without a named level leaves the native default
+absent. Legacy redirects, cache accounting counters, and the separate caching guide do not
+establish API-scoped model cache modes.
+
 ## Rate-book boundary
 
 ### Inference model ID pricing

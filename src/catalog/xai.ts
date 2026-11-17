@@ -1,6 +1,6 @@
 import { load } from "cheerio";
 import { z } from "zod";
-import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
+import { linkedBundleSchema, linkedDocumentBody, type LinkedBundle } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { orderedTasks } from "./task.ts";
@@ -12,6 +12,11 @@ import type {
   SourceRawPricingFact,
 } from "./pricing-source.ts";
 import { assertItemCount, contractExtensionEvidence, recognizeItems } from "./source-contract.ts";
+import {
+  addCapabilityDetailGroup,
+  capabilityDetailFinding,
+  capabilityDocumentEvidence,
+} from "./source-capability-details.ts";
 import { extractXaiCommercialFacts, type XaiCommercialEvidence } from "./xai-commercial-source.ts";
 import { extractXaiPricingInputs } from "./xai-accounting.ts";
 import { xaiModelOfferKeys } from "./xai-commercial.ts";
@@ -32,6 +37,16 @@ const commonModelShape = {
   aliases: aliasesSchema,
   batchEnabled: z.boolean().optional(),
 };
+const effortOptionsSchema = z.object({
+  supportedEfforts: z.array(z.string().min(1)).min(1),
+  defaultEffort: z.string().min(1),
+});
+const languageFeaturesSchema = z.object({
+  functionCalling: z.boolean().optional(),
+  structuredOutputs: z.boolean().optional(),
+  reasoning: z.boolean().optional(),
+  reasoningEffortOptions: z.unknown().optional(),
+});
 const languageModelSchema = z.object({
   ...commonModelShape,
   promptTextTokenPrice: integerString,
@@ -43,21 +58,7 @@ const languageModelSchema = z.object({
   completionTokenPriceLongContext: integerString,
   maxPromptLength: z.number().int().positive(),
   longContextThreshold: integerString.default("0"),
-  features: z
-    .object({
-      functionCalling: z.boolean().optional(),
-      structuredOutputs: z.boolean().optional(),
-      reasoning: z.boolean().optional(),
-      reasoningEffortOptions: z
-        .object({
-          supportedEfforts: z.array(z.string().min(1)).min(1),
-          defaultEffort: z.string().min(1),
-        })
-        .strip()
-        .optional(),
-    })
-    .strip()
-    .default({}),
+  features: languageFeaturesSchema.default({}),
 });
 const embeddingModelSchema = z.object({
   name: modelIdSchema,
@@ -67,16 +68,18 @@ const embeddingModelSchema = z.object({
   promptTextTokenPrice: integerString,
   promptImageTokenPrice: integerString,
 });
-const languageIdentitySchema = languageModelSchema.omit({
-  batchEnabled: true,
-  promptTextTokenPrice: true,
-  promptImageTokenPrice: true,
-  promptTextTokenPriceLongContext: true,
-  cachedPromptTokenPrice: true,
-  cachedPromptTokenPriceLongContext: true,
-  completionTextTokenPrice: true,
-  completionTokenPriceLongContext: true,
-});
+const languageIdentitySchema = languageModelSchema
+  .omit({
+    batchEnabled: true,
+    promptTextTokenPrice: true,
+    promptImageTokenPrice: true,
+    promptTextTokenPriceLongContext: true,
+    cachedPromptTokenPrice: true,
+    cachedPromptTokenPriceLongContext: true,
+    completionTextTokenPrice: true,
+    completionTokenPriceLongContext: true,
+  })
+  .extend({ features: languageFeaturesSchema.omit({ reasoningEffortOptions: true }) });
 const imageModelSchema = z.object({
   ...commonModelShape,
   resolutionPricing: z
@@ -745,6 +748,221 @@ function section(body: string, pathname: string): string {
     throw new Error(`xAI llms-full.txt requires one ${pathname} section`);
   const end = body.indexOf("\n\n===", start + marker.length);
   return body.slice(start + marker.length, end < 0 ? undefined : end).trim();
+}
+
+function applyXaiEffortDetails(
+  input: ParseInput,
+  catalog: PublicModels,
+  bundle: LinkedBundle,
+  models: readonly ProviderModel[],
+): void {
+  const document = bundle.documents.find(({ url }) => url === "https://docs.x.ai/llms-full.txt");
+  if (!document) return;
+  const reasoningPath = "/developers/model-capabilities/text/reasoning";
+  const prose = markdownProse(document.body);
+  if (!prose.includes(`===${reasoningPath}===`)) return;
+  const claim = "responses_reasoning_effort";
+  try {
+    const reasoning = section(document.body, reasoningPath);
+    const summary = markdownSection(reasoning, 3, "Summary table");
+    if (summary === undefined) return;
+    const rows = markdownTableRows(summary, ["Model", "\x60reasoning\x60 parameter", "Behavior"]);
+    const watermarkPath = "/developers/advanced-api-usage/watermarking";
+    const watermark = prose.includes(`===${watermarkPath}===`)
+      ? markdownSection(section(prose, watermarkPath), 2, "Which outputs are watermarked")
+      : undefined;
+    const route =
+      /^Watermarking applies to outputs from every text generation API, including the Responses API and the Chat Completions API\./m.exec(
+        watermark ?? "",
+      )?.[0];
+    const scopeIds =
+      route === undefined
+        ? []
+        : [...(watermark ?? "").matchAll(/^\* ([a-z][a-z0-9._-]+)$/gm)].map((m) => m[1]);
+    const responsesUrl = "https://api.x.ai/v1/responses";
+    const positiveExamples = reasoning.includes(responsesUrl)
+      ? requestModels(reasoning, responsesUrl)
+      : [];
+    const registry = catalog.clusterConfigs.flatMap(({ languageModels }) => languageModels);
+    const scopedRows = rows.filter(
+      (row) => row.get("Behavior") === "Controls reasoning depth (cannot be disabled)",
+    );
+    const fallbackRows = [
+      ...markdownProse(reasoning).matchAll(
+        /such as \x60([a-z][a-z0-9._-]+)\x60, requests with \x60"([a-z][a-z0-9_-]*)"\x60 are treated as \x60"([a-z][a-z0-9_-]*)"\x60\./g,
+      ),
+    ];
+    for (const row of scopedRows) {
+      const id = /^\x60([a-z][a-z0-9._-]+)\x60$/.exec(row.get("Model") ?? "")?.[1];
+      if (id === undefined) throw new Error("Unrecognized xAI effort identity");
+      const model = models.find((value) => value.model_id === id && value.status === "active");
+      if (model === undefined || (!scopeIds.includes(id) && !positiveExamples.includes(id)))
+        continue;
+      const declaration = row.get("\x60reasoning\x60 parameter") ?? "";
+      const parsed = /^\x60reasoning\.effort\x60: (.+)$/.exec(declaration)?.[1];
+      const names = (parsed ?? "")
+        .split(" / ")
+        .map((choice) => /^\x60"([a-z][a-z0-9_-]*)"\x60( \(default\))?$/.exec(choice));
+      const options = names.flatMap((entry) => (entry?.[1] === undefined ? [] : [entry[1]]));
+      const defaults = names.filter((entry) => entry?.[2] !== undefined);
+      const defaultValue = defaults[0]?.[1];
+      const fallback = fallbackRows.filter((match) => match[1] === id);
+      const fallbackValue = fallback[0]?.[2];
+      const fallbackTarget = fallback[0]?.[3];
+      const explainedFallback =
+        fallback.length === 1 &&
+        fallbackValue !== undefined &&
+        fallbackTarget !== undefined &&
+        !options.includes(fallbackValue) &&
+        options.includes(fallbackTarget);
+      const declarations = registry
+        .filter((value) => value.name === id)
+        .map((value) => effortOptionsSchema.safeParse(value.features.reasoningEffortOptions).data);
+      if (
+        scopedRows.filter((value) => value.get("Model") === row.get("Model")).length !== 1 ||
+        options.length !== names.length ||
+        defaults.length !== 1 ||
+        defaultValue === undefined ||
+        fallback.length > 1 ||
+        (fallback.length === 1 && !explainedFallback) ||
+        !declarations.length ||
+        declarations.some((observed) => {
+          const values = observed?.supportedEfforts.filter(
+            (name) => !explainedFallback || name !== fallbackValue,
+          );
+          return (
+            observed?.defaultEffort !== defaultValue ||
+            values === undefined ||
+            values.length !== options.length ||
+            new Set(observed.supportedEfforts).size !== observed.supportedEfforts.length ||
+            options.some((option) => !values.includes(option))
+          );
+        })
+      ) {
+        capabilityDetailFinding(input, claim + "/" + id);
+        continue;
+      }
+      addCapabilityDetailGroup(input, model, {
+        claim,
+        statements: [
+          {
+            kind: "reasoning_effort",
+            supported_values: options,
+            default_value: defaultValue,
+            scope:
+              "xAI Responses API. Reasoning cannot be disabled." +
+              (explainedFallback ? ` ${fallbackValue} is accepted as ${fallbackTarget}.` : ""),
+          },
+        ],
+        evidence: [
+          capabilityDocumentEvidence(
+            input,
+            bundle.index,
+            "Public language model name and features.reasoningEffortOptions",
+            JSON.stringify({ name: id, reasoningEffortOptions: declarations[0] }),
+          ),
+          capabilityDocumentEvidence(
+            input,
+            document,
+            reasoningPath +
+              " / Summary table; " +
+              (positiveExamples.includes(id)
+                ? "Responses request example"
+                : watermarkPath + " / Which outputs are watermarked"),
+            [
+              `${id} | ${declaration} | Controls reasoning depth (cannot be disabled)`,
+              fallback[0]?.[0],
+              positiveExamples.includes(id) ? "POST /v1/responses: " + id : `* ${id}\n${route}`,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          ),
+        ],
+      });
+    }
+  } catch {
+    capabilityDetailFinding(input, claim);
+  }
+}
+
+function applyXaiCacheDetails(
+  input: ParseInput,
+  catalog: PublicModels,
+  bundle: LinkedBundle,
+  models: readonly ProviderModel[],
+): void {
+  const document = bundle.documents.find(({ url }) => url === "https://docs.x.ai/llms-full.txt");
+  if (!document) return;
+  const base = "/developers/advanced-api-usage/prompt-caching";
+  const prose = markdownProse(document.body);
+  if (!prose.includes(`===${base}===`)) return;
+  try {
+    const automatic = /^> The xAI API performs prompt caching \*\*automatically\*\*\./m.exec(
+      section(prose, base),
+    )?.[0];
+    const supported = /^Prompt caching is available on all \x60grok\x60 language models\./m.exec(
+      section(prose, base + "/best-practices"),
+    )?.[0];
+    if (!automatic || !supported) throw new Error("Unproven automatic cache mode");
+    const bindings = section(document.body, base + "/maximizing-cache-hits");
+    const languageIds = new Set(
+      catalog.clusterConfigs.flatMap(({ languageModels }) =>
+        languageModels.map(({ name }) => name),
+      ),
+    );
+    for (const api of [
+      {
+        key: "chat",
+        name: "Chat Completions",
+        path: "/v1/chat/completions",
+        heading: "Set \x60x-grok-conv-id\x60 (Chat Completions API)",
+      },
+      {
+        key: "responses",
+        name: "Responses",
+        path: "/v1/responses",
+        heading: "Set \x60prompt_cache_key\x60 (Responses API)",
+      },
+    ]) {
+      const claim = api.key + "_cache_modes";
+      try {
+        const route = markdownSection(bindings, 2, api.heading);
+        if (!route) throw new Error("Missing xAI cache API binding");
+        const ids = requestModels(route, "https://api.x.ai" + api.path);
+        for (const model of models) {
+          if (
+            model.status !== "active" ||
+            !languageIds.has(model.model_id) ||
+            !ids.includes(model.model_id)
+          )
+            continue;
+          addCapabilityDetailGroup(input, model, {
+            claim,
+            statements: [
+              {
+                kind: "prompt_cache",
+                mode: "implicit",
+                supported: true,
+                scope: `xAI ${api.name} API. Prefix caching is automatic. Cache hits are conditional.`,
+              },
+            ],
+            evidence: [
+              capabilityDocumentEvidence(
+                input,
+                document,
+                base + " / automatic caching, supported models and exact request example",
+                [automatic, supported, `POST ${api.path}: ${model.model_id}`].join("\n"),
+              ),
+            ],
+          });
+        }
+      } catch {
+        capabilityDetailFinding(input, claim);
+      }
+    }
+  } catch {
+    capabilityDetailFinding(input, "prompt_cache_modes");
+  }
 }
 
 const detailedApiFields = [
@@ -1857,7 +2075,10 @@ function currentModels(
         citations: isMultiAgent ? true : "unknown",
         code_execution: isMultiAgent ? true : "unknown",
         effort_control:
-          isMultiAgent || value.features.reasoningEffortOptions !== undefined ? true : "unknown",
+          isMultiAgent ||
+          effortOptionsSchema.safeParse(value.features.reasoningEffortOptions).success
+            ? true
+            : "unknown",
       },
       limits: { context_tokens: value.maxPromptLength },
       status: "active",
@@ -2439,12 +2660,8 @@ function redirectedModels(
 export function parseXaiCatalog(input: ParseInput): SourceParseResult {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const llms = companion(bundle, "/llms-full.txt");
-  const current = currentModels(
-    input,
-    embeddedModels(input, bundle.index.body),
-    bundle.index.body,
-    llms,
-  );
+  const catalog = embeddedModels(input, bundle.index.body);
+  const current = currentModels(input, catalog, bundle.index.body, llms);
   const lifecycle =
     reviewClaim(input, "lifecycle_contract_drift", () => lifecycleModels(input, llms)) ?? [];
   const transcription =
@@ -2477,6 +2694,8 @@ export function parseXaiCatalog(input: ParseInput): SourceParseResult {
     fixedLowIds,
   );
   applyXaiLimitDetails(input, models, bundle);
+  applyXaiEffortDetails(input, catalog, bundle, models);
+  applyXaiCacheDetails(input, catalog, bundle, models);
   const pricingInputs = extractXaiPricingInputs(
     llms,
     input.source.id,

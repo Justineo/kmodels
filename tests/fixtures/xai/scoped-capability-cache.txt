@@ -1,0 +1,26 @@
+===/developers/advanced-api-usage/prompt-caching===
+# Prompt Caching
+
+> The xAI API performs prompt caching **automatically**.
+
+===/developers/advanced-api-usage/prompt-caching/best-practices===
+# Best Practices & FAQ
+
+## Supported models
+
+Prompt caching is available on all `grok` language models.
+
+===/developers/advanced-api-usage/prompt-caching/maximizing-cache-hits===
+# Maximizing Cache Hits
+
+## Set `x-grok-conv-id` (Chat Completions API)
+
+```bash
+curl https://api.x.ai/v1/chat/completions -d '{"model": "grok-4.7"}'
+```
+
+## Set `prompt_cache_key` (Responses API)
+
+```bash
+curl https://api.x.ai/v1/responses -d '{"model": "grok-4.7"}'
+```

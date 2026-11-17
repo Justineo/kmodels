@@ -783,7 +783,7 @@ describe("DeepSeek adapters", () => {
     expect(manifest("deepseek")).not.toHaveProperty("supersededModelIds");
     const catalogSource = source("deepseek-catalog");
     expect(catalogSource).toMatchObject({
-      extractorVersion: "deepseek-catalog-v29",
+      extractorVersion: "deepseek-catalog-v30",
       fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
       linkedDocuments: {
         minDocuments: 0,

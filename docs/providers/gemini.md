@@ -149,6 +149,24 @@ price rows. An unknown model, meter, unit, or table shape affects only that clai
 unbound/raw; it cannot create a model or reject recognized siblings. A missing price never removes a
 valid model.
 
+The model catalog also owns scoped cache modes and thinking levels. It fetches the
+[Interactions cache guide](https://aistudio.google.com/docs/caching) and
+[Interactions thinking guide](https://aistudio.google.com/docs/thinking) plus their separately
+qualified `?generate-content=true` variants as optional companions. Each guide and API owns an
+independent claim with the exact returned URL and body hash.
+
+For caching, a guide's named row must match a unique owned model name and that model's native
+Model code. The Interactions guide explicitly excludes cache objects, even for models that support
+implicit caching. GenerateContent requires its own positive model-specific cache creation and use
+workflow or its independently documented exclusion. A generic model badge, cached token price,
+or another API's support does not establish a cache mode.
+
+For effort, the Interactions and GenerateContent option tables own their literal model IDs,
+options and named defaults. An On or Off label alone establishes default thinking state but
+supplies no native effort value. Only explicit exclusions appear as unsupported values.
+Models with documented automatic routing away from their native ID do not inherit these details
+from a replacement. Cache state and effort do not determine price or predict a cache hit.
+
 ## Canonical pricing
 
 ### Inference model ID lookup
