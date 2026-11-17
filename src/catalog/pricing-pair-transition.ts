@@ -103,11 +103,7 @@ export function composeCatalogPair(
               status: "stale",
               model_count: catalog.models.filter(({ provider_id }) => provider_id === providerId)
                 .length,
-              pricing_term_count: previousPartition.books.reduce(
-                (total, book) =>
-                  total + book.offers.reduce((count, offer) => count + offer.terms.length, 0),
-                0,
-              ),
+              pricing_term_count: 0,
               checked_at: current.generated_at,
               ...(priorCoverage?.last_successful_sync_at === undefined
                 ? {}
@@ -137,6 +133,16 @@ export function composeCatalogPair(
 
     pricing = transitionProviderPricing(pricing, transition, modelOwners);
   }
+
+  const termCounts = new Map<string, number>();
+  for (const book of pricing.books) {
+    const count = book.offers.reduce((total, offer) => total + offer.terms.length, 0);
+    termCounts.set(book.provider_id, (termCounts.get(book.provider_id) ?? 0) + count);
+  }
+  catalog.coverage = catalog.coverage.map((coverage) => ({
+    ...coverage,
+    pricing_term_count: termCounts.get(coverage.provider_id) ?? 0,
+  }));
 
   const composed = { catalog: withCatalogVersion(catalog), pricing };
   validateSafetyOutcome(prior, priorPricing, composed, findings, modelOwners);

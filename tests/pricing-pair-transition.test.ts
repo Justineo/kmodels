@@ -1,9 +1,20 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
-import { pricingBookId, pricingOfferId } from "../src/catalog/pricing-identifiers.ts";
+import {
+  pricingBookId,
+  pricingOfferId,
+  pricingTermId,
+} from "../src/catalog/pricing-identifiers.ts";
 import { composeCatalogPair } from "../src/catalog/pricing-pair-transition.ts";
-import { pricingCatalogSchema, type PricingCatalog } from "../src/catalog/pricing-schema.ts";
+import { failedPricingTransition } from "../src/catalog/pricing-transition.ts";
+import {
+  pricingCatalogSchema,
+  type PricingCatalog,
+  type PricingOffer,
+  type PricingTerm,
+} from "../src/catalog/pricing-schema.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
+import { catalogModels } from "../src/catalog/publication.ts";
 import type { Catalog, ProviderModel } from "../src/catalog/schema.ts";
 
 const providerId = "test";
@@ -11,11 +22,11 @@ const modelRef = "test/model";
 const sourceRef = "test-pricing";
 const observedAt = "2026-07-28T00:00:00.000Z";
 
-function model(name: string): ProviderModel {
+function model(name: string, owner = providerId): ProviderModel {
   return {
-    provider_id: providerId,
+    provider_id: owner,
     model_id: "model",
-    uid: modelRef,
+    uid: `${owner}/model`,
     id_kind: "api_id",
     name,
     aliases: [],
@@ -44,17 +55,18 @@ function model(name: string): ProviderModel {
     first_seen_at: observedAt,
     last_seen_at: observedAt,
     observed_at: observedAt,
-    source_refs: [sourceRef],
+    source_refs: [`${owner}-pricing`],
   };
 }
 
-function catalog(name: string): Catalog {
+function catalog(name: string, owner = providerId): Catalog {
+  const sourceRef = `${owner}-pricing`;
   return {
     catalog_version: "0".repeat(64),
     generated_at: observedAt,
     providers: [
       {
-        id: providerId,
+        id: owner,
         name,
         kind: "hosted",
         homepage: "https://example.com",
@@ -63,11 +75,11 @@ function catalog(name: string): Catalog {
         catalog_version: name.padEnd(64, "0").slice(0, 64),
       },
     ],
-    models: [model(name)],
+    models: [model(name, owner)],
     sources: [
       {
         id: sourceRef,
-        provider_id: providerId,
+        provider_id: owner,
         url: "https://example.com/pricing",
         source: ["website"],
         stability: "documented",
@@ -82,7 +94,7 @@ function catalog(name: string): Catalog {
     ],
     coverage: [
       {
-        provider_id: providerId,
+        provider_id: owner,
         status: "fresh",
         model_count: 1,
         pricing_term_count: 0,
@@ -94,10 +106,12 @@ function catalog(name: string): Catalog {
   };
 }
 
-function partition(label = "Not offered"): ProviderPricingPartition {
+function partition(label = "Not offered", owner = providerId): ProviderPricingPartition {
+  const sourceRef = `${owner}-pricing`;
+  const modelRef = `${owner}/model`;
   return {
-    vocabulary: { provider_id: providerId, atoms: [] },
-    snapshot: { provider_id: providerId, observed_at: observedAt, publication: "fresh" },
+    vocabulary: { provider_id: owner, atoms: [] },
+    snapshot: { provider_id: owner, observed_at: observedAt, publication: "fresh" },
     model_dispositions: [
       {
         model_ref: modelRef,
@@ -125,14 +139,20 @@ function pricing(value?: ProviderPricingPartition): PricingCatalog {
   };
 }
 
-function bookPartition(): ProviderPricingPartition {
+function bookPartition(
+  termCounts: readonly number[] = [0],
+  owner = providerId,
+): ProviderPricingPartition {
+  const sourceRef = `${owner}-pricing`;
+  const modelRef = `${owner}/model`;
+  const bookId = pricingBookId(owner, "model");
   return {
-    ...partition(),
+    ...partition("Not offered", owner),
     model_dispositions: [],
     books: [
       {
-        id: pricingBookId(providerId, "model"),
-        provider_id: providerId,
+        id: bookId,
+        provider_id: owner,
         book_key: "model",
         scope: { kind: "models", model_refs: [modelRef] },
         source_refs: [sourceRef],
@@ -144,32 +164,54 @@ function bookPartition(): ProviderPricingPartition {
             raw: { label: "Model pricing" },
           },
         ],
-        offers: [
-          {
-            id: pricingOfferId(pricingBookId(providerId, "model"), "standard"),
-            offer_key: "standard",
-            billing_mode: { namespace: "kmodels", value: "usage" },
-            states: [
-              {
-                state: "not_published",
-                applicability: { any_of: [{ all_of: [] }] },
-                observations: [
+        offers: termCounts
+          .map((termCount, index): PricingOffer => {
+            const offerKey = index === 0 ? "standard" : `alternative-${index}`;
+            const offerId = pricingOfferId(bookId, offerKey);
+            return {
+              id: offerId,
+              offer_key: offerKey,
+              billing_mode: { namespace: "kmodels", value: "usage" },
+              states: [
+                {
+                  state: "not_published",
+                  applicability: { any_of: [{ all_of: [] }] },
+                  observations: [
+                    {
+                      source_ref: sourceRef,
+                      locator: { kind: "table", value: "state" },
+                      raw: { label: "Price not published" },
+                      establishes_applicability: { any_of: [{ all_of: [] }] },
+                    },
+                  ],
+                },
+              ],
+              enrollment: [],
+              terms: Array.from({ length: termCount }, (_, index): PricingTerm => ({
+                id: pricingTermId(offerId, "raw", `term-${index}`),
+                term_key: `term-${index}`,
+                kind: "raw",
+                source_refs: [sourceRef],
+                variants: [
                   {
-                    source_ref: sourceRef,
-                    locator: { kind: "table", value: "state" },
-                    raw: { label: "Price not published" },
-                    establishes_applicability: { any_of: [{ all_of: [] }] },
+                    impact: "informational",
+                    reason: "unsupported_structure",
+                    observations: [
+                      {
+                        source_ref: sourceRef,
+                        locator: { kind: "table", value: `term-${index}` },
+                        raw: { label: `Term ${index}` },
+                      },
+                    ],
                   },
                 ],
-              },
-            ],
-            enrollment: [],
-            terms: [],
-            relations: [],
-            settlement: [],
-            source_refs: [sourceRef],
-          },
-        ],
+              })).sort((a, b) => a.id.localeCompare(b.id)),
+              relations: [],
+              settlement: [],
+              source_refs: [sourceRef],
+            };
+          })
+          .sort((a, b) => a.id.localeCompare(b.id)),
         resource_edges: [],
       },
     ],
@@ -193,6 +235,135 @@ const safety = (
 });
 
 describe("paired core/pricing provider transition", () => {
+  it.each([
+    { owner: "alpha", counts: [2, 3], expected: 5, failure: "source_unavailable" },
+    { owner: "publisher-2", counts: [1], expected: 1, failure: "source_schema_changed" },
+    { owner: "unpriced", counts: [0], expected: 0, failure: "pricing_validation_failed" },
+  ] as const)(
+    "counts accepted terms after $owner pricing fails",
+    ({ owner, counts, expected, failure }) => {
+      const prior = catalog("old", owner);
+      const fresh = catalog("new", owner);
+      fresh.generated_at = "2026-07-29T00:00:00.000Z";
+      fresh.coverage = fresh.coverage.map((coverage) => ({
+        ...coverage,
+        checked_at: fresh.generated_at,
+        last_successful_sync_at: fresh.generated_at,
+      }));
+      const accepted = pricing(bookPartition(counts, owner));
+      validatePricingCatalog(accepted, prior);
+      const result = composeCatalogPair(prior, fresh, accepted, [
+        failedPricingTransition(owner, fresh.generated_at, failure),
+      ]);
+
+      expect(result.catalog.coverage[0]).toEqual({
+        ...fresh.coverage[0],
+        pricing_term_count: expected,
+      });
+      expect(catalogModels(result.catalog).providers[owner]?.coverage).toMatchObject({
+        status: "fresh",
+        pricing_term_count: expected,
+        checked_at: fresh.generated_at,
+        last_successful_sync_at: fresh.generated_at,
+      });
+      expect(result.pricing.books).toEqual(accepted.books);
+      expect(result.pricing.provider_snapshots[0]).toEqual({
+        provider_id: owner,
+        observed_at: observedAt,
+        publication: "retained",
+        refresh_failure: { attempted_at: fresh.generated_at, code: failure },
+      });
+      expect(fresh.coverage[0]?.pricing_term_count).toBe(0);
+    },
+  );
+
+  it("counts retained terms when incompatible core evidence also requires retention", () => {
+    const prior = catalog("old");
+    const fresh = catalog("new");
+    fresh.models = [];
+    const accepted = pricing(bookPartition([2, 4]));
+    const result = composeCatalogPair(prior, fresh, accepted, []);
+    expect(result.catalog.coverage[0]).toMatchObject({
+      status: "stale",
+      pricing_term_count: 6,
+      last_successful_sync_at: observedAt,
+    });
+    expect(result.pricing.books).toEqual(accepted.books);
+  });
+
+  it.each([false, true])(
+    "counts fresh replacement terms with a prior partition: %s",
+    (hasPrior) => {
+      const fresh = catalog("new");
+      fresh.coverage = fresh.coverage.map((coverage) => ({ ...coverage, pricing_term_count: 41 }));
+      const replacement = bookPartition([1, 2]);
+      const result = composeCatalogPair(
+        hasPrior ? catalog("old") : undefined,
+        fresh,
+        pricing(hasPrior ? bookPartition([5]) : undefined),
+        [{ kind: "fresh", partition: replacement }],
+      );
+      expect(result.catalog.coverage[0]).toEqual({ ...fresh.coverage[0], pricing_term_count: 3 });
+      expect(result.pricing).toEqual(pricing(replacement));
+    },
+  );
+
+  it.each(["fresh_empty", "withdraw_pricing", "remove_provider"] as const)(
+    "clears accepted term counts after %s",
+    (kind) => {
+      const prior = catalog("old");
+      const fresh = catalog("new");
+      fresh.coverage = fresh.coverage.map((coverage) => ({ ...coverage, pricing_term_count: 41 }));
+      if (kind === "remove_provider") {
+        fresh.providers = [];
+        fresh.models = [];
+        fresh.sources = [];
+      }
+      const result = composeCatalogPair(
+        prior,
+        fresh,
+        pricing(bookPartition([2])),
+        [{ kind, provider_id: providerId }],
+        kind === "withdraw_pricing" ? safety("pricing") : {},
+      );
+      expect(result.pricing).toEqual(pricing());
+      expect(result.catalog.coverage).toEqual(
+        kind === "remove_provider" ? [] : [{ ...fresh.coverage[0], pricing_term_count: 0 }],
+      );
+    },
+  );
+
+  it("clears an unaccepted count when no previous pricing exists", () => {
+    const fresh = catalog("new");
+    fresh.coverage = fresh.coverage.map((coverage) => ({ ...coverage, pricing_term_count: 41 }));
+    const result = composeCatalogPair(undefined, fresh, pricing(), [
+      failedPricingTransition(providerId, observedAt, "source_unavailable"),
+    ]);
+    expect(result.catalog.coverage[0]).toEqual({ ...fresh.coverage[0], pricing_term_count: 0 });
+    expect(result.pricing).toEqual(pricing());
+  });
+
+  it("isolates retained and fresh counts across providers", () => {
+    const prior = catalog("old", "alpha");
+    const other = catalog("new", "beta");
+    const fresh = {
+      ...prior,
+      providers: [...prior.providers, ...other.providers],
+      models: [...prior.models, ...other.models],
+      sources: [...prior.sources, ...other.sources],
+      coverage: [...prior.coverage, ...other.coverage],
+    };
+    const result = composeCatalogPair(prior, fresh, pricing(bookPartition([2, 3], "alpha")), [
+      { kind: "fresh", partition: bookPartition([2], "beta") },
+    ]);
+    expect(result.catalog.coverage).toEqual([
+      { ...prior.coverage[0], pricing_term_count: 5 },
+      { ...other.coverage[0], pricing_term_count: 2 },
+    ]);
+    expect(catalogModels(result.catalog).providers.alpha?.coverage?.pricing_term_count).toBe(5);
+    expect(catalogModels(result.catalog).providers.beta?.coverage?.pricing_term_count).toBe(2);
+  });
+
   it.each(["book", "disposition"])(
     "retains the matching core when retained %s pricing references a removed model",
     (kind) => {

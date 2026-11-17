@@ -225,6 +225,10 @@ Status: implemented
   catalog. Otherwise both accepted provider slices are retained with stale catalog coverage and
   a `retained_pricing_core_mismatch` diagnostic; other providers continue to publish. The report
   records the rejected catalog candidate separately from the retained publication.
+- Published catalog coverage counts pricing terms from the final accepted provider partition,
+  including retained prices. Candidate extraction counts remain in refresh attempt evidence.
+  This count does not change catalog freshness or the pricing partition's original observation time;
+  a provider without an accepted pricing partition has zero pricing terms.
 - The collector classifies a retained pricing attempt with one finite public
   code: required source unavailable, reviewed source format changed, pricing
   validation failed, provider refresh failed, or no complete pricing snapshot

@@ -9,6 +9,7 @@ import { composeCatalogPair } from "../src/catalog/pricing-pair-transition.ts";
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
 import { createPricingCompilationSnapshot } from "../src/catalog/pricing-compilation.ts";
 import { failedPricingTransition } from "../src/catalog/pricing-transition.ts";
+import { catalogModels } from "../src/catalog/publication.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
 
@@ -181,6 +182,13 @@ describe("DeepSeek commercial dependency isolation", () => {
       expect(next.pricingFailure).toBe("source_schema_changed");
       const transition = failedPricingTransition("deepseek", currentAt, "source_schema_changed");
       const composed = composeCatalogPair(catalog, core(next, currentAt), pricing, [transition]);
+      expect(prior.coverage.pricing_term_count).toBeGreaterThan(0);
+      expect(composed.catalog.coverage[0]?.pricing_term_count).toBe(
+        prior.coverage.pricing_term_count,
+      );
+      expect(catalogModels(composed.catalog).providers.deepseek?.coverage?.pricing_term_count).toBe(
+        prior.coverage.pricing_term_count,
+      );
       if (failure === "unbound column") {
         expect(composed.catalog.models).toEqual(catalog.models);
         expect(
