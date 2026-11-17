@@ -49,10 +49,10 @@ They advance as one accepted pair. The canonical pricing endpoint is
 Pair publication also refreshes the derived UI and export packs described in
 [Collection](collection.md). They are delivery artifacts, not canonical pricing
 resources; the export-pack pricing entry contains the public envelope bound to the exact
-public catalog core. Internal storage retains the full core binding, including optional scoped
-model details omitted by legacy public catalog profiles. Both envelopes share identical canonical
-pricing data, pricing-data version, catalog version and generation time; only their core-data
-hash differs when that projection removes internal details. Without those details their bytes
+public catalog core. Internal storage retains the full core binding, including scoped model
+limit and capability details omitted by legacy public catalog profiles. Both envelopes share
+identical canonical pricing data, pricing-data version, catalog version and generation time.
+Their core-data hash differs when that projection removes internal details. Without those details their bytes
 remain identical. A separate [unit-price export and pure package](price-lookup.md) preserve the
 commercial semantics without observation fragments. Their versioned portable schema is independent
 of canonical audit delivery and price refreshes do not require npm releases.
@@ -1408,9 +1408,10 @@ The public pair identity continues hashing the exact public catalog, pricing and
 assets. Private snapshots store the complete catalog and internal pricing envelope independently
 of those projections. When internal and public cores differ, private accepted manifest v2 also
 commits the full internal `core_data_sha256`; recovery checks it before repairing projections or
-mirrors. This prevents a hidden detail and a matching replacement internal envelope from escaping
-the accepted-state binding. Existing v1 snapshots and compressed mirrors without scoped details
-retain their format and bytes. New divergent cores cannot use v1. Before staging any files,
+mirrors. The commitment includes evidenced withdrawals, even when the inspector has no statement
+to display. It rejects coordinated changes to hidden details and their internal envelope.
+Existing v1 snapshots and compressed mirrors without scoped details retain their format and
+bytes. New divergent cores cannot use v1. Before staging any files,
 commit rejects reuse of the current public pair ID with a different full core, protecting the
 current snapshot directory before the atomic pointer advances. Valid model-detail updates must
 advance the provider/catalog commitment normally. Recovery compares private pricing bytes with

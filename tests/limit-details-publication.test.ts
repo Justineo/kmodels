@@ -23,6 +23,7 @@ import {
   type CatalogPairPaths,
 } from "../src/catalog/pricing-publication.ts";
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
+import * as projections from "../src/catalog/projections.ts";
 import {
   readPublishedAssets,
   readCompressedProfileAsset,
@@ -35,6 +36,7 @@ import {
   providerModelSchema,
   type Catalog,
 } from "../src/catalog/schema.ts";
+import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 
 const observedAt = "2026-07-28T00:00:00.000Z";
 const directories: string[] = [];
@@ -45,7 +47,7 @@ afterEach(async () => {
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true })));
 });
 
-function catalog(tokens?: number): Catalog {
+function catalog(tokens?: number, capability?: boolean | "withdrawn"): Catalog {
   const model = providerModelSchema.parse({
     ...baseModel({
       providerId: "test",
@@ -84,6 +86,36 @@ function catalog(tokens?: number): Catalog {
             },
           ],
         }),
+    ...(capability === undefined
+      ? {}
+      : {
+          capability_details: [
+            {
+              source_ref: "test-source",
+              claim: "responses_cache",
+              statements:
+                capability === "withdrawn"
+                  ? []
+                  : [
+                      {
+                        kind: "prompt_cache",
+                        mode: "implicit",
+                        supported: capability,
+                        scope: "Example Responses API",
+                      },
+                    ],
+              evidence: [
+                {
+                  document_url: "https://example.com/models",
+                  locator: "Responses caching",
+                  observed_at: observedAt,
+                  content_hash: "b".repeat(64),
+                  excerpt: "Responses caching declaration.",
+                },
+              ],
+            },
+          ],
+        }),
   });
   const providers = [
     {
@@ -110,7 +142,7 @@ function catalog(tokens?: number): Catalog {
             url: "https://example.com/models",
             source: ["website"],
             stability: "documented",
-            field_paths: ["model_id", "limit_details"],
+            field_paths: ["model_id", "limit_details", "capability_details"],
             observed_at: observedAt,
             content_hash: "a".repeat(64),
             extractor_version: "1",
@@ -387,4 +419,156 @@ describe("scoped limit publication compatibility", () => {
     );
     await expect(recoverCatalogPair(output)).rejects.toThrow("Legacy accepted manifest");
   });
+});
+
+describe("scoped capability publication compatibility", () => {
+  it.each(["foreign", "missing", "undeclared", "inventory"])(
+    "rejects %s capability ownership at both full-pair preparation boundaries",
+    async (failure) => {
+      const full = catalog(undefined, true);
+      if (failure === "foreign")
+        full.sources = full.sources.map((source) => ({ ...source, provider_id: "other" }));
+      else if (failure === "missing") full.sources = [];
+      else if (failure === "undeclared")
+        full.sources = full.sources.map((source) => ({
+          ...source,
+          field_paths: ["limit_details"],
+        }));
+      else full.sources = full.sources.map((source) => ({ ...source, role: "inventory" }));
+
+      expect(() => prepareCatalogPair(full, emptyPricingCatalog())).toThrow(
+        /Unowned .* detail source/,
+      );
+      await expect(prepareCatalogPairInParallel(full, emptyPricingCatalog())).rejects.toThrow(
+        /Unowned .* detail source/,
+      );
+    },
+  );
+
+  it("omits both detail fields from legacy schemas and binds pricing to the published core", () => {
+    const full = catalog(300, true);
+    const expected = {
+      ...full,
+      models: full.models.map(
+        ({ limit_details: _limits, capability_details: _capabilities, ...model }) => model,
+      ),
+    };
+    expect(catalogExportAssets(full)).toEqual(catalogExportAssets(expected));
+    const { data, ...metadata } = catalogEnvelopeSchema.parse({
+      catalog_version: full.catalog_version,
+      generated_at: full.generated_at,
+      data: full,
+      warnings: full.warnings,
+    });
+    expect({ ...metadata, ...data }).toEqual(expected);
+    const variant = catalogModels(full).providers.test?.models[0]?.variants[0];
+    expect(variant).toBeDefined();
+    expect(
+      publishedModelVariantSchema.safeParse({
+        ...variant,
+        capability_details: full.models[0]?.capability_details,
+      }).success,
+    ).toBe(false);
+
+    const candidate = prepareCatalogPair(full, emptyPricingCatalog());
+    expect(publicCatalog(candidate.catalogAssetSource)).toEqual(expected);
+    const publicPrices = decodePricingCatalog(utf8.encode(candidate.pricingAssetSource), expected);
+    expect(publicPrices).toEqual(createPricingCatalogEnvelope(candidate.pricing.data, expected));
+    expect(publicPrices.pricing_data_version).toBe(candidate.pricing.pricing_data_version);
+    expect(() => validatePricingCatalogEnvelope(publicPrices, full)).toThrow("core data hash");
+    expect(candidate.catalog.models).toEqual(full.models);
+  });
+
+  it.each([
+    { tokens: undefined, capability: undefined, wire: 7, manifest: 1 },
+    { tokens: 300, capability: undefined, wire: 8, manifest: 2 },
+    { tokens: undefined, capability: "withdrawn", wire: 7, manifest: 2 },
+    { tokens: 300, capability: "withdrawn", wire: 8, manifest: 2 },
+    { tokens: undefined, capability: true, wire: 9, manifest: 2 },
+    { tokens: 300, capability: false, wire: 9, manifest: 2 },
+  ] as const)(
+    "recovers v$wire assets with capability receipt $capability and private manifest v$manifest",
+    async ({ tokens, capability, wire, manifest }) => {
+      const full = catalog(tokens, capability);
+      const candidate = prepareCatalogPair(full, emptyPricingCatalog());
+      const output = await paths();
+      await commitCatalogPair(candidate, output);
+
+      expect(
+        JSON.parse(await readFile(join(output.stateDirectory, "current.json"), "utf8")),
+      ).toMatchObject({
+        version: manifest,
+        ...(manifest === 2 ? { core_data_sha256: candidate.pricing.core_data_sha256 } : {}),
+      });
+      const published = await readPublishedAssets(output.projections);
+      const source = readCompressedProfileAsset(published.ui, "/ui/details/test/0.json");
+      if (source === undefined) throw new Error("Missing model detail asset");
+      const { schema_version, data_version, details } = websiteDetailChunkSchema.parse(
+        JSON.parse(gunzipSync(source).toString("utf8")),
+      );
+      expect(schema_version).toBe(wire);
+      const salt =
+        (tokens === undefined ? "" : "\0model-limit-details-v8") +
+        (wire === 9 ? "\0model-capability-details-v9" : "");
+      expect(data_version).toBe(
+        sha256(
+          `website-core-v7\0${full.catalog_version}\0${candidate.pricing.pricing_data_version}${salt}`,
+        ),
+      );
+      if (wire === 9) {
+        expect(details[0]).toHaveProperty("capability_details", full.models[0]?.capability_details);
+      } else {
+        expect(details[0]).not.toHaveProperty("capability_details");
+      }
+      if (tokens !== undefined)
+        expect(details[0]).toHaveProperty("limit_details", full.models[0]?.limit_details);
+
+      const rebuild = vi.spyOn(projections, "projectCatalogPair");
+      expect(await recoverCatalogPair(output)).toEqual(candidate);
+      expect(rebuild).not.toHaveBeenCalled();
+      await rm(output.stateDirectory, { recursive: true });
+      expect(await recoverCatalogPair(output)).toEqual(candidate);
+      expect(rebuild).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([undefined, true] as const)(
+    "guards the accepted core before writes and after tampering (original capability: %s)",
+    async (capability) => {
+      const accepted = prepareCatalogPair(catalog(undefined, capability), emptyPricingCatalog());
+      const changed = prepareCatalogPair(
+        { ...accepted.catalog, models: catalog(undefined, false).models },
+        accepted.pricing.data,
+      );
+      expect(changed.pairId).toBe(accepted.pairId);
+      expect(changed.pricing.core_data_sha256).not.toBe(accepted.pricing.core_data_sha256);
+      const output = await paths();
+      await commitCatalogPair(accepted, output);
+      const pointerPath = join(output.stateDirectory, "current.json");
+      const pointer = await readFile(pointerPath);
+      const snapshot = join(output.stateDirectory, "snapshots", accepted.pairId);
+      const before = await snapshotBytes(snapshot);
+
+      await expect(commitCatalogPair(changed, output)).rejects.toThrow("different complete core");
+      expect(await readFile(pointerPath)).toEqual(pointer);
+      expect(await snapshotBytes(snapshot)).toEqual(before);
+
+      const wrongOwner = {
+        ...changed.catalog,
+        sources: changed.catalog.sources.map((source) => ({
+          ...source,
+          field_paths: ["limit_details"],
+        })),
+      };
+      await writeFile(join(snapshot, "catalog.json"), stableJson(wrongOwner));
+      await expect(recoverCatalogPair(output)).rejects.toThrow(/Unowned .* detail source/);
+
+      await writeFile(join(snapshot, "catalog.json"), changed.catalogStorageSource);
+      await writeFile(join(snapshot, "pricing.json"), changed.pricingStorageChunks.join(""));
+      await expect(recoverCatalogPair(output)).rejects.toThrow(
+        capability === undefined ? "Legacy accepted manifest" : "complete core",
+      );
+      expect(await readFile(pointerPath)).toEqual(pointer);
+    },
+  );
 });

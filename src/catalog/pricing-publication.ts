@@ -14,7 +14,7 @@ import { assertCanonicalJson, canonicalJson, parseIJson, readIJson } from "./can
 import { assertIJsonValue, canonicalJsonChunksFromValidated } from "./canonical-value.ts";
 import { catalogJson } from "./endpoints.ts";
 import { legacyCatalog } from "./legacy-catalog.ts";
-import { validateLimitDetailSources } from "./model-limit-details.ts";
+import { validateModelDetailSources } from "./model-claim-details.ts";
 import {
   atomicWrite,
   fileHandleMatchesCanonicalChunks,
@@ -47,9 +47,8 @@ import {
 import { validatePricingCatalog } from "./pricing-validation.ts";
 import { defaultProjectionPaths, type ProjectionPaths } from "./projection-paths.ts";
 import {
-  hasScopedLimitDetails,
   projectCatalogPair,
-  websiteDataVersion,
+  websiteDataVersionForCatalog,
   type PairProjections,
 } from "./projections.ts";
 import { catalogSchema, migrateCatalogStorage, type Catalog } from "./schema.ts";
@@ -129,7 +128,7 @@ export function prepareCatalogPair(
   const catalogStorageSource = stableJson(catalogSchema.parse(catalog));
   const parsedCatalog = catalogSchema.parse(JSON.parse(catalogStorageSource));
   assertIJsonValue(parsedCatalog);
-  validateLimitDetailSources(parsedCatalog);
+  validateModelDetailSources(parsedCatalog);
   const data = pricingData(pricing);
   validatePricingCatalog(data, parsedCatalog);
   const canonicalDataChunks = canonicalJsonChunksFromValidated(data);
@@ -176,7 +175,7 @@ async function prepareStructurallyValidatedPair(
   const catalogStorageSource = stableJson(catalogSchema.parse(catalog));
   const parsedCatalog = catalogSchema.parse(JSON.parse(catalogStorageSource));
   assertIJsonValue(parsedCatalog);
-  validateLimitDetailSources(parsedCatalog);
+  validateModelDetailSources(parsedCatalog);
   const data = "pricing_data_version" in pricing ? pricing.data : pricing;
   const validation =
     mode === "recovery"
@@ -644,11 +643,10 @@ function validatePairProjections(
     throw new Error("Projection assets do not match the accepted catalog pair");
   if (
     projections.ui.manifest.data_version !==
-    websiteDataVersion(
-      candidate.catalog.catalog_version,
+    websiteDataVersionForCatalog(
+      candidate.catalog,
       candidate.pricing.pricing_data_version,
       candidate.inference?.source,
-      hasScopedLimitDetails(candidate.catalog),
     )
   )
     throw new Error("UI assets have an invalid data version");

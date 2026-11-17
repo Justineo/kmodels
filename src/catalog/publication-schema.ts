@@ -51,6 +51,7 @@ export const catalogSummarySchema = z.strictObject({
 export const publishedModelVariantSchema = providerModelSchema
   .omit({
     limit_details: true,
+    capability_details: true,
     provider_id: true,
     model_id: true,
     task_evidence: true,
