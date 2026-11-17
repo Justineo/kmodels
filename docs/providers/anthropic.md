@@ -117,6 +117,20 @@ Its fresh identity/alias pairs can associate existing public tariffs through the
 fetched ID-version and Batch contracts. Retained display aliases cannot revive withdrawn
 associations, and a card without those contracts keeps metadata without inventing a price join.
 
+The same source owns optional `limit_details` in independent `card_limits` and
+`batch_output_beta` groups. The card's own ordinary output row requires the explicit synchronous
+Messages caption. The Batch guide owns its finite cap, standard Batch cap, exact beta header,
+platform scope and complete support list. Support names must resolve uniquely through an owned
+card title and its agreed Claude API ID; names are never converted into IDs. The card's separate
+beta row and any beta declaration in its caption must agree with the guide. A contradiction
+withholds only the beta observation, preserving the independently known synchronous bound.
+Missing or malformed companions are not withdrawal receipts. No output default is inferred from
+these maxima, and no hosted seller inherits the direct API scope.
+
+Each group carries the actual supporting document URLs, individual body hashes, native fragments
+and source observation time. Retention preserves that complete revision. Neither a bundle hash
+nor a newer source record may masquerade as an older document's evidence revision.
+
 ## Identity and catalog mapping
 
 - IDs and aliases come from labeled official cells or exact API values. A display-name join is used

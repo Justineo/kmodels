@@ -15,6 +15,7 @@ import { assertItemCount, contractExtensionEvidence, recognizeItems } from "./so
 import { extractXaiCommercialFacts, type XaiCommercialEvidence } from "./xai-commercial-source.ts";
 import { extractXaiPricingInputs } from "./xai-accounting.ts";
 import { xaiModelOfferKeys } from "./xai-commercial.ts";
+import { applyXaiLimitDetails } from "./xai-limit-details.ts";
 import type { SourceParseInput as ParseInput, SourceParseResult } from "./source-parse.ts";
 import { modalitySchema, type Modality, type ModelTask, unknownCapabilities } from "./schema.ts";
 
@@ -2475,6 +2476,7 @@ export function parseXaiCatalog(input: ParseInput): SourceParseResult {
     combine([...current.models, ...lifecycle, ...transcription]),
     fixedLowIds,
   );
+  applyXaiLimitDetails(input, models, bundle);
   const pricingInputs = extractXaiPricingInputs(
     llms,
     input.source.id,

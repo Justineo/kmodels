@@ -1,0 +1,71 @@
+> ## AI Agent Context
+> - Full documentation index: https://aistudio.google.com/llms.txt
+> - Gemini Docs MCP server (consistent live info): https://gemini-api-docs-mcp.dev
+> - Coding agent skills & setup guide: https://aistudio.google.com/docs/coding-agents.md
+
+# Long decode
+
+{% callout type="note" %}
+  We recommend the Interactions API for new projects. On the Interactions API, our servers run long decode for you with background execution. See [long decode with the Interactions API](/docs/long-decode).
+
+{% /callout %}
+
+Long decode lets Gemini 4 models (`gemini-4-carbon`, `gemini-4-argon`, and `gemini-4-hydrogen`) generate past the single-request output limit for deep reasoning tasks, up to the unified 1M-token context window (1,048,576 tokens shared across input, thinking, and output).
+
+Changing the model ID alone doesn't enable long decode. Without additional setup, output stops at 64K tokens on `gemini-4-hydrogen` (streaming and non-streaming), and at 64K tokens for streaming or SDK calls and 32K tokens for direct non-streaming REST calls on `gemini-4-carbon` and `gemini-4-argon`. The fastest way to turn on long decode is to upgrade the Google GenAI SDK and set `max_output_tokens` greater than 65,536. This guide explains how long decode works, when to use it, and how to turn it on with `generateContent`.
+
+{% callout type="note" %}
+  Automatic continuation needs these Google GenAI SDK versions or higher: Python (`google-genai`) 2.30.1, JavaScript (`@google/genai`) 2.29.1, Go 1.74.0, Java 1.77.0, .NET 1.26.0, and Kotlin 1.6.0. Earlier versions don't continue automatically. Output stops at 64K tokens.
+
+{% /callout %}
+
+## How long decode works  {% id="how-long-decode-works" %}
+
+A single streaming request, SDK request, or `gemini-4-hydrogen` non-streaming REST request generates up to 64K tokens, while a direct non-streaming REST request on `gemini-4-carbon` or `gemini-4-argon` generates up to 32K tokens. When a response needs more tokens, the model generates it across multiple request-and-response hops that each continue from where the previous hop stopped.
+
+* **Unified input and output token limit:** Input, thinking, function calls, and the final response share one 1M-token window. Output can use up to 1,048,576 minus your input tokens.
+* **A cap on each hop:** One hop returns up to 65,536 output tokens (or up to 32,768 on direct non-streaming REST calls to `gemini-4-carbon` and `gemini-4-argon`).
+* **A continuation signal:** If the model reaches the cap and has tokens left, the response ends with `finish_reason: CONTINUATION` and a `continuation_token`.
+* **The next hop:** The client sends the same request again with the token. The model continues from where it stopped.
+* **One total for all hops:** `max_output_tokens` sets the total thinking and output tokens for all hops together.
+* **A stop signal:** When the model uses all of `max_output_tokens`, the response ends with `finish_reason: MAX_TOKENS`.
+
+On hard problems, a hop can spend all of its tokens on internal thinking and return empty text with a `continuation_token`. This is normal, and the final answer arrives in later hops.
+
+## Default output limits  {% id="default-output-limits" %}
+
+Without long decode, a single request stops at these per-request limits:
+
+* **Streaming requests, non-streaming requests through the Google GenAI SDK (`generate_content`), and all `gemini-4-hydrogen` calls:** Default to 64K (65,536) output tokens.
+* **Direct non-streaming REST calls (`generateContent`) on `gemini-4-carbon` and `gemini-4-argon`:** Default to 32K (32,768) output tokens. Setting `max_output_tokens` greater than 32,768 on a non-streaming REST call to Carbon or Argon without a `continuation_token` returns a `400` error.
+
+| How you call the model | Output limit without long decode | Long decode at launch | What to do |
+| :--- | :--- | :--- | :--- |
+| Google GenAI SDK, latest version | 64K | Yes, the SDK continues for you | Set `max_output_tokens`. |
+| Google GenAI SDK, older version, non-streaming | 64K | No | Upgrade the SDK. |
+| REST `streamGenerateContent` | 64K | Yes, with your own loop | Write a loop. See [Option 2](/docs/long-decode?generate-content=true#option-2-loop). |
+| REST `generateContent` | 64K (`gemini-4-hydrogen`) or 32K (`gemini-4-carbon`, `gemini-4-argon`) | Yes, with your own loop | Write a loop. See [Option 2](/docs/long-decode?generate-content=true#option-2-loop). |
+
+{% callout type="warning" %}
+  Always set `max_output_tokens` greater than 65,536 for long decode. Also check the value in your agent framework or evaluation tool. A low value, such as 8,192, stops the model before it finishes thinking.
+
+{% /callout %}
+
+## Turn on long decode  {% id="turn-on-long-decode" %}
+
+You can run long decode automatically with the Google GenAI SDK (Option 1, recommended for most apps) or write your own continuation loop (Option 2). Both options support the full 1M-token context window.
+
+|  | Option 1: Google GenAI SDK (recommended) | Option 2: Your own streaming loop | Option 2: Your own non-streaming loop |
+| :--- | :--- | :--- | :--- |
+| **Who starts each hop** | The SDK. You set `max_output_tokens`. | Your code, at each checkpoint or after a dropped stream | Your code, every 64K tokens (`gemini-4-hydrogen`) or 32K tokens (`gemini-4-carbon`, `gemini-4-argon`) |
+| **Tokens per request** | 64K per hop | 64K per stream, with a checkpoint every 5K tokens after 32K on Carbon and Argon (or after 64K on Hydrogen) | 64K (`gemini-4-hydrogen`) or 32K (`gemini-4-carbon`, `gemini-4-argon`) per request |
+| **Time limit per request** | 20 minutes | 20 minutes | 20 minutes |
+| **Storage** | No server storage | No server storage | No server storage |
+| **Best for** | Most applications | REST callers and custom harnesses that stream | Simple evaluation harnesses |
+
+The encrypted `continuation_token` carries the model's state between requests, so nothing is stored on the server.
+
+{% callout type="note" %}
+  To work properly, long decode needs these Google GenAI SDK versions or higher: Python (`google-genai`) 2.30.1, JavaScript (`@google/genai`) 2.29.1, Go 1.74.0, Java 1.77.0, .NET 1.26.0, and Kotlin 1.6.0.
+
+{% /callout %}

@@ -1,0 +1,64 @@
+> ## AI Agent Context
+> - Full documentation index: https://aistudio.google.com/llms.txt
+> - Gemini Docs MCP server (consistent live info): https://gemini-api-docs-mcp.dev
+> - Coding agent skills & setup guide: https://aistudio.google.com/docs/coding-agents.md
+
+# Long decode
+
+By default, Gemini 4 models (`gemini-4-carbon`, `gemini-4-argon`, and `gemini-4-hydrogen`) generate up to 64K tokens (65,536) of thinking and output per response. Long decode lets you raise `max_output_tokens` past 64K for hard reasoning, math, and coding tasks, up to the unified 1M-token context window (1,048,576 tokens shared across input, thinking, and output). On the Interactions API, you can run long decode with [background execution](/docs/background-execution) so our servers run every hop for you, or in the foreground with [client-side continuation](/docs/long-decode#client-side-continuation).
+
+## How long decode works  {% id="how-long-decode-works" %}
+
+Generating hundreds of thousands of tokens can take longer than a single HTTP request can stay open, so long decode splits generation into sequential hops that continue from where the previous hop stopped: up to 64K tokens (65,536) per hop on background calls, streaming calls, and non-streaming `gemini-4-hydrogen` calls, or up to 32K tokens (32,768) per non-streaming hop on `gemini-4-carbon` and `gemini-4-argon`.
+
+When you set `background: true` and `max_output_tokens` greater than 65,536 on the Interactions API:
+
+1. The request runs asynchronously and returns an interaction with `status="in_progress"`.
+2. If the response reaches 64K tokens without finishing, the server starts a continuation hop with the tokens generated so far.
+3. This repeats until the model finishes or reaches `max_output_tokens`.
+4. When you poll the interaction, you get the combined thinking and output from all hops in a single interaction.
+
+To run continuation hops from your client instead, see [Choose how to run long decode](/docs/long-decode#choose-how-to-run-long-decode).
+
+## Output limits  {% id="output-limits" %}
+
+Streaming and non-streaming interactions default to a 64K output token limit, so responses up to 64K tokens need no code changes. To generate past 64K tokens, raise `max_output_tokens` and use background execution or client-side continuation.
+
+| How you create the interaction | Output limit |
+| :--- | :--- |
+| `background: false`, `max_output_tokens` not set | 65,536 tokens |
+| `background: false`, `max_output_tokens` greater than 65,536, `automatic_continuation: true` (SDK default) | Your `max_output_tokens`, up to 1,048,576 minus your input |
+| `background: false`, `max_output_tokens` greater than 65,536, `automatic_continuation: false` or REST | 65,536 tokens per streaming hop (or non-streaming hop on `gemini-4-hydrogen`), or 32,768 per non-streaming hop on `gemini-4-carbon` and `gemini-4-argon`. Loop with `continuation_token` to generate up to your `max_output_tokens`. |
+| `background: true`, `max_output_tokens` not set | 65,536 tokens |
+| `background: true`, `max_output_tokens` greater than 65,536 | Your `max_output_tokens`, up to 1,048,576 minus your input |
+
+{% callout type="warning" %}
+  Always set `max_output_tokens` greater than 65,536 for long decode. Also check the value in your agent framework or evaluation tool. A low value, such as 8,192, stops the model before it finishes thinking.
+
+{% /callout %}
+
+## Choose how to run long decode  {% id="choose-how-to-run-long-decode" %}
+
+Background execution is the easiest way to run long decode on the Interactions API. Our servers run every hop, so a dropped client connection won't interrupt generation. Client-side continuation, where the Google GenAI SDK or your own code starts each hop, is also available on the Interactions API for foreground calls, stateless requests, or managing your own retry resilience.
+
+|  | Background execution (Interactions API) | Client-side continuation (Interactions API) |
+| :--- | :--- | :--- |
+| **Who starts each hop** | Our servers | The Google GenAI SDK (by default), or your own code |
+| **Tokens per request** | Your `max_output_tokens`, in one interaction (up to 64K per internal hop) | 64K per stream (and non-streaming on `gemini-4-hydrogen`); 32K per non-streaming request on `gemini-4-carbon` and `gemini-4-argon` |
+| **Run time** | Up to 24 hours | 20 minutes per streaming hop, 10 minutes per non-streaming hop |
+| **Storage** | Requires `store: true` | Stored by default (`store: true`), or stateless with `store: false` |
+| **Best for** | The easiest way to run long decode | Foreground calls, stateless apps, or finer-grained control over retries, so you can build your own backoff, error handling, and resilience |
+
+If you use the GenerateContent API instead, see [long decode with the GenerateContent API](/docs/long-decode?generate-content=true).
+
+## Set `max_output_tokens` {% id="set-max-output-tokens" %}
+
+`max_output_tokens` sets the combined limit for thinking and output across the interaction. Lowering it doesn't make the model think more concisely, and instead cuts the response off sooner.
+
+| Your workload | Recommended `max_output_tokens` |
+| :--- | :--- |
+| Existing apps with a limit lower than 32K | Raise to 32,768. Background execution isn't needed. |
+| Long coding and agentic tasks | Start at 65,536 (the default). Background execution isn't needed. |
+| Complex reasoning, hard math, science, and proofs | Set `background: true` (or use client-side continuation) and start at 262,144, up to 1,048,576 minus your input tokens. |
+
+To use fewer tokens, lower `thinking_level`. Use `high` for the hardest reasoning tasks. Use `medium` (the default) for most coding and agentic work.

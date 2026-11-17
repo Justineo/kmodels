@@ -91,6 +91,22 @@ rates and accounting contracts belong to the source, independently of its model 
 no model is selected as their storage carrier. Service-only results can be captured and replayed.
 Services whose applicability names models still require the exact admitted model identities.
 
+Optional `limit_details` uses `card_limits` from a unique owned `At a glance` table in the
+sectioned companion. Its literal Model name must match one admitted public identity or unique
+owned alias, and the table's API links must resolve to reviewed operation references. A missing
+unqualified `api_endpoints` summary does not erase that independent, explicitly scoped declaration.
+`No text output limit` becomes `no_separate_cap` for the stated text-output scope; finite context
+remains independent. It never becomes zero, Infinity, an unlimited reasoning budget or a guaranteed
+response length. Ordinary request defaults, including the Responses reference's visible-output
+default, are not emitted as model maxima. Changelog prose and version-prefix inheritance do not
+extend this table grammar to other models or sellers.
+
+Evidence identifies the actual Models page and complete `llms-full.txt` body with its exact native
+section locator and original observation clock. It does not label the full-document hash with an
+individual model-page URL. Duplicate, unrecognized or unavailable declarations withhold only this
+claim observation; identity, ordinary metadata and independently known tariffs survive. This does
+not enable source-wide omitted-fact retention.
+
 Preserve the structured `version` as identity. Dated aliases are evaluated at the
 observation time. Exact retired IDs that still redirect remain separate legacy rows. Each
 redirect resolves independently, so an unresolved target affects only its own legacy row.

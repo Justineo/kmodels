@@ -3,6 +3,7 @@ import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { extractGeminiCommercialFacts } from "./gemini-commercial-source.ts";
 import { geminiInferencePrices } from "./gemini-inference-pricing.ts";
+import { applyGeminiLimitDetails } from "./gemini-limit-details.ts";
 import {
   geminiGroundingAllowance,
   geminiGroundingAllowances,
@@ -2306,6 +2307,7 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
   const values = [...models.values()].sort((left, right) =>
     left.model_id.localeCompare(right.model_id),
   );
+  applyGeminiLimitDetails(input, values, bundle);
   assertItemCount("Gemini model catalog", values.length, extractor.minModels, extractor.maxModels);
   return values;
 }

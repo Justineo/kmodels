@@ -83,6 +83,27 @@ fields from its separately published input/output limits, but cannot replace a k
 context or scalar bound. A shared context alone never supplies independent full-sized input and
 output grants; conditional output and per-hop distinctions remain outside the scalar contract.
 
+Optional `limit_details` keeps those distinctions in two independent source-owned groups:
+`long_decode_interactions` and `long_decode_generate_content`. Their fixed public companions are
+[Interactions long decode](https://aistudio.google.com/docs/long-decode) and its explicitly delegated
+[GenerateContent variant](https://aistudio.google.com/docs/long-decode?generate-content=true).
+Select the exact URL including its query; these are different documents with separate hashes.
+Only each guide's literal model list can qualify already admitted exact catalog IDs.
+
+Preserve the combined input/thinking/output context budget, API-specific omitted-parameter defaults
+and per-hop bounds separately. The GenerateContent combined budget also includes function calls.
+Foreground/background, streaming/non-streaming, SDK/manual continuation and required storage
+qualifiers remain visible scope text. The SDK and REST defaults differ on explicitly named model
+branches; Interactions and GenerateContent have different SDK continuation requirements. A workload
+recommendation or code-sample quantity is not a maximum, and remaining context is never emitted as
+an independently granted output maximum.
+
+Each guide's prose, numeric values, model branches and consumed mode-table cells must agree.
+Unknown syntax or contradiction withholds its complete group with a local diagnostic; the other
+API group, ordinary model facts and prices remain independent. Missing companions do not withdraw
+facts or enable source-wide omitted-fact retention. Evidence uses each actual document URL/body hash
+and source observation clock; retained groups keep their original revision.
+
 `gemini-pricing` independently reads the [Google AI Studio pricing page](https://aistudio.google.com/docs/pricing).
 Its Markdown model links, price tables and owned tier tabs feed the existing price parser.
 Native backslash and two-space hard breaks retain their clause boundaries, alongside legacy HTML

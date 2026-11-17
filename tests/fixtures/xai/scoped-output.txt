@@ -1,0 +1,18 @@
+===/developers/grok-4-7===
+# Grok 4.7
+
+## At a glance
+
+| Property | Value |
+|----------|-------|
+| Model name | `grok-4.7` |
+| Context window | 500,000 tokens |
+| Output limit | No text output limit |
+| APIs | [Responses API](/developers/rest-api-reference/inference/responses#create-new-response) |
+
+## Important details
+
+Encrypted reasoning is always returned on the Responses API.
+
+===/developers/rest-api-reference/inference/responses===
+* `max_output_tokens` (integer | null) — Max number of tokens that can be generated in a response. Only applies to visible output tokens (i.e. does not apply to tokens used for reasoning or function calls). Defaults to 128,000 when unset; set a larger value to allow longer generations.

@@ -16,6 +16,7 @@ import {
   anthropicPromptScope,
 } from "./anthropic-price-row.ts";
 import { anthropicCodeExecution } from "./anthropic-code-execution.ts";
+import { applyAnthropicLimitDetails } from "./anthropic-limit-details.ts";
 import {
   anthropicAtLeastGeneration as atLeastGeneration,
   anthropicModelGeneration as modelGeneration,
@@ -2048,6 +2049,7 @@ function inferencePrices(
 interface AnthropicModelCard {
   model: ProviderModel;
   document: { url: string; body: string };
+  prose: string;
 }
 
 export function parseAnthropicModelCards(input: Input): SourceParseResult {
@@ -2147,9 +2149,10 @@ export function parseAnthropicModelCards(input: Input): SourceParseResult {
     const status = statuses[0];
     if (status !== undefined && statuses.every((value) => value === status)) item.status = status;
     else if (statuses.length > 0) contractFinding(input, "model_card_status_drift", id);
-    cards.push({ model: item, document });
+    cards.push({ model: item, document, prose: body });
   }
   if (cards.length === 0) throw new Error("Anthropic model cards contained no owned identities");
+  applyAnthropicLimitDetails(input, cards, bundle);
   return {
     models: [...models.values()],
     inference_prices: inferencePrices(
