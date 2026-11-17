@@ -136,7 +136,8 @@ admission, using existing reviewed HTTPS hosts and fetch limits. Original source
 host-owned and mounted read-only. The gateway fixes the model, high reasoning, token limit,
 endpoint and accounting; hosted tools and conversation handles are rejected. Private spending and
 controller decisions are outside all model mounts. The Docker base, CLI release and downloaded
-archive digest are pinned.
+archive digest are pinned. Install the complete official CLI package with its companion executables,
+including the Code Mode host, and create its writable state directory before starting a session.
 
 Model-writable directories are not uploaded directly. After a container stops, the controller
 checks evidence for regular files only, bounded to 10,000 entries and 1 GiB, before copying it
