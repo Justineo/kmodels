@@ -2,10 +2,7 @@ import { markdownProse, markdownSection, markdownTableRows } from "./markdown.ts
 import type { CapabilityStatement } from "./model-capability-details.ts";
 import type { ParsedProviderModel } from "./pricing-source.ts";
 import { contractExtensionEvidence } from "./source-contract.ts";
-import {
-  addCapabilityDetailGroup,
-  capabilityDocumentEvidence,
-} from "./source-capability-details.ts";
+import { addCapabilityDetailGroup, modelDocumentEvidence } from "./source-model-details.ts";
 import type { SourceParseInput } from "./source-parse.ts";
 import { yamlBlock } from "./yaml.ts";
 
@@ -312,13 +309,13 @@ export function applyAnthropicEffortDetails(
           claim,
           statements: [statement],
           evidence: [
-            capabilityDocumentEvidence(
+            modelDocumentEvidence(
               input,
               card.document,
               "Title; Model IDs / Claude API; Capabilities / Default effort",
               cardExcerpt,
             ),
-            capabilityDocumentEvidence(
+            modelDocumentEvidence(
               input,
               document,
               "Availability / Messages API; How effort works / Effort levels",

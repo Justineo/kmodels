@@ -25,8 +25,8 @@ import { assertItemCount, recognizeItems } from "./source-contract.ts";
 import {
   addCapabilityDetailGroup,
   capabilityDetailFinding,
-  capabilityDocumentEvidence,
-} from "./source-capability-details.ts";
+  modelDocumentEvidence,
+} from "./source-model-details.ts";
 import { unknownCapabilities } from "./schema.ts";
 import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
 
@@ -524,7 +524,7 @@ function applyKimiCapabilityDetails(
             },
           ],
           evidence: [
-            capabilityDocumentEvidence(
+            modelDocumentEvidence(
               input,
               document,
               `POST ${route.path} / ${fieldPath}; model ${model.model_id}`,
@@ -560,7 +560,7 @@ function applyKimiCapabilityDetails(
         claim,
         statements: keys.flatMap((key) => routes?.get(key) ?? []),
         evidence: [
-          capabilityDocumentEvidence(
+          modelDocumentEvidence(
             input,
             document,
             "Owned model IDs, operations and request cache options",
@@ -569,7 +569,7 @@ function applyKimiCapabilityDetails(
               ...kimiDetailRoutes.filter(({ key }) => keys.includes(key)).map(({ path }) => path),
             ].join("\n"),
           ),
-          capabilityDocumentEvidence(
+          modelDocumentEvidence(
             input,
             cacheGuide,
             "Cache Write supported models and API request settings",

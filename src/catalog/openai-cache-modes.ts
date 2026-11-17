@@ -5,8 +5,8 @@ import type { OpenAiModelCard } from "./openai-model-ids.ts";
 import {
   addCapabilityDetailGroup,
   capabilityDetailFinding,
-  capabilityDocumentEvidence,
-} from "./source-capability-details.ts";
+  modelDocumentEvidence,
+} from "./source-model-details.ts";
 import type { SourceParseInput } from "./source-parse.ts";
 
 const openAiCacheGuide = "https://developers.openai.com/api/docs/guides/prompt-caching.md";
@@ -98,13 +98,13 @@ export function addOpenAiCacheModes(
         },
       ],
       evidence: [
-        capabilityDocumentEvidence(
+        modelDocumentEvidence(
           input,
           document,
           "Model ID and supported Responses route",
           model.model_id,
         ),
-        capabilityDocumentEvidence(
+        modelDocumentEvidence(
           input,
           guide,
           `How caching works and Cache lifetime / ${cohort}; Summary of model differences`,

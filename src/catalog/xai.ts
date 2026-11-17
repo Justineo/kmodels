@@ -15,8 +15,8 @@ import { assertItemCount, contractExtensionEvidence, recognizeItems } from "./so
 import {
   addCapabilityDetailGroup,
   capabilityDetailFinding,
-  capabilityDocumentEvidence,
-} from "./source-capability-details.ts";
+  modelDocumentEvidence,
+} from "./source-model-details.ts";
 import { extractXaiCommercialFacts, type XaiCommercialEvidence } from "./xai-commercial-source.ts";
 import { extractXaiPricingInputs } from "./xai-accounting.ts";
 import { xaiModelOfferKeys } from "./xai-commercial.ts";
@@ -855,13 +855,13 @@ function applyXaiEffortDetails(
           },
         ],
         evidence: [
-          capabilityDocumentEvidence(
+          modelDocumentEvidence(
             input,
             bundle.index,
             "Public language model name and features.reasoningEffortOptions",
             JSON.stringify({ name: id, reasoningEffortOptions: declarations[0] }),
           ),
-          capabilityDocumentEvidence(
+          modelDocumentEvidence(
             input,
             document,
             reasoningPath +
@@ -947,7 +947,7 @@ function applyXaiCacheDetails(
               },
             ],
             evidence: [
-              capabilityDocumentEvidence(
+              modelDocumentEvidence(
                 input,
                 document,
                 base + " / automatic caching, supported models and exact request example",

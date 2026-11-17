@@ -10,8 +10,8 @@ import { capabilityDetailsSchema } from "../src/catalog/model-capability-details
 import { catalogSchema } from "../src/catalog/schema.ts";
 import {
   addCapabilityDetailGroup,
-  capabilityDocumentEvidence,
-} from "../src/catalog/source-capability-details.ts";
+  modelDocumentEvidence,
+} from "../src/catalog/source-model-details.ts";
 import { geminiInferenceFixtures } from "./gemini-inference-fixture.ts";
 import { xaiInferenceBundle } from "./xai-inference-fixture.ts";
 
@@ -305,7 +305,7 @@ it("allows a partial effort list beside an independently known default at the sh
       },
     ],
     evidence: [
-      capabilityDocumentEvidence(
+      modelDocumentEvidence(
         input,
         { url: input.source.url, body },
         "Native reasoning_effort",

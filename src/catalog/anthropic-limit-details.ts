@@ -5,9 +5,9 @@ import type { SourceParseInput } from "./source-parse.ts";
 import {
   addLimitDetailGroup,
   limitDetailFinding,
-  limitDocumentEvidence,
+  modelDocumentEvidence,
   limitTokenCount,
-} from "./source-limit-details.ts";
+} from "./source-model-details.ts";
 
 interface Card {
   model: ParsedProviderModel;
@@ -64,7 +64,7 @@ export function applyAnthropicLimitDetails(
           },
         ],
         evidence: [
-          limitDocumentEvidence(
+          modelDocumentEvidence(
             input,
             document,
             "Model ID; Specifications / Model IDs / Claude API; Capabilities / Max output; Max output caption",
@@ -177,13 +177,13 @@ export function applyAnthropicLimitDetails(
           },
         ],
         evidence: [
-          limitDocumentEvidence(
+          modelDocumentEvidence(
             input,
             card.document,
             "Native title; Model ID; Specifications / Model IDs / Claude API",
             identityExcerpt(card),
           ),
-          limitDocumentEvidence(
+          modelDocumentEvidence(
             input,
             document,
             "Extended output (beta)",

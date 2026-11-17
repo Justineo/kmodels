@@ -7,9 +7,9 @@ import type { SourceParseInput } from "./source-parse.ts";
 import {
   addLimitDetailGroup,
   limitDetailFinding,
-  limitDocumentEvidence,
+  modelDocumentEvidence,
   limitTokenCount,
-} from "./source-limit-details.ts";
+} from "./source-model-details.ts";
 
 const guides = [
   {
@@ -404,7 +404,7 @@ export function applyGeminiLimitDetails(
           claim: guide.claim,
           statements,
           evidence: [
-            limitDocumentEvidence(
+            modelDocumentEvidence(
               input,
               document,
               "Introduction; How long decode works; Output/default limits; continuation mode table",

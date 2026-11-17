@@ -3,8 +3,8 @@ import type { OpenAiModelCard } from "./openai-model-ids.ts";
 import {
   addCapabilityDetailGroup,
   capabilityDetailFinding,
-  capabilityDocumentEvidence,
-} from "./source-capability-details.ts";
+  modelDocumentEvidence,
+} from "./source-model-details.ts";
 import type { SourceParseInput } from "./source-parse.ts";
 
 /** The dotted Responses parameter and the underscored Chat parameter have separate API scopes. */
@@ -42,7 +42,7 @@ export function addOpenAiEffort(
         claim: "api_effort_exclusions",
         statements,
         evidence: [
-          capabilityDocumentEvidence(
+          modelDocumentEvidence(
             input,
             document,
             "Model ID, unconditional API effort rejection and Endpoints table",
@@ -84,7 +84,7 @@ export function addOpenAiEffort(
       },
     ],
     evidence: [
-      capabilityDocumentEvidence(
+      modelDocumentEvidence(
         input,
         document,
         "Model ID, introductory effort declaration and Endpoints table",

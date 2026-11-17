@@ -6,8 +6,8 @@ import type { ParsedProviderModel } from "./pricing-source.ts";
 import {
   addCapabilityDetailGroup,
   capabilityDetailFinding,
-  capabilityDocumentEvidence,
-} from "./source-capability-details.ts";
+  modelDocumentEvidence,
+} from "./source-model-details.ts";
 import type { SourceParseInput } from "./source-parse.ts";
 
 type Document = LinkedBundle["index"];
@@ -192,13 +192,13 @@ function cacheModes(
       claim,
       statements,
       evidence: [
-        capabilityDocumentEvidence(
+        modelDocumentEvidence(
           input,
           document,
           "Implicit caching and API cache mode",
           excerpt.join("\n"),
         ),
-        capabilityDocumentEvidence(
+        modelDocumentEvidence(
           input,
           page.document,
           "Model code; model title and Context caching",
@@ -301,7 +301,7 @@ function thinkingLevels(
         },
       ],
       evidence: [
-        capabilityDocumentEvidence(
+        modelDocumentEvidence(
           input,
           document,
           "Controlling thinking; model options and default",
@@ -311,7 +311,7 @@ function thinkingLevels(
         ),
         ...(familyExcluded
           ? [
-              capabilityDocumentEvidence(
+              modelDocumentEvidence(
                 input,
                 page.document,
                 "Model title and Model code",

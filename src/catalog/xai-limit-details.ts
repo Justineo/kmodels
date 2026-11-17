@@ -5,8 +5,8 @@ import type { SourceParseInput } from "./source-parse.ts";
 import {
   addLimitDetailGroup,
   limitDetailFinding,
-  limitDocumentEvidence,
-} from "./source-limit-details.ts";
+  modelDocumentEvidence,
+} from "./source-model-details.ts";
 
 const routes = new Map([
   ["/developers/rest-api-reference/inference/responses", "/v1/responses"],
@@ -102,13 +102,13 @@ export function applyXaiLimitDetails(
         scope: `${name} (${path}): no separate provider text-output cap. Context remains independently bounded; this does not guarantee arbitrary output length or an unbounded reasoning/function-call budget.`,
       })),
       evidence: [
-        limitDocumentEvidence(
+        modelDocumentEvidence(
           input,
           bundle.index,
           "Embedded public model name and aliases",
           model.model_id,
         ),
-        limitDocumentEvidence(
+        modelDocumentEvidence(
           input,
           document,
           `${entry.path}; At a glance / Model name, Output limit, APIs`,

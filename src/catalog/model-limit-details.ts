@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  modelClaimGroupSchema,
-  modelClaimGroupsSchema,
-  type ModelDetailEvidence,
-} from "./model-claim-details.ts";
+import { modelClaimGroupSchema, modelClaimGroupsSchema } from "./model-claim-details.ts";
 
 const statementShape = {
   quantity: z.enum(["context_tokens", "output_tokens"]),
@@ -21,7 +17,6 @@ export const limitStatementSchema = z.discriminatedUnion("kind", [
 export const limitDetailGroupSchema = modelClaimGroupSchema(limitStatementSchema);
 export const limitDetailsSchema = modelClaimGroupsSchema(limitDetailGroupSchema, 8);
 
-export type LimitEvidence = ModelDetailEvidence;
 export type LimitStatement = z.infer<typeof limitStatementSchema>;
 export type LimitDetailGroup = z.infer<typeof limitDetailGroupSchema>;
 

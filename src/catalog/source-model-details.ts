@@ -1,9 +1,7 @@
 import { sha256 } from "./io.ts";
-import {
-  limitDetailsSchema,
-  type LimitDetailGroup,
-  type LimitEvidence,
-} from "./model-limit-details.ts";
+import { capabilityDetailsSchema, type CapabilityDetailGroup } from "./model-capability-details.ts";
+import type { ModelDetailEvidence } from "./model-claim-details.ts";
+import { limitDetailsSchema, type LimitDetailGroup } from "./model-limit-details.ts";
 import type { ParsedProviderModel } from "./pricing-source.ts";
 import { contractExtensionEvidence } from "./source-contract.ts";
 import type { SourceParseInput } from "./source-parse.ts";
@@ -12,12 +10,12 @@ export function limitDetailFinding(input: SourceParseInput, claim: string): void
   input.onContractFinding?.(contractExtensionEvidence([`/limit_details/${claim}`]));
 }
 
-export function limitDocumentEvidence(
+export function modelDocumentEvidence(
   input: SourceParseInput,
   document: { url: string; body: string },
   locator: string,
   excerpt: string,
-): LimitEvidence {
+): ModelDetailEvidence {
   return {
     document_url: document.url,
     locator,
@@ -27,6 +25,16 @@ export function limitDocumentEvidence(
   };
 }
 
+function sourceOwnsEvidence(
+  input: SourceParseInput,
+  evidence: readonly ModelDetailEvidence[],
+): boolean {
+  return evidence.every(({ document_url }) => {
+    const url = new URL(document_url);
+    return url.protocol === "https:" && input.source.allowedHosts.includes(url.hostname);
+  });
+}
+
 export function addLimitDetailGroup(
   input: SourceParseInput,
   model: ParsedProviderModel,
@@ -34,13 +42,7 @@ export function addLimitDetailGroup(
 ): void {
   const groups = [...(model.limit_details ?? []), { ...group, source_ref: input.source.id }];
   const result = limitDetailsSchema.safeParse(groups);
-  if (
-    !result.success ||
-    group.evidence.some(({ document_url }) => {
-      const url = new URL(document_url);
-      return url.protocol !== "https:" || !input.source.allowedHosts.includes(url.hostname);
-    })
-  ) {
+  if (!result.success || !sourceOwnsEvidence(input, group.evidence)) {
     limitDetailFinding(input, group.claim);
     return;
   }
@@ -53,4 +55,24 @@ export function limitTokenCount(value: string): number | undefined {
   const scale = match[2]?.toLowerCase() === "m" ? 1_000_000 : match[2] ? 1_000 : 1;
   const count = Number(match[1].replaceAll(",", "")) * scale;
   return Number.isSafeInteger(count) && count > 0 ? count : undefined;
+}
+
+export function capabilityDetailFinding(input: SourceParseInput, claim: string): void {
+  input.onContractFinding?.(contractExtensionEvidence([`/capability_details/${claim}`]));
+}
+
+export function addCapabilityDetailGroup(
+  input: SourceParseInput,
+  model: ParsedProviderModel,
+  group: Omit<CapabilityDetailGroup, "source_ref">,
+): void {
+  const result = capabilityDetailsSchema.safeParse([
+    ...(model.capability_details ?? []),
+    { ...group, source_ref: input.source.id },
+  ]);
+  if (!result.success || !sourceOwnsEvidence(input, group.evidence)) {
+    capabilityDetailFinding(input, group.claim);
+    return;
+  }
+  model.capability_details = result.data;
 }

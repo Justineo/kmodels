@@ -5,8 +5,8 @@ import { deepseekApiDocument } from "./deepseek-api-document.ts";
 import {
   addCapabilityDetailGroup,
   capabilityDetailFinding,
-  capabilityDocumentEvidence,
-} from "./source-capability-details.ts";
+  modelDocumentEvidence,
+} from "./source-model-details.ts";
 import {
   deepseekBillingRule,
   deepseekBillingVocabulary,
@@ -282,7 +282,7 @@ function applyDeepseekEffort(input: Input, bundle: Bundle, models: readonly Prov
             },
           ],
           evidence: [
-            capabilityDocumentEvidence(
+            modelDocumentEvidence(
               input,
               document,
               `POST ${endpoint.path} / model and ${name}`,
