@@ -163,6 +163,24 @@ async function openAiModelPricing(
   }).models;
 }
 describe("OpenAI adapters", () => {
+  it("retains a card's explicit effort rejection on each supported text API", async () => {
+    const models = await parsed("openai", "openai/catalog.json", "openai-models", (body) => {
+      const bundle = linkedBundle(body);
+      for (const document of bundle.documents)
+        document.body = document.body.replace(
+          "Reasoning.effort supports: none, low, medium, and high.",
+          "\n\nThe API rejects requests that set reasoning effort to `brief`.",
+        );
+      return JSON.stringify(bundle);
+    });
+    const groups = models.find((m) => m.model_id === "gpt-5.4")?.capability_details;
+    expect(groups?.[0]?.statements).toEqual(
+      [
+        "OpenAI Chat Completions API (reasoning_effort)",
+        "OpenAI Responses API (reasoning.effort)",
+      ].map((scope) => ({ kind: "reasoning_effort", scope, unsupported_values: ["brief"] })),
+    );
+  });
   it("joins cache mode semantics only to the exact documented Responses example", async () => {
     const guide = await fixture("openai/cache-modes.md");
     const parse = (content: string) =>

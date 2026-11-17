@@ -13,6 +13,44 @@ export function addOpenAiEffort(
   { model, document }: OpenAiModelCard,
 ): void {
   const intro = markdownProse(document.body).split(/^## /m, 1)[0] ?? "";
+  const rejections = [
+    ...intro.matchAll(
+      /^The API rejects requests that set reasoning effort to `([a-z][a-z0-9_-]*)`\.$/gim,
+    ),
+  ];
+  const rejected = rejections[0];
+  if (rejections.length && rejected?.[1]) {
+    const statements = (model.api_endpoints ?? []).flatMap(({ path }) => {
+      const scope =
+        path === "v1/responses"
+          ? "OpenAI Responses API (reasoning.effort)"
+          : path === "v1/chat/completions"
+            ? "OpenAI Chat Completions API (reasoning_effort)"
+            : undefined;
+      return scope
+        ? [
+            {
+              kind: "reasoning_effort" as const,
+              scope,
+              unsupported_values: rejections.flatMap((match) => match[1] ?? []),
+            },
+          ]
+        : [];
+    });
+    if (statements.length)
+      addCapabilityDetailGroup(input, model, {
+        claim: "api_effort_exclusions",
+        statements,
+        evidence: [
+          capabilityDocumentEvidence(
+            input,
+            document,
+            "Model ID, unconditional API effort rejection and Endpoints table",
+            rejections.map((match) => match[0]).join("\n"),
+          ),
+        ],
+      });
+  }
   const declarations = [
     ...intro.matchAll(/(?:^|[.!?]\s+|\n)(reasoning\.effort supports: ([^\n]+))$/gim),
   ];
