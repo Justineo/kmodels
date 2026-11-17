@@ -501,3 +501,11 @@ which models can use Web Search, File Search, or containers, so those books like
   subject to lifecycle evidence and provider-level regression gates.
 - No price is inherited across a family, successor, provider, deployment channel, or private ID.
 - Every admitted normalized or raw fact retains its exact source reference and observation time.
+
+## Scoped reasoning effort
+
+An indexed model card can declare native `reasoning.effort` options in its introductory prose.
+The collector requires the exact card ID and a supported Responses route on the same card.
+It records a default only when the declaration labels one. Synthesized snapshot IDs and other
+endpoints require their own evidence. The [reasoning guide](https://developers.openai.com/api/docs/guides/reasoning)
+distinguishes this dotted parameter from the Chat Completions parameter.

@@ -847,7 +847,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-catalog" },
-        extractorVersion: "openai-catalog-v14",
+        extractorVersion: "openai-catalog-v15",
         fields: [
           "model_id",
           "name",
@@ -857,6 +857,7 @@ export const manifests = [
           "api_endpoints",
           "modalities",
           "capabilities",
+          "capability_details",
           "limits",
           "status",
           "release_stage",

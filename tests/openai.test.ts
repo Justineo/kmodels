@@ -163,6 +163,41 @@ async function openAiModelPricing(
   }).models;
 }
 describe("OpenAI adapters", () => {
+  it("binds native effort options and explicit defaults to the owning card and API", async () => {
+    const parse = (list: string, route = "Supported") =>
+      parsed("openai", "openai/catalog.json", "openai-models", (body) =>
+        body
+          .replace("none, low, medium, and high.", list)
+          .replace(
+            "Responses | `v1/responses` | Supported",
+            `Responses | \`v1/responses\` | ${route}`,
+          ),
+      );
+    const records = await parse("brief, balanced (default) and deep.");
+    expect(
+      records.find(({ model_id }) => model_id === "gpt-5.4")?.capability_details?.[0]?.statements,
+    ).toEqual([
+      {
+        kind: "reasoning_effort",
+        scope: "OpenAI Responses API (reasoning.effort)",
+        supported_values: ["brief", "balanced", "deep"],
+        default_value: "balanced",
+      },
+    ]);
+    expect(
+      records.find(({ model_id }) => model_id === "gpt-5.4-2026-03-05")?.capability_details,
+    ).toBeUndefined();
+    for (const records of [
+      await parse("low, high where available."),
+      await parse("low (default), high (default)."),
+      await parse("low, high.", "Not supported"),
+    ]) {
+      const model = records.find(({ model_id }) => model_id === "gpt-5.4");
+      expect(model?.limits.context_tokens).toBe(1050000);
+      expect(model?.capability_details).toBeUndefined();
+    }
+  });
+
   it("retains the actual Chat served tier as a commercial input without invocation wiring", async () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-accounting");
