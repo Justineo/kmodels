@@ -11,6 +11,7 @@ import {
 import { sourcePricingEvidenceSchema } from "./source-pricing-policy.ts";
 import { modelCardSchema, deploymentSpecSchema } from "./model-metadata.ts";
 import { limitDetailsSchema } from "./model-limit-details.ts";
+import { capabilityDetailsSchema } from "./model-capability-details.ts";
 
 const dateTime = z.iso.datetime({ offset: true });
 const modelDate = z.union([
@@ -108,6 +109,7 @@ export const providerModelSchema = z.object({
   }),
   limits: z.object(modelLimitsShape),
   limit_details: limitDetailsSchema.optional(),
+  capability_details: capabilityDetailsSchema.optional(),
   release_date: modelDate.optional(),
   updated_date: modelDate.optional(),
   deprecated_at: z.string().optional(),

@@ -165,6 +165,7 @@ export type SourceField =
   | "routes"
   | "modalities"
   | "capabilities"
+  | "capability_details"
   | "limits"
   | "limit_details"
   | "release_date"
