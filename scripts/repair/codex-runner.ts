@@ -186,7 +186,7 @@ export function containerArguments(
     "/workspace",
     "kmodels-repair-codex:local",
     "-c",
-    'set -euo pipefail; source "$VP_HOME/env"; vp node /trusted/scripts/repair/codex-relay.ts & relay=$!; trap \'kill "$relay" 2>/dev/null || true\' EXIT; for attempt in {1..50}; do if vp node -e \'fetch("http://127.0.0.1:8765/health").then(()=>process.exit(0)).catch(()=>process.exit(1))\'; then break; fi; sleep 0.1; done; exec /usr/local/bin/catalog-codex "$@" < "$CATALOG_PROMPT"',
+    'set -euo pipefail; mkdir -p "$CODEX_HOME"; source "$VP_HOME/env"; vp node /trusted/scripts/repair/codex-relay.ts & relay=$!; trap \'kill "$relay" 2>/dev/null || true\' EXIT; for attempt in {1..50}; do if vp node -e \'fetch("http://127.0.0.1:8765/health").then(()=>process.exit(0)).catch(()=>process.exit(1))\'; then break; fi; sleep 0.1; done; exec /usr/local/bin/catalog-codex "$@" < "$CATALOG_PROMPT"',
     "catalog-codex",
     ...codexArguments(),
   ].flatMap((arg) => (arg === "--workdir" ? ["--env", `CATALOG_PROMPT=${prompt}`, arg] : [arg]));
