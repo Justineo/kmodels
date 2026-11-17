@@ -878,6 +878,16 @@ export const manifests = [
           maxDocumentBytes: mebibytes(1),
           discoverySuffix: ".md",
           requestSuffix: ".md",
+          documents: optionalFixedDocuments([
+            [
+              "prompt-cache-modes",
+              "https://developers.openai.com/api/docs/guides/prompt-caching.md",
+              1,
+              "markdown",
+              true,
+              true,
+            ],
+          ]),
         },
       },
       {

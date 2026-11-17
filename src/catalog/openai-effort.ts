@@ -1,7 +1,10 @@
 import { markdownProse } from "./markdown.ts";
 import type { OpenAiModelCard } from "./openai-model-ids.ts";
-import { limitDocumentEvidence } from "./source-limit-details.ts";
-import { contractExtensionEvidence } from "./source-contract.ts";
+import {
+  addCapabilityDetailGroup,
+  capabilityDetailFinding,
+  capabilityDocumentEvidence,
+} from "./source-capability-details.ts";
 import type { SourceParseInput } from "./source-parse.ts";
 
 /** The dotted Responses parameter and the underscored Chat parameter have separate API scopes. */
@@ -26,35 +29,29 @@ export function addOpenAiEffort(
     !declaration?.[1] ||
     !values?.length ||
     supported.length !== values.length ||
-    new Set(supported).size !== supported.length ||
     defaults.length > 1 ||
-    supported.length > 16 ||
-    supported.some((value) => value.length > 64) ||
     !model.api_endpoints?.some(({ path }) => path === "v1/responses")
   ) {
-    input.onContractFinding?.(contractExtensionEvidence(["/capability_details/responses_effort"]));
+    capabilityDetailFinding(input, "responses_effort");
     return;
   }
-  model.capability_details = [
-    {
-      source_ref: input.source.id,
-      claim: "responses_effort",
-      statements: [
-        {
-          kind: "reasoning_effort",
-          scope: "OpenAI Responses API (reasoning.effort)",
-          supported_values: supported,
-          ...(defaults[0] === undefined ? {} : { default_value: defaults[0] }),
-        },
-      ],
-      evidence: [
-        limitDocumentEvidence(
-          input,
-          document,
-          "Model ID, introductory effort declaration and Endpoints table",
-          declaration[1],
-        ),
-      ],
-    },
-  ];
+  addCapabilityDetailGroup(input, model, {
+    claim: "responses_effort",
+    statements: [
+      {
+        kind: "reasoning_effort",
+        scope: "OpenAI Responses API (reasoning.effort)",
+        supported_values: supported,
+        ...(defaults[0] === undefined ? {} : { default_value: defaults[0] }),
+      },
+    ],
+    evidence: [
+      capabilityDocumentEvidence(
+        input,
+        document,
+        "Model ID, introductory effort declaration and Endpoints table",
+        declaration[1],
+      ),
+    ],
+  });
 }

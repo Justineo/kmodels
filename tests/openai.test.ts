@@ -163,6 +163,44 @@ async function openAiModelPricing(
   }).models;
 }
 describe("OpenAI adapters", () => {
+  it("joins cache mode semantics only to the exact documented Responses example", async () => {
+    const guide = await fixture("openai/cache-modes.md");
+    const parse = (content: string) =>
+      parsed("openai", "openai/catalog.json", "openai-models", (body) => {
+        const bundle = linkedBundle(body);
+        bundle.documents.push({
+          url: "https://developers.openai.com/api/docs/guides/prompt-caching.md",
+          body: content,
+        });
+        return JSON.stringify(bundle);
+      });
+    const modes = (models: ProviderModel[]) =>
+      models.flatMap((model) =>
+        (model.capability_details ?? []).flatMap((group) =>
+          group.statements.flatMap((statement) =>
+            statement.kind === "prompt_cache"
+              ? [[model.model_id, statement.mode, statement.supported]]
+              : [],
+          ),
+        ),
+      );
+    expect(modes(await parse(guide))).toEqual([
+      ["gpt-5.4", "implicit", true],
+      ["gpt-5.4", "explicit", true],
+    ]);
+    for (const invalid of [
+      guide.replace("Responses API request", "Chat Completions request"),
+      guide.replace("Explicit breakpoints | Supported", "Explicit breakpoints | Not supported"),
+      guide.replace('"model": "gpt-5.4"', '"model": "foreign"'),
+    ]) {
+      const models = await parse(invalid);
+      expect(modes(models)).toEqual([]);
+      expect(
+        models.some((m) => m.capability_details?.some((g) => g.claim === "responses_effort")),
+      ).toBe(true);
+    }
+  });
+
   it("binds native effort options and explicit defaults to the owning card and API", async () => {
     const parse = (list: string, route = "Supported") =>
       parsed("openai", "openai/catalog.json", "openai-models", (body) =>

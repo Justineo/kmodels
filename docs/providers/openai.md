@@ -511,3 +511,8 @@ The collector requires the exact card ID and a supported Responses route on the 
 It records a default only when the declaration labels one. Synthesized snapshot IDs and other
 endpoints require their own evidence. The [reasoning guide](https://developers.openai.com/api/docs/guides/reasoning)
 distinguishes this dotted parameter from the Chat Completions parameter.
+
+The optional prompt-caching guide can establish caller-selected and provider-selected prefix
+breakpoints for Responses. The same named cohort must agree across the guide's mode explanation,
+comparison table, and a concrete Responses example that names an indexed model with that route.
+This records supported placement mechanisms. The pricing source owns their charges.

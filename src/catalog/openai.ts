@@ -13,6 +13,7 @@ export { parseOpenAiAccounting } from "./openai-accounting.ts";
 import { decimalsEqual, multiplyDecimal, rawPricingFact } from "./pricing.ts";
 import { applyOpenAiCardRules } from "./openai-card-rules.ts";
 import { addOpenAiEffort } from "./openai-effort.ts";
+import { addOpenAiCacheModes } from "./openai-cache-modes.ts";
 import { openAiContainerMinimum } from "./openai-container-pricing.ts";
 import { openAiSearchContent } from "./openai-search-content.ts";
 import type { ProviderAtomRegistryEntry, RawPriceObservation } from "./pricing-schema.ts";
@@ -1920,6 +1921,7 @@ export function parseOpenAiCatalog(input: ParseInput): SourceParseResult {
       };
     })
     .sort((left, right) => left.uid.localeCompare(right.uid));
+  addOpenAiCacheModes(input, cards, bundle);
   const inventory = openAiSnapshotModels({
     models,
     cards,
