@@ -1,6 +1,6 @@
 import type { InferencePriceReason } from "../pricing/inference-schema.ts";
 import type { ExecutionMode } from "../pricing/execution-mode.ts";
-import type { CommercialChoice } from "./pricing-schema.ts";
+import type { CommercialChoice, PriceDimension } from "./pricing-schema.ts";
 import type { InferenceMatchResult } from "../pricing/inference-matching.ts";
 import { matchInferencePrices } from "../pricing/inference-matching.ts";
 import type { PricingSelection } from "./pricing-applicability.ts";
@@ -11,6 +11,7 @@ export function inferencePriceExplanation(result: {
   status: InferenceMatchResult["status"];
   reason?: InferencePriceReason;
   candidates: ReadonlyArray<{ gaps: ReadonlyArray<{ code: string }> }>;
+  missing_conditions?: readonly PriceDimension[];
   requires_offer_choice?: boolean;
   requires_execution_mode_choice?: boolean;
 }): string {
@@ -27,8 +28,10 @@ export function inferencePriceExplanation(result: {
     unreviewed_commercial_choice:
       "The available evidence does not establish this commercial choice for every eligible offer.",
   };
-  if (result.reason !== undefined) return explanations[result.reason];
+  if (result.reason !== undefined && result.reason !== "unresolved_price")
+    return explanations[result.reason];
   if (
+    !result.missing_conditions?.length &&
     result.candidates.some(({ gaps }) => gaps.some(({ code }) => code === "conflicting_variants"))
   )
     return "Published prices conflict under these conditions. No single price has been selected.";
@@ -40,6 +43,7 @@ export function inferencePriceExplanation(result: {
     )
   )
     return "Price validity is not fully established at the evaluated time. Review the available candidates.";
+  if (result.reason !== undefined) return explanations[result.reason];
   if (result.requires_execution_mode_choice)
     return "Choose an inference mode and any remaining conditions to identify applicable prices.";
   if (result.requires_offer_choice)

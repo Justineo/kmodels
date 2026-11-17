@@ -399,7 +399,10 @@ function selectOfferRows(
         candidate.gaps.push({
           offerRef,
           termRef: term.id,
-          code: "unsupported_structure",
+          code:
+            variant.reason === "conflicting_values"
+              ? "conflicting_variants"
+              : "unsupported_structure",
           reason: variant.reason,
         });
       }

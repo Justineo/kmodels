@@ -2,6 +2,10 @@ import { readFile } from "node:fs/promises";
 import { beforeAll, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
+import {
+  assembleProviderPricing,
+  type AtomicRateVariant,
+} from "../src/catalog/pricing-assembly.ts";
 import { publishedModel } from "../src/catalog/pricing-source.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import { sha256 } from "../src/catalog/io.ts";
@@ -19,13 +23,19 @@ import {
   websiteInferencePrice,
 } from "../src/catalog/website-inference-pricing.ts";
 import { websiteModelDetail, websitePublication } from "../src/catalog/website-data.ts";
-import { restoreInferencePrices } from "../src/catalog/website-inference-storage.ts";
+import {
+  restoreInferencePrices,
+  storeInferencePrices,
+} from "../src/catalog/website-inference-storage.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
 import type { PricingCatalogEnvelope, PriceCondition } from "../src/catalog/pricing-schema.ts";
 import { renderComponent } from "./render-component.ts";
 import InferencePrices from "../src/components/InferencePrices.vue";
 import { lookupFixtureSchema } from "./pricing-lookup-fixture.ts";
-import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import {
+  inferencePriceExplanation,
+  queryWebsiteInferencePrice,
+} from "../src/catalog/inference-price-presentation.ts";
 import { inferenceMatchData } from "../src/pricing/inference-matching-data.ts";
 import { createPricingSnapshot } from "../src/pricing/snapshot.ts";
 import { formatDimension } from "../src/catalog/pricing-presentation.ts";
@@ -181,6 +191,76 @@ function mapping(data: PriceDataEnvelope, rules: InferencePriceRule[]): Inferenc
 }
 function typesafeRule(modelId = "jev-1.13.0") {
   return rule(typesafe, modelId, "typesafe/jev-1.13.0");
+}
+function conflictingPrices() {
+  const pair = fixturePairs.get("typesafe");
+  const book = pair?.envelope.data.books[0];
+  const offer = book?.offers.find(({ offer_key }) => offer_key === "systemone");
+  const rate = offer?.terms.find((term) => term.kind === "rate");
+  const variant = rate?.variants[0];
+  const observation = variant?.observations[0];
+  const vocabulary = pair?.envelope.data.provider_vocabularies[0];
+  if (!pair || !book || !offer || !rate || !variant || !observation || !vocabulary)
+    throw new Error("Missing canonical price fixture");
+  const partition = assembleProviderPricing({
+    provider_id: vocabulary.provider_id,
+    observed_at: at,
+    vocabulary,
+    dispositions: [],
+    books: [
+      {
+        book_key: book.book_key,
+        scope: book.scope,
+        scope_observations: book.scope_observations,
+        source_refs: book.source_refs,
+        offers: [
+          {
+            offer_key: offer.offer_key,
+            billing_mode: offer.billing_mode,
+            source_refs: offer.source_refs,
+            relations: [],
+            states: [],
+            terms: [
+              {
+                kind: "rate",
+                term_key: rate.term_key,
+                meter: rate.meter,
+                source_refs: rate.source_refs,
+                raw_variants: [],
+                variants: ["1", "2"].map((numerator): AtomicRateVariant => ({
+                  applicability: variant.applicability,
+                  price: {
+                    ...variant.price,
+                    value: multiplyRationals(variant.price.value, { numerator, denominator: "1" }),
+                  },
+                  observation: {
+                    ...observation,
+                    locator: { kind: "table", value: `quote-${numerator}` },
+                  },
+                })),
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  const accepted = prepareCatalogPair(pair.catalog, {
+    provider_vocabularies: [partition.vocabulary],
+    provider_snapshots: [partition.snapshot],
+    model_dispositions: [],
+    books: partition.books,
+  });
+  const data = priceDataExport(accepted.catalog, accepted.pricing);
+  const term = data.providers[0]?.books[0]?.offers[0]?.terms.find((term) => term.kind === "rate");
+  if (!term) throw new Error("Missing assembled conflict");
+  expect(term.variants).toEqual([]);
+  expect(term.raw_variants.map(({ reason }) => reason)).toEqual(["conflicting_values"]);
+  expect(term.raw_variants[0]?.evidence.map(({ locator }) => locator.value)).toEqual([
+    "quote-1",
+    "quote-2",
+  ]);
+  return { data, rate: term };
 }
 function profileRule(scope: "us" | "global") {
   const selectors: Selector[] = [
@@ -705,6 +785,194 @@ it("retains conflicting prices instead of choosing the first rate", () => {
       .map(({ price }) => price.value),
   ).toContainEqual({ numerator: "1", denominator: "1" });
 });
+it("reports canonical raw conflicts through public model/resource lookup and website explanations", () => {
+  const { data } = conflictingPrices();
+  const association = typesafeRule();
+  const associations = mapping(data, [association]);
+  const args = { provider_id: association.provider_id, model_id: association.model_id };
+  const result = createInferencePriceLookup(data, associations)(args);
+  const commercial = createCommercialPriceLookup(
+    data,
+    associations,
+  )({
+    subject: { kind: "model", ...args },
+  });
+  const resourceData = structuredClone(data);
+  const book = resourceData.providers[0]?.books[0];
+  if (!book) throw new Error("Missing resource fixture");
+  book.scope = {
+    kind: "provider_resource",
+    resource_kind: { namespace: "kmodels", value: "service" },
+    resource_key: "test-service",
+    model_refs: book.scope.model_refs,
+  };
+  const resource = createCommercialPriceLookup(
+    resourceData,
+    mapping(resourceData, []),
+  )({
+    subject: { kind: "resource", provider_id: args.provider_id, book_ref: book.id },
+  });
+  for (const query of [result, commercial, resource]) {
+    expect(query.status).toBe("unknown");
+    expect(query.reason).toBe("unresolved_price");
+    expect(query.candidates.flatMap(({ gaps }) => gaps)).toEqual([
+      expect.objectContaining({ code: "conflicting_variants", reason: "conflicting_values" }),
+    ]);
+    const selected = query.candidates.flatMap(({ offer }) => offer.terms);
+    expect(selected).toEqual(data.providers[0]?.books[0]?.offers[0]?.terms);
+    expect(inferencePriceExplanation(query)).toContain("Published prices conflict");
+  }
+  const price = {
+    ...websiteInferencePrice(result, new Map()),
+    matching: inferenceMatchData(createPricingSnapshot(data), [association]),
+  };
+  const restored = restoreInferencePrices(storeInferencePrices([price]))[0];
+  if (!restored) throw new Error("Missing website conflict");
+  const interactive = queryWebsiteInferencePrice(restored, [], at);
+  expect(price.explanation).toContain("Published prices conflict");
+  expect(interactive.status).toBe(result.status);
+  expect(interactive.reason).toBe(result.reason);
+  expect(interactive.explanation).toBe(price.explanation);
+});
+
+it.each(["unsupported_structure", "unknown_amount", "superseded_value"] as const)(
+  "preserves raw reasons without treating %s as a source conflict",
+  (reason) => {
+    const { data, rate } = conflictingPrices();
+    for (const raw of rate.raw_variants) {
+      raw.reason = reason;
+      if (reason === "superseded_value") raw.impact = "informational";
+    }
+    const result = createInferencePriceLookup(
+      data,
+      mapping(data, [typesafeRule()]),
+    )({
+      provider_id: "typesafe",
+      model_id: "jev-1.13.0",
+    });
+    expect(result.candidates.flatMap(({ gaps }) => gaps)).toEqual(
+      reason === "superseded_value"
+        ? []
+        : [expect.objectContaining({ code: "unsupported_structure", reason })],
+    );
+    expect(inferencePriceExplanation(result)).not.toContain("prices conflict");
+  },
+);
+
+it.each(["disjoint", "expired", "future", "informational"])(
+  "ignores inactive raw conflicts beside a valid sibling: %s",
+  (scenario) => {
+    const { data, rate } = conflictingPrices();
+    const original = typesafe.providers[0]?.books[0]?.offers[0]?.terms.find(
+      (term) => term.kind === "rate",
+    );
+    if (!original) throw new Error("Missing rate fixture");
+    rate.variants = structuredClone(original.variants);
+    for (const raw of rate.raw_variants) {
+      if (scenario === "disjoint")
+        raw.possible_scope = {
+          any_of: [
+            {
+              all_of: [
+                {
+                  kind: "categorical",
+                  dimension: { namespace: "kmodels", value: "execution" },
+                  values: [{ namespace: "kmodels", value: "batch" }],
+                },
+              ],
+            },
+          ],
+        };
+      if (scenario === "expired")
+        raw.validity = { until: { value: "2026-01-01T00:00:00.000Z", precision: "datetime" } };
+      if (scenario === "future")
+        raw.validity = { from: { value: "2027-01-01T00:00:00.000Z", precision: "datetime" } };
+      if (scenario === "informational") raw.impact = "informational";
+    }
+    const result = createInferencePriceLookup(
+      data,
+      mapping(data, [typesafeRule()]),
+    )({
+      provider_id: "typesafe",
+      model_id: "jev-1.13.0",
+      selectors: [
+        {
+          kind: "categorical",
+          dimension: { namespace: "kmodels", value: "execution" },
+          value: { namespace: "kmodels", value: "request" },
+        },
+      ],
+    });
+    expect(result.status).toBe("matched");
+    expect(result.candidates.flatMap(({ gaps }) => gaps)).toEqual([]);
+    expect(inferencePriceExplanation(result)).not.toContain("prices conflict");
+  },
+);
+
+it("requires remaining conditions before presenting a scoped raw conflict as applicable", () => {
+  const { data, rate } = conflictingPrices();
+  const original = typesafe.providers[0]?.books[0]?.offers[0]?.terms.find(
+    (term) => term.kind === "rate",
+  );
+  if (!original) throw new Error("Missing rate fixture");
+  rate.variants = structuredClone(original.variants);
+  for (const raw of rate.raw_variants)
+    raw.possible_scope = {
+      any_of: [
+        {
+          all_of: [
+            {
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "execution" },
+              values: [{ namespace: "kmodels", value: "batch" }],
+            },
+          ],
+        },
+      ],
+    };
+  const query = createInferencePriceLookup(data, mapping(data, [typesafeRule()]));
+  const result = query({ provider_id: "typesafe", model_id: "jev-1.13.0" });
+  expect(result.status).toBe("candidates");
+  expect(result.missing_conditions).toEqual([{ namespace: "kmodels", value: "execution" }]);
+  expect(inferencePriceExplanation(result)).not.toContain("prices conflict");
+  expect(query({ provider_id: "typesafe", model_id: "private-endpoint" })).toMatchObject({
+    status: "unknown",
+    reason: "unreviewed_id",
+    candidates: [],
+  });
+});
+
+it.each([
+  "unreviewed_id",
+  "ambiguous_identity",
+  "incompatible_conditions",
+  "no_applicable_price",
+  "unreviewed_execution_mode",
+  "unreviewed_commercial_choice",
+] as const)("keeps identity and scope explanation precedence for %s", (reason) => {
+  expect(
+    inferencePriceExplanation({
+      status: "unknown",
+      reason,
+      candidates: [{ gaps: [{ code: "conflicting_variants" }] }],
+    }),
+  ).not.toContain("prices conflict");
+});
+it.each(["conflicting_variants", "unresolved_validity", "historical_evidence_missing"])(
+  "explains specific evidence before generic unresolved_price: %s",
+  (code) => {
+    const explanation = inferencePriceExplanation({
+      status: "unknown",
+      reason: "unresolved_price",
+      candidates: [{ gaps: [{ code }] }],
+    });
+    expect(explanation).toContain(
+      code === "conflicting_variants"
+        ? "Published prices conflict"
+        : "Price validity is not fully established",
+    );
+  },
+);
 it("does not require usage acquisition or charge binding just to identify a published price", () => {
   const data = structuredClone(typesafe);
   for (const provider of data.providers)
@@ -1840,7 +2108,7 @@ it("returns the underlying rates for a contribution and retains unresolved targe
     } else {
       expect(result.status).toBe("candidates");
       expect(result.candidates.flatMap(({ gaps }) => gaps)).toContainEqual(
-        expect.objectContaining({ code: "unsupported_structure" }),
+        expect.objectContaining({ code: "conflicting_variants", reason: "conflicting_values" }),
       );
     }
   }

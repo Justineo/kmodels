@@ -39,6 +39,13 @@ candidate offers, applicable terms, effective conditions, missing conditions, ev
 Missing facts produce candidates; unknown, conflicting or unsupported evidence stays explicit.
 Neither missing prices nor missing usage implies zero. No cheapest/default offer is selected.
 
+Applicable raw `conflicting_values` evidence and competing numeric prices both report the existing
+`conflicting_variants` gap. Raw reasons and evidence remain on their selected terms; unsupported
+structures remain distinct. Website explanations show a conflict only after its conditions are
+resolved, and specific conflict or validity gaps take precedence over generic `unresolved_price`.
+Identity and scope failures retain their own explanations. This diagnosis never selects a winner
+or changes tariff applicability, validity or amounts.
+
 Evaluation uses exact datetime boundaries directly. Calendar-only boundaries can exclude clearly
 future or expired rates, while the whole published period and adjacent UTC dates remain an
 uncertainty window for an unspecified effective instant/time zone. Rates in that window retain
