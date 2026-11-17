@@ -14,6 +14,7 @@ import {
   candidateKey,
   chooseProvider,
   difficulty,
+  boundedIncidentBatch,
   investigationMinutes,
   stateSchema,
 } from "./repair/state.ts";
@@ -132,6 +133,11 @@ if (maintenance && !periodic && allCandidates.length === 0) {
         message: `Continue the incomplete comprehensive review of ${unfinished.provider}; verify prior evidence and close remaining areas.`,
       },
     ];
+}
+if (!periodic && !candidates.some((candidate) => candidate.trigger.startsWith("scheduled_"))) {
+  const batch = boundedIncidentBatch(candidates, maintenance, preparedAt);
+  candidates = batch.selected;
+  deferred.push(...batch.deferred);
 }
 const taskHistory =
   maintenance?.tasks.filter((task) =>

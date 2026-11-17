@@ -22,6 +22,9 @@ import {
   observeCandidates,
   recordOutcome,
   reserveBudget,
+  extendBudget,
+  verificationAllowance,
+  boundedIncidentBatch,
   reserveLimit,
   settleBudget,
 } from "../scripts/repair/state.ts";
@@ -70,19 +73,51 @@ function taskState() {
 
 it("reserves across runs, retains unknown spend and only refunds trusted settlements", () => {
   const state = emptyState();
-  for (let i = 1; i <= 50; i++) reserveBudget(state, `${i}-1`, now, true);
+  for (let i = 1; i <= 120; i++) reserveBudget(state, `${i}-1`, now, true);
   expect(state.leases.reduce((sum, lease) => sum + lease.reserved_microusd, 0)).toBe(reserveLimit);
   expect(reserveBudget(state, "1-1", now, true)).toBe(state.leases[0]);
-  expect(state.leases).toHaveLength(50);
+  expect(state.leases).toHaveLength(120);
   settleBudget(state, "1-1", 1234);
-  expect(reserveBudget(state, "51-1", now, true).reserved_microusd).toBe(8_000_000 - 1234);
+  expect(reserveBudget(state, "121-1", now, true).reserved_microusd).toBe(1_000_000 - 1234);
   expect(() => settleBudget(state, "1-1", 0)).toThrow("Conflicting");
-  expect(() => settleBudget(state, "2-1", 8_000_001)).toThrow("Invalid");
+  expect(() => settleBudget(state, "2-1", 1_000_001)).toThrow("Invalid");
   expect(() => settleBudget(state, "2-1", -1)).toThrow("Invalid");
   expect(
-    reserveBudget(state, "52-1", new Date("2026-12-01T00:00:00Z"), true).reserved_microusd,
-  ).toBe(8_000_000);
-  expect(reserveBudget(state, "53-1", now, false).reserved_microusd).toBe(0);
+    reserveBudget(state, "122-1", new Date("2026-12-01T00:00:00Z"), true).reserved_microusd,
+  ).toBe(1_000_000);
+  expect(reserveBudget(state, "123-1", now, false).reserved_microusd).toBe(0);
+});
+
+it("extends only active same-month leases and preserves the total monthly ceiling", () => {
+  const state = emptyState();
+  const lease = reserveBudget(state, "1-1", now, false);
+  expect(lease.reserved_microusd).toBe(0);
+  expect(verificationAllowance("routine")).toBe(1_000_000);
+  expect(verificationAllowance("semantic")).toBe(1_000_000);
+  expect(verificationAllowance("complex")).toBe(2_000_000);
+  extendBudget(state, lease.id, verificationAllowance("complex"), now);
+  expect(lease.reserved_microusd).toBe(2_000_000);
+  extendBudget(state, lease.id, 4_000_000, now);
+  extendBudget(state, lease.id, 4_000_000, now);
+  expect(lease.reserved_microusd).toBe(4_000_000);
+  expect(() => extendBudget(state, lease.id, 8_000_000, now)).toThrow();
+  expect(() => extendBudget(state, lease.id, 4_000_000, new Date("2026-12-01"))).toThrow();
+  settleBudget(state, lease.id, 750_000);
+  expect(() => extendBudget(state, lease.id, 4_000_000, now)).toThrow();
+  for (let i = 2; i < 120; i++) reserveBudget(state, `${i}-1`, now, true);
+  expect(extendBudget(state, "119-1", 4_000_000, now).reserved_microusd).toBe(0);
+});
+
+it("bounds incident batches while retaining deferred work and respecting task cooldown", () => {
+  const { state, task } = taskState();
+  recordOutcome(task, { status: "not_a_defect", reason: "Verified" }, now);
+  const items = [
+    candidate(),
+    ...["a", "b", "c"].map((subject_id) => ({ ...candidate(), subject_id })),
+  ];
+  const batch = boundedIncidentBatch(items, state, now);
+  expect(batch.selected.map((item) => item.subject_id)).toEqual(["a", "b"]);
+  expect(batch.deferred.map((item) => item.subject_id)).toEqual(["pricing", "c"]);
 });
 
 it("reopens changed evidence and protects aged tasks from severity starvation", () => {

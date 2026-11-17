@@ -74,7 +74,10 @@ export const emptyState = (): MaintenanceState => ({
 // All reservations, including interrupted calls, count against the UTC calendar month's limit.
 export const monthlyLimit = 120_000_000;
 export const reserveLimit = 110_000_000;
-export const runAllowance = 8_000_000;
+export const runAllowance = 1_000_000;
+export const takeoverAllowance = 4_000_000;
+export const verificationAllowance = (level: "routine" | "semantic" | "complex") =>
+  level === "complex" ? 2_000_000 : runAllowance;
 export function reserveBudget(
   state: MaintenanceState,
   id: string,
@@ -113,6 +116,34 @@ export function settleBudget(state: MaintenanceState, id: string, charged: numbe
     throw new Error("Conflicting settlement");
   lease.charged_microusd = charged;
   lease.settled = true;
+}
+
+/** Called only by a serialized trusted budget job, never by a model or inference host. */
+export function extendBudget(
+  state: MaintenanceState,
+  id: string,
+  target: number,
+  now: Date,
+): BudgetLease {
+  const lease = state.leases.find((item) => item.id === id);
+  if (
+    !lease ||
+    lease.settled ||
+    lease.month !== now.toISOString().slice(0, 7) ||
+    ![runAllowance, 2_000_000, takeoverAllowance].includes(target)
+  )
+    throw new Error("Invalid budget extension");
+  const used = state.leases
+    .filter((item) => item.month === lease.month)
+    .reduce(
+      (sum, item) => sum + (item.settled ? item.charged_microusd : item.reserved_microusd),
+      0,
+    );
+  lease.reserved_microusd += Math.max(
+    0,
+    Math.min(target - lease.reserved_microusd, reserveLimit - used),
+  );
+  return lease;
 }
 
 export function observeCandidates(
@@ -211,6 +242,31 @@ export function difficulty(tasks: readonly MaintenanceTask[]): "routine" | "sema
   return "routine";
 }
 export const investigationMinutes = { routine: 20, semantic: 30, complex: 35 };
+
+export function boundedIncidentBatch(
+  candidates: readonly CatalogRepairCandidate[],
+  state: MaintenanceState | undefined,
+  now: Date,
+) {
+  const due = candidates
+    .filter((candidate) => {
+      const task = state?.tasks.find((task) => task.id === candidateKey(candidate));
+      return !task?.retry_at || Date.parse(task.retry_at) <= now.getTime();
+    })
+    .sort((a, b) => {
+      const attempted = (candidate: CatalogRepairCandidate) =>
+        state?.tasks.find((task) => task.id === candidateKey(candidate))?.last_attempt ?? "";
+      return (
+        attempted(a).localeCompare(attempted(b)) || candidateKey(a).localeCompare(candidateKey(b))
+      );
+    });
+  const selected = due.slice(0, 2);
+  const ids = new Set(selected.map(candidateKey));
+  return {
+    selected,
+    deferred: candidates.filter((candidate) => !ids.has(candidateKey(candidate))),
+  };
+}
 
 export function recordOutcome(
   task: MaintenanceTask,

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   checkVerification,
+  checkTakeoverCheckpoint,
   closedCandidates,
   verificationVerdict,
 } from "../scripts/repair/verification.ts";
@@ -93,6 +94,36 @@ it("escalates only a concrete contradiction and keeps uncertainty incomplete", a
   expect(
     verificationVerdict(await checkVerification(unknown.input, [unknown.row.id], unknown.read)),
   ).toBe("insufficient_evidence");
+});
+
+it("requires a bound concrete-error checkpoint before additional budget or takeover", async () => {
+  const s = report("concrete_error");
+  const admission = "immutable admission";
+  const review = JSON.stringify({
+    admission_sha256: digest(admission),
+    candidates: [{ id: s.row.id, status: "not_a_defect", reason: "Initial conclusion" }],
+  });
+  const decision = {
+    verdict: "concrete_error",
+    takeover_attempted: false,
+    admission_sha256: digest(admission),
+    review_sha256: digest(review),
+    patch_sha256: digest(""),
+  };
+  const checkpoint = { decision, report: s.input, admission, review, patch: "", read: s.read };
+  await expect(checkTakeoverCheckpoint(checkpoint)).resolves.toEqual(s.input);
+  await expect(
+    checkTakeoverCheckpoint({ ...checkpoint, patch: "different patch" }),
+  ).rejects.toThrow();
+  await expect(
+    checkTakeoverCheckpoint({ ...checkpoint, decision: { ...decision, takeover_attempted: true } }),
+  ).rejects.toThrow();
+  const supported = report();
+  await expect(
+    checkTakeoverCheckpoint({ ...checkpoint, report: supported.input, read: supported.read }),
+  ).rejects.toThrow("concrete error");
+  s.files.set("source", "changed receipt");
+  await expect(checkTakeoverCheckpoint(checkpoint)).rejects.toThrow("evidence changed");
 });
 it("bounds real Codex requests and prevents alternate models and hidden paid tools", () => {
   const request = codexRequest({

@@ -95,3 +95,28 @@ export function verificationVerdict(
 }
 
 export const verificationOutputSchema = z.toJSONSchema(verificationSchema);
+
+export async function checkTakeoverCheckpoint(options: {
+  decision: unknown;
+  report: unknown;
+  admission: string;
+  review: string;
+  patch: string;
+  read: (path: string) => Promise<string>;
+}): Promise<Verification> {
+  z.object({
+    verdict: z.literal("concrete_error"),
+    takeover_attempted: z.literal(false),
+    admission_sha256: z.literal(digest(options.admission)),
+    review_sha256: z.literal(digest(options.review)),
+    patch_sha256: z.literal(digest(options.patch)),
+  }).parse(options.decision);
+  const report = await checkVerification(
+    options.report,
+    closedCandidates(JSON.parse(options.review)),
+    options.read,
+  );
+  if (verificationVerdict(report) !== "concrete_error")
+    throw new Error("Additional budget requires a verified concrete error");
+  return report;
+}

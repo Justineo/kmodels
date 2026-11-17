@@ -3,7 +3,7 @@
 Status: current
 
 The [maintenance controller](catalog-maintenance.md) preserves unfinished investigations, routes
-bounded expert assistance and tracks code publication, accepted data and deployment separately.
+bounded independent verification and tracks code publication, accepted data and deployment separately.
 GPT independently investigates repaired and no-defect claims before comparing the proposal.
 Concrete evidenced errors may trigger one Sol high Codex revision, followed by fresh verification.
 Insufficient evidence stays open. Its discovery leads and model reviews do not replace the

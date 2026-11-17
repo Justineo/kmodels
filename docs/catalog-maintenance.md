@@ -44,6 +44,10 @@ artifacts, including available semantic-review and publication-validation feedba
 proposal explicitly directs the next run to address those findings. Prior evidence is a lead: freshness, implementation applicability and proof must be
 rechecked. Previous artifact directories are excluded from new uploads to avoid recursive growth.
 
+Incident batches admit at most two due candidates from the selected provider; additional work
+remains explicitly deferred. Mandatory source/execution completeness checks are still added, and
+periodic provider reviews retain their full coverage contract.
+
 Difficulty is deterministic: transport/parser work is routine; pricing, contract and provider
 reviews are semantic; architecture and repeated attempts are complex. Investigation deadlines
 are respectively 20, 30 and 35 minutes within the existing 45-minute execution limit. Timeout,
@@ -53,28 +57,36 @@ unknown, no-defect, code publication, data adoption and deployment remain differ
 
 Configure repository secrets `CATALOG_REPAIR_DEEPSEEK_API_KEY` and
 `CATALOG_REPAIR_OPENAI_API_KEY`. DeepSeek pays the executor and threat detector separately.
-OpenAI is reserved for bounded expert requests, independent verification and concrete-error takeover:
+OpenAI is reserved for independent verification and concrete-error takeover, both using
+`gpt-6.1-sol` high with Codex CLI. Optional GPT assistance during DeepSeek investigation is disabled.
 
-| Task                                                            | Model         | Reasoning |
-| --------------------------------------------------------------- | ------------- | --------- |
-| Routine first-party discovery assistance                        | `gpt-6-luna`  | medium    |
-| Semantic research and repair planning assistance                | `gpt-6.1-sol` | medium    |
-| Complex assistance, independent verification and Codex takeover | `gpt-6.1-sol` | high      |
+| Stage                                                    | Total run reservation                    |
+| -------------------------------------------------------- | ---------------------------------------- |
+| Preparation and DeepSeek investigation                   | USD 0                                    |
+| Routine or semantic verification                         | Up to USD 1                              |
+| Complex verification (architecture or repeated attempts) | Up to USD 2                              |
+| Verified concrete error requiring takeover               | Incrementally increased to at most USD 4 |
 
-The ledger reserves up to USD 8 before a run. New reservations stop at USD 110 per UTC month,
-leaving USD 10 of the USD 120 total allocation as headroom. Unused reservations are released on
-trusted settlement. The DeepSeek agent's optional expert assistance can spend at most USD 0.50;
-USD 7.50 remains reserved for independent work: initial investigation/verification up to USD 2.50,
-one takeover up to USD 2.50, and fresh investigation/verification up to USD 2.00. At least USD 4.50
-must remain before takeover starts. A task's unchanged evidence fingerprint cannot repeatedly
-trigger takeover. A separate publication-validation continuation still requires all ordinary gates.
+These amounts are spending ceilings, not expected costs. New reservations stop at USD 110 per UTC
+month, leaving USD 10 of the USD 120 allocation as headroom. Unused reservations are released on
+trusted settlement. A dedicated serialized budget job reads the immutable admission after the
+DeepSeek investigation to reserve the initial amount. The inference job has no ledger write token.
 
-The expert broker handles at most eight serial requests with 80 KB input, 4,096 output tokens and
-a three-minute timeout. Research may make one domain-restricted search call. The Codex gateway
-accepts at most 60 serial Responses calls per run, each bounded to 160 KB of text and 4,096 output
-tokens, and at most 40 public source acquisitions. Codex uses a 32,000-token context with early
-compaction. Each Codex session has a 20-minute wall-clock limit; the job has 120 minutes including
-setup. There are no automatic HTTP/stream retries, model fallbacks or unlimited escalation loops.
+Initial verification finishes before any takeover reservation. Only its hash-bound concrete-error
+checkpoint can authorize a separate budget job to extend the same lease to USD 4, subject to the
+remaining monthly allowance. This is a total run ceiling, not an additional USD 4. At least USD 2
+must remain before takeover starts: repair may spend at most USD 1, preserving at least USD 1 for
+fresh investigation/verification. Remaining run allowance can fund that final verification.
+Unchanged evidence fingerprints cannot repeatedly trigger takeover. A separate publication-validation
+continuation still requires all ordinary gates.
+
+The Codex gateway accepts at most 60 serial Responses calls per stage, each bounded to 160 KB
+of text and 4,096 output tokens, and at most 40 public source acquisitions. Codex uses a
+32,000-token context with early compaction. Prompts specify the remaining budget, request narrow
+reads and focused checks, and reuse full acquired receipts without repeatedly dumping their bodies.
+Each Codex session has a 20-minute wall-clock limit. There are no automatic HTTP/stream retries,
+model fallbacks or unlimited escalation loops. Actions summaries report the stage reservation and
+cumulative conservative charge for operational observation; no evaluation pipeline is added.
 
 Accounting uses integer micro-USD and conservative token-price ceilings, including cache-write
 and long-context headroom. Every call is reserved in a private atomic journal before HTTP starts.
@@ -85,21 +97,13 @@ conclusion open. There is no low-risk bypass or inference-confidence shortcut. T
 provider-enforced account cap; other uses of the key are outside it. Review model prices before
 changing aliases or ceilings. No live API spend is required by deterministic validation.
 
-The broker runs trusted copied code outside the agent's mounted workspace. Only that process
-gets the OpenAI key. The agent exchanges bounded JSON files, never executes host commands or
-chooses endpoints/models/budgets. The broker checks immutable candidate admission and public
-source hosts, opens regular files without following symlinks, and checks opened file identity on
-Linux. Its private journal and lease are unavailable to the agent. The runner terminates the
-broker before uploading spending evidence. OpenAI responses use `store: false`; expert and
-source outputs remain untrusted evidence subject to ordinary repair review.
+Only the trusted Codex gateway gets the OpenAI key. Budget jobs receive a separate GitHub token
+for the maintenance branch and never receive the API key; model containers receive neither key.
+Gateway accounting is private, atomic and outside model mounts. Original pages use the existing
+reviewed public HTTPS hosts with ordinary redirect and byte bounds. OpenAI responses use
+`store: false`, and model/source outputs remain untrusted evidence subject to ordinary repair review.
 
-## Research and independent semantic review
-
-`vp node scripts/catalog-repair-tools.ts expert CANDIDATE PURPOSE QUESTION_FILE [EVIDENCE...]`
-requests research, repair planning or review. Search answers supply URLs and hypotheses. Fetch
-original pages through `fetch-catalog-evidence.ts SOURCE --research URL` before using a claim.
-Research permits HTTPS URLs on that source's existing public hosts with the normal redirect and
-byte bounds. It grants neither a new collection source nor a new sandbox host.
+## Independent semantic review
 
 Independent verification covers every `repaired` and `not_a_defect` review row, including an
 all-no-defect run. Pending and blocked rows retain their existing meaning. An empty admission
@@ -139,6 +143,10 @@ checks evidence for regular files only, bounded to 10,000 entries and 1 GiB, bef
 into the artifact directory. Transcripts and results are copied through bounded regular-file
 reads. Symlinks and special files cannot turn an artifact upload or host copy into filesystem
 access outside the investigation.
+
+The final job forwards a supported initial proposal without a second inference run, or resumes
+the concrete-error checkpoint with the extended lease. A failed or missing final-stage usage
+receipt retains the full reservation; initial spending can settle when the final job was skipped.
 
 The final independently verified artifact is the only input to threat detection and publication.
 Threat detection waits for this artifact and checks its exact hash; it still uses the existing

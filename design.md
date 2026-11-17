@@ -27,7 +27,7 @@ This index points to the repository's current decisions. Detailed documents are 
   for first-party discovery, transport verification, extraction, and consumer replay.
 - [Website](docs/website.md): information architecture, interaction, visual system, frontend behavior, and security.
 - [Automation](docs/automation.md): CI, scheduled refresh, deployment, dependencies, and ownership.
-- [Catalog maintenance](docs/catalog-maintenance.md): durable investigations, isolated model routing,
+- [Catalog maintenance](docs/catalog-maintenance.md): durable investigations, isolated verification,
   bounded OpenAI spending, discovery and evidence-backed adoption.
 - [Review and repair method](docs/refresh-repair-audit.md): finite review scope, source-to-consumer evidence, diagnostic admission, periodic review and historical-data repair.
 - [Source semantic audit](docs/semantic-audit.md): manual Jev experiment, evidence replay, and evaluation limits; not scheduled.

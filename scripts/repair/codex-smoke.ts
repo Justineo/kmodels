@@ -33,7 +33,7 @@ const gateway = await startCodexGateway({
   lease: {
     id: "1-1",
     month: new Date().toISOString().slice(0, 7),
-    reserved_microusd: 8_000_000,
+    reserved_microusd: 1_000_000,
     charged_microusd: 0,
     settled: false,
   },
@@ -116,7 +116,7 @@ const gateway = await startCodexGateway({
     });
   },
 });
-gateway.startPhase(2_500_000);
+gateway.startPhase(1_000_000);
 const relay = local ? startRelay(join(directory, "api.sock"), 0) : undefined;
 try {
   if (relay && !relay.listening)

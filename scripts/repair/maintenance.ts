@@ -9,6 +9,7 @@ import { catalogRepairCandidates } from "../../src/catalog/catalog-repair.ts";
 import { readReviewEvidence, validateRepairReview } from "../catalog-repair-review.ts";
 import { githubApi, readState, repository, writeState } from "./store.ts";
 import { recordDiscovery } from "./discovery.ts";
+import { checkTakeoverCheckpoint } from "./verification.ts";
 import {
   adoptionReady,
   candidateKey,
@@ -17,6 +18,9 @@ import {
   observeCandidates,
   recordOutcome,
   reserveBudget,
+  extendBudget,
+  verificationAllowance,
+  takeoverAllowance,
   settleBudget,
   type MaintenanceState,
 } from "./state.ts";
@@ -147,13 +151,72 @@ async function main(): Promise<void> {
       state,
       `${env("GITHUB_RUN_ID")}-${env("GITHUB_RUN_ATTEMPT")}`,
       now,
-      process.env.MAINTENANCE_OPENAI_AVAILABLE === "true",
+      false,
     );
     writeState(repo, state, sha);
     const directory = env("MAINTENANCE_OUTPUT");
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, "state.json"), JSON.stringify(state));
     await writeFile(join(directory, "lease.json"), JSON.stringify(lease));
+    return;
+  }
+  if (command === "reserve-verification" || command === "reserve-takeover") {
+    const input = env("MAINTENANCE_INPUT");
+    const output = env("MAINTENANCE_OUTPUT");
+    const admissionText = await readFile(
+      join(input, "investigation", env("RUNNER_TEMP"), "gh-aw/repair-admission.json"),
+      "utf8",
+    );
+    const admission = z
+      .object({
+        base_sha: z.literal(env("GITHUB_SHA")),
+        difficulty: z.enum(["routine", "semantic", "complex"]),
+        candidates: z.array(z.unknown()),
+      })
+      .parse(JSON.parse(admissionText));
+    const id = `${env("GITHUB_RUN_ID")}-${env("GITHUB_RUN_ATTEMPT")}`;
+    let charged = 0;
+    if (command === "reserve-takeover") {
+      const prior = join(input, "initial");
+      const evidence = join(prior, "effective-evidence");
+      await checkTakeoverCheckpoint({
+        decision: JSON.parse(await readFile(join(prior, "decision.json"), "utf8")),
+        report: JSON.parse(await readFile(join(prior, "initial-verification.json"), "utf8")),
+        admission: admissionText,
+        review: await readFile(
+          join(input, "investigation/tmp/gh-aw/agent/catalog-repair-review.json"),
+          "utf8",
+        ),
+        patch: await readFile(join(input, "repair.patch"), "utf8"),
+        read: (path) =>
+          readReviewEvidence(join(evidence, relative("/tmp/gh-aw/agent", path)), evidence),
+      });
+      charged = z
+        .object({ lease_id: z.literal(id), charged_microusd: z.number().int().nonnegative() })
+        .parse(
+          JSON.parse(await readFile(join(prior, "review-usage.json"), "utf8")),
+        ).charged_microusd;
+    }
+    const lease = state.leases.find((item) => item.id === id);
+    if (!lease || charged > lease.reserved_microusd)
+      throw new Error("Missing or invalid prior budget");
+    if (process.env.MAINTENANCE_OPENAI_AVAILABLE === "true" && admission.candidates.length)
+      extendBudget(
+        state,
+        id,
+        command === "reserve-takeover"
+          ? takeoverAllowance
+          : verificationAllowance(admission.difficulty),
+        now,
+      );
+    writeState(repo, state, sha);
+    await mkdir(output, { recursive: true });
+    await writeFile(join(output, "lease.json"), JSON.stringify(lease));
+    await writeFile(join(output, "state.json"), JSON.stringify(state));
+    await writeFile(
+      join(output, "usage.json"),
+      JSON.stringify({ lease_id: id, charged_microusd: charged }),
+    );
     return;
   }
   if (command === "finish") {
@@ -169,11 +232,24 @@ async function main(): Promise<void> {
       const lease = leaseSchema.parse(JSON.parse(await readFile(leasePath, "utf8")));
       const reviewedUsagePath = join(directory, "catalog-maintenance-review/review-usage.json");
       const reviewed = await exists(reviewedUsagePath);
+      const initialUsagePath = join(directory, "catalog-maintenance-initial/review-usage.json");
+      const initial = await exists(initialUsagePath);
       const usage = z
         .object({ lease_id: z.literal(lease.id), charged_microusd: z.number().int().nonnegative() })
-        .parse(JSON.parse(await readFile(reviewed ? reviewedUsagePath : usagePath, "utf8")));
+        .parse(
+          JSON.parse(
+            await readFile(
+              reviewed ? reviewedUsagePath : initial ? initialUsagePath : usagePath,
+              "utf8",
+            ),
+          ),
+        );
       // A missing reviewer receipt may hide a paid call interrupted after reservation.
-      if (reviewed || process.env.MAINTENANCE_REVIEW_RESULT === "skipped")
+      if (
+        reviewed ||
+        (process.env.MAINTENANCE_REVIEW_RESULT === "skipped" &&
+          (initial || process.env.MAINTENANCE_INITIAL_RESULT === "skipped"))
+      )
         settleBudget(state, lease.id, usage.charged_microusd);
     }
     const independentDirectory = join(directory, "catalog-maintenance-review");

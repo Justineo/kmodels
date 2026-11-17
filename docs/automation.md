@@ -188,12 +188,14 @@ Status: implemented
   `CATALOG_REPAIR_DEEPSEEK_API_KEY`, not Copilot's included inference allowance. The key is passed only to the
   API proxy, excluded from the agent container, and sent only to `https://api.deepseek.com`.
 - [Catalog maintenance](catalog-maintenance.md) defines the trusted work ledger, fair scheduling,
-  difficulty routing, isolated OpenAI expert and the USD 120 monthly allocation. GPT independently
+  difficulty routing and the USD 120 monthly allocation. Ordinary verification reserves up to USD 1,
+  complex verification USD 2, and a verified concrete error may extend the whole run to USD 4.
+  Optional GPT assistance during DeepSeek investigation is disabled. GPT independently
   verifies every repaired and no-defect conclusion in fresh Codex sessions. Specific evidenced
   errors permit one Sol high Codex takeover and fresh verification; insufficient evidence cannot
   close a candidate. Threat detection and publication consume only the final verified patch,
   including when a rejected no-defect conclusion becomes a repair. No risk-based bypass applies.
-  `CATALOG_REPAIR_OPENAI_API_KEY` is available only to trusted host brokers. Codex runs without
+  `CATALOG_REPAIR_OPENAI_API_KEY` is available only to the trusted Codex gateways. Codex runs without
   network access or publication credentials; its host gateway controls source access and spending.
   State writes use a separate orphan branch and concurrency group; they cannot publish catalog
   code or data. Public response captures and exact-attempt plan/shard evidence are retained for
@@ -357,9 +359,9 @@ Status: implemented
   actual fields to linked parameter/result types; inspect those types before declaring omission.
   The repair engine uses Copilot CLI through gh-aw, with multi-turn tool execution and BYOK;
   it is not an application built on Copilot SDK. The SDK also exposes custom tools and MCP,
-  so a different agent runtime is not required merely to support research. The isolated OpenAI
-  expert supplies bounded search over reviewed first-party domains; original-source evidence
-  still comes through the public fetch/navigation CLI. The
+  so a different agent runtime is not required merely to support research. Original-source
+  evidence comes through the public fetch/navigation CLI. Optional OpenAI expert search is
+  disabled to reserve the monthly allowance for independent verification and correction. The
   [provider research method](agent-provider-research.md#discover-and-judge-sources) applies to
   missing and conflicting claims as well as broken URLs. Record claim-specific source authority
   and unresolved acquisition limits; passing receipt checks cannot prove semantic completeness.
@@ -368,8 +370,8 @@ Status: implemented
   merely because an older compiler accepts it; that is not proof of a usable runtime tool. The
   evidence CLI is the supported acquisition path here. Switching to SDK mode would not supply native
   search; [web search requires a separately configured MCP service](https://github.github.com/gh-aw/reference/web-search/).
-  Native Copilot search remains unconfigured. The separate expert's search answers are leads,
-  not evidence of exhaustive discovery or proof that a provider does not publish a fact.
+  Native Copilot search remains unconfigured. An unsuccessful source search is not evidence
+  of exhaustive discovery or proof that a provider does not publish a fact.
   For a linked-document source without a custom transport, `SOURCE_ID --index` saves only its
   reviewed index when discovery rejects the bundle. The same host/redirect restrictions and the
   smaller source/document byte limit apply; collection count guards remain unchanged. Artifacts

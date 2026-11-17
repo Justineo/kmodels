@@ -124,25 +124,26 @@ function job(workflow: string, name: string): string {
 it("isolates OpenAI spending and keeps semantic review ahead of trusted publication", async () => {
   const workflow = await readFile(compiled, "utf8");
   const agent = job(workflow, "agent");
-  const broker = agent
-    .split(/\n      - /)
-    .find((step) => step.includes("Start the isolated expert broker"));
-  expect(broker).toContain(
-    "CATALOG_REPAIR_OPENAI_API_KEY: ${{ secrets.CATALOG_REPAIR_OPENAI_API_KEY }}",
-  );
-  expect(broker).toContain('private="$RUNNER_TEMP/repair-expert"');
-  expect(broker).toContain('cp -R scripts src "$private/runtime/"');
-  const execute = agent.split(/\n      - /).find((step) => step.includes("awf --config"));
-  expect(execute).toBeDefined();
-  expect(execute).not.toContain("CATALOG_REPAIR_OPENAI_API_KEY");
-  expect(execute).not.toContain("repair-expert");
-  expect(agent.indexOf("kill -TERM")).toBeLessThan(agent.indexOf("Upload trusted expert spending"));
+  expect(agent).not.toContain("Start the isolated expert broker");
+  expect(agent).not.toContain("CATALOG_REPAIR_OPENAI_API_KEY");
+  expect(agent).toContain("Upload zero-spend DeepSeek-stage accounting");
   expect(agent).toContain("!/tmp/gh-aw/agent/previous/**");
   const reviewer = job(workflow, "semantic_review");
   expect(reviewer).toContain("contents: read");
   expect(reviewer).not.toContain("contents: write");
   expect(reviewer).not.toContain("GH_TOKEN:");
-  expect(reviewer).toContain("if: needs.agent.result == 'success'");
+  expect(reviewer).toContain("needs.initial_verification.result == 'success'");
+  const initial = job(workflow, "initial_verification");
+  expect(initial).toContain("MAINTENANCE_STAGE: initial");
+  expect(initial).not.toContain("GH_TOKEN:");
+  expect(initial).not.toContain("contents: write");
+  const extension = job(workflow, "takeover_budget");
+  expect(extension).toContain("needs.initial_verification.outputs.outcome == 'needs_takeover'");
+  expect(extension).toContain("group: catalog-maintenance-state");
+  expect(extension).toContain("maintenance.ts reserve-takeover");
+  expect(extension).not.toContain("secrets.CATALOG_REPAIR_OPENAI_API_KEY }}");
+  expect(reviewer).toContain("needs.takeover_budget.result == 'success'");
+  expect(reviewer).toContain("MAINTENANCE_STAGE: takeover");
   expect(reviewer).toContain("scripts/repair/codex-runner.ts");
   expect(reviewer).toContain("independently-verified-catalog-repair");
   expect(reviewer).not.toContain("scripts/repair/risk-review.ts");

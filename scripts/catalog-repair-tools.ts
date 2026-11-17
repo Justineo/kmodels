@@ -2,10 +2,8 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { setTimeout as wait } from "node:timers/promises";
 import { gunzipSync } from "node:zlib";
 import { z } from "zod";
-import { assistanceRequest } from "./repair/openai.ts";
 import { readReviewEvidence, reviewHash } from "./catalog-repair-review.ts";
 import { parseEvidence } from "./replay-catalog-evidence.ts";
 
@@ -36,34 +34,11 @@ export function factChanges(
   return changes;
 }
 async function main(): Promise<void> {
-  const [command, first, second, third, ...rest] = process.argv.slice(2);
-  if (command === "expert" && first && second && third) {
-    const request = assistanceRequest.parse({
-      id: randomUUID(),
-      candidate_id: first,
-      purpose: second,
-      question: await readReviewEvidence(third),
-      evidence: rest,
-    });
-    const directory = join(root, "expert");
-    await mkdir(directory, { recursive: true });
-    await writeFile(join(directory, `${request.id}.request.json`), JSON.stringify(request), {
-      flag: "wx",
-    });
-    const response = join(directory, `${request.id}.response.json`);
-    const deadline = Date.now() + 210000;
-    while (Date.now() < deadline) {
-      const value = await readFile(response, "utf8").catch(() => undefined);
-      if (value !== undefined) {
-        console.log(value);
-        return;
-      }
-      await wait(1000);
-    }
+  const [command, first, second, third] = process.argv.slice(2);
+  if (command === "expert")
     throw new Error(
-      `Expert request pending: ${request.id}. Save its ID; do not submit a duplicate.`,
+      "OpenAI assistance is disabled during DeepSeek investigation; preserve evidence for independent verification.",
     );
-  }
   if (command === "unpack" && first) {
     const bytes = await readFile(first);
     const body = gunzipSync(bytes, { maxOutputLength: 34 * 1024 * 1024 }).toString("utf8");

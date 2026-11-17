@@ -222,10 +222,9 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/setup-repair-toolchain
-      - name: Reserve the bounded monthly OpenAI budget and load task state
+      - name: Load task state without reserving inference budget
         env:
           GH_TOKEN: ${{ github.token }}
-          MAINTENANCE_OPENAI_AVAILABLE: ${{ secrets.CATALOG_REPAIR_OPENAI_API_KEY != '' }}
           MAINTENANCE_OUTPUT: ${{ runner.temp }}/maintenance
         run: vp node scripts/repair/maintenance.ts prepare
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -234,8 +233,40 @@ jobs:
           path: ${{ runner.temp }}/maintenance/
           retention-days: 30
           if-no-files-found: error
-  semantic_review:
+  verification_budget:
     needs: [agent, maintenance_prepare]
+    if: needs.agent.result == 'success'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: catalog-maintenance-state
+      queue: max
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-repair-toolchain
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: catalog-repair-investigation
+          path: ${{ runner.temp }}/independent-input/investigation
+      - name: Reserve only the authorized verification budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAINTENANCE_OPENAI_AVAILABLE: ${{ secrets.CATALOG_REPAIR_OPENAI_API_KEY != '' }}
+          MAINTENANCE_INPUT: ${{ runner.temp }}/independent-input
+          MAINTENANCE_OUTPUT: ${{ runner.temp }}/budget
+        run: vp node scripts/repair/maintenance.ts reserve-verification
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: catalog-maintenance-verification-budget
+          path: ${{ runner.temp }}/budget/
+          retention-days: 30
+          if-no-files-found: error
+  initial_verification:
+    needs: [agent, verification_budget]
     if: needs.agent.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -250,11 +281,7 @@ jobs:
       - uses: ./.github/actions/setup-repair-toolchain
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: catalog-maintenance-preparation
-          path: ${{ runner.temp }}/independent-input
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: catalog-maintenance-usage
+          name: catalog-maintenance-verification-budget
           path: ${{ runner.temp }}/independent-input
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -266,10 +293,113 @@ jobs:
           path: ${{ runner.temp }}/independent-input/investigation
       - name: Build the pinned isolated Codex runtime
         run: docker build --file .github/repair-codex.Dockerfile --tag kmodels-repair-codex:local .github
-      - name: Independently verify conclusions and revise concrete errors
+      - name: Independently verify conclusions within the initial budget
         id: independent
         env:
           CATALOG_REPAIR_OPENAI_API_KEY: ${{ secrets.CATALOG_REPAIR_OPENAI_API_KEY }}
+          MAINTENANCE_STAGE: initial
+          MAINTENANCE_INPUT: ${{ runner.temp }}/independent-input
+          MAINTENANCE_OUTPUT: ${{ runner.temp }}/independent-result
+        run: vp node scripts/repair/codex-runner.ts
+      - name: Preserve independent verification and trusted spending
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: catalog-maintenance-initial
+          path: ${{ runner.temp }}/independent-result/
+          retention-days: 30
+          if-no-files-found: warn
+  takeover_budget:
+    needs: [agent, initial_verification]
+    if: needs.initial_verification.outputs.outcome == 'needs_takeover'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: catalog-maintenance-state
+      queue: max
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-repair-toolchain
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: catalog-repair-investigation
+          path: ${{ runner.temp }}/independent-input/investigation
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: catalog-maintenance-initial
+          path: ${{ runner.temp }}/independent-input/initial
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: admitted-catalog-repair
+          path: ${{ runner.temp }}/independent-input
+      - name: Reserve only the authorized takeover budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAINTENANCE_OPENAI_AVAILABLE: ${{ secrets.CATALOG_REPAIR_OPENAI_API_KEY != '' }}
+          MAINTENANCE_INPUT: ${{ runner.temp }}/independent-input
+          MAINTENANCE_OUTPUT: ${{ runner.temp }}/budget
+        run: vp node scripts/repair/maintenance.ts reserve-takeover
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: catalog-maintenance-takeover-budget
+          path: ${{ runner.temp }}/budget/
+          retention-days: 30
+          if-no-files-found: error
+  semantic_review:
+    needs: [agent, initial_verification, takeover_budget]
+    if: always() && needs.initial_verification.result == 'success' && (needs.initial_verification.outputs.outcome != 'needs_takeover' || needs.takeover_budget.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      outcome: ${{ steps.forward.outputs.outcome || steps.independent.outputs.outcome }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-repair-toolchain
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: catalog-maintenance-initial
+          path: ${{ runner.temp }}/independent-input/initial
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.initial_verification.outputs.outcome == 'needs_takeover'
+        with:
+          name: catalog-maintenance-takeover-budget
+          path: ${{ runner.temp }}/independent-input
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.initial_verification.outputs.outcome == 'needs_takeover'
+        with:
+          name: admitted-catalog-repair
+          path: ${{ runner.temp }}/independent-input
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.initial_verification.outputs.outcome == 'needs_takeover'
+        with:
+          name: catalog-repair-investigation
+          path: ${{ runner.temp }}/independent-input/investigation
+      - name: Forward an independently verified initial conclusion
+        id: forward
+        if: needs.initial_verification.outputs.outcome != 'needs_takeover'
+        env:
+          FINAL_OUTCOME: ${{ needs.initial_verification.outputs.outcome }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/independent-result"
+          cp -R "$RUNNER_TEMP/independent-input/initial/." "$RUNNER_TEMP/independent-result/"
+          echo "outcome=$FINAL_OUTCOME" >> "$GITHUB_OUTPUT"
+      - name: Build the pinned isolated Codex runtime
+        if: needs.initial_verification.outputs.outcome == 'needs_takeover'
+        run: docker build --file .github/repair-codex.Dockerfile --tag kmodels-repair-codex:local .github
+      - name: Revise concrete errors and independently reverify
+        id: independent
+        if: needs.initial_verification.outputs.outcome == 'needs_takeover'
+        env:
+          CATALOG_REPAIR_OPENAI_API_KEY: ${{ secrets.CATALOG_REPAIR_OPENAI_API_KEY }}
+          MAINTENANCE_STAGE: takeover
           MAINTENANCE_INPUT: ${{ runner.temp }}/independent-input
           MAINTENANCE_OUTPUT: ${{ runner.temp }}/independent-result
         run: vp node scripts/repair/codex-runner.ts
@@ -291,7 +421,7 @@ jobs:
           retention-days: 30
           if-no-files-found: error
   maintenance_finish:
-    needs: [maintenance_prepare, agent, semantic_review, publish_repair]
+    needs: [maintenance_prepare, agent, initial_verification, semantic_review, publish_repair]
     if: always() && needs.maintenance_prepare.result == 'success'
     runs-on: ubuntu-latest
     concurrency:
@@ -321,6 +451,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MAINTENANCE_INPUT: ${{ runner.temp }}/maintenance-results
           MAINTENANCE_PUBLISHED_REVISION: ${{ needs.publish_repair.outputs.revision }}
+          MAINTENANCE_INITIAL_RESULT: ${{ needs.initial_verification.result }}
           MAINTENANCE_REVIEW_RESULT: ${{ needs.semantic_review.result }}
         run: vp node scripts/repair/maintenance.ts finish
   publish_repair:
@@ -556,35 +687,14 @@ steps:
   - name: Initialize trusted spending before inference
     run: vp node scripts/repair/initialize-usage.ts
 
-  - name: Start the isolated expert broker
-    if: steps.repair_context.outputs.repairable == 'true'
-    env:
-      CATALOG_REPAIR_OPENAI_API_KEY: ${{ secrets.CATALOG_REPAIR_OPENAI_API_KEY }}
-    run: |
-      set -euo pipefail
-      private="$RUNNER_TEMP/repair-expert"
-      mkdir -p "$private/runtime"
-      cp -R scripts src "$private/runtime/"
-      ln -s "$GITHUB_WORKSPACE/node_modules" "$private/runtime/node_modules"
-      vp node "$private/runtime/scripts/repair/broker.ts" "$private" "$RUNNER_TEMP/gh-aw/repair-admission.json" "$RUNNER_TEMP/gh-aw/maintenance/lease.json" > "$private/broker.log" 2>&1 &
-
 post-steps:
-  - name: Stop expert requests and preserve trusted spending
-    if: always()
-    run: |
-      mkdir -p "$RUNNER_TEMP/repair-expert"
-      touch "$RUNNER_TEMP/repair-expert/stop"
-      if [[ -f "$RUNNER_TEMP/repair-expert/pid" ]]; then
-        kill -TERM "$(cat "$RUNNER_TEMP/repair-expert/pid")" 2>/dev/null || true
-      fi
-  - name: Upload trusted expert spending
+  - name: Upload zero-spend DeepSeek-stage accounting
     if: always()
     uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
     with:
       name: catalog-maintenance-usage
       path: |
         ${{ runner.temp }}/repair-expert/usage.json
-        ${{ runner.temp }}/repair-expert/journal.jsonl
       if-no-files-found: warn
       retention-days: 30
   - name: Check investigation completion evidence
@@ -674,13 +784,9 @@ facts; neither command establishes consumer behavior or retained-to-current tran
 Use `catalog-repair-review.ts probe consumer|transition PHASE -- test ...` with the actual
 provider's consumer and collection regression scenarios for those claims.
 
-Read `/tmp/gh-aw/agent/expert/availability.json`. When available, save a focused question in the
-agent directory and run `vp node scripts/catalog-repair-tools.ts expert CANDIDATE_ID PURPOSE
-QUESTION_FILE [PUBLIC_EVIDENCE_JSON...]` (one shell command). PURPOSE is research, repair or review.
-Use research for unresolved first-party discovery, repair for semantic ambiguity or repeated failed
-approaches, and review for a concrete counterexample check. The trusted broker chooses the model,
-bounds calls and cost, and never shares the API key. A failed request is not source evidence;
-checkpoint its ID and continue independent work. Do not retry identical failed questions.
+OpenAI assistance is disabled during the DeepSeek investigation. Investigate with the existing
+source and replay tools. The OpenAI allowance is reserved for independent verification and,
+only after a concrete verified error, one bounded Codex revision.
 
 Every repaired and not_a_defect conclusion is independently verified in a separate isolated GPT
 session before it can close or publish. Preserve complete source receipts, contrary context and
