@@ -17,6 +17,7 @@ import {
   leaseSchema,
   observeCandidates,
   recordOutcome,
+  recordDeployment,
   prepareBudgetLease,
   reserveRunBudget,
   settleBudget,
@@ -400,6 +401,9 @@ async function main(): Promise<void> {
       }
     }
     writeState(repo, state, sha);
+  } else if (command === "record-deployment") {
+    const receipt = JSON.parse(await readFile(process.argv[3] ?? "", "utf8"));
+    if (recordDeployment(state, env("GITHUB_RUN_ID"), receipt)) writeState(repo, state, sha);
   } else if (command === "observe") {
     const event = z
       .object({
@@ -409,117 +413,77 @@ async function main(): Promise<void> {
           head_branch: z.literal("main"),
           head_repository: z.object({ full_name: z.literal(repo) }),
           conclusion: z.literal("success"),
-          name: z.enum(["Refresh catalog", "Deploy to Void"]),
-          path: z.enum([".github/workflows/catalog.yml", ".github/workflows/void-deploy.yml"]),
+          name: z.literal("Refresh catalog"),
+          path: z.literal(".github/workflows/catalog.yml"),
         }),
       })
       .parse(JSON.parse(await readFile(env("GITHUB_EVENT_PATH"), "utf8")));
     const run = event.workflow_run;
-    if ((run.name === "Refresh catalog") !== (run.path === ".github/workflows/catalog.yml"))
-      throw new Error("Unexpected observer workflow identity");
-    if (run.name === "Refresh catalog") {
-      const log = execFileSync(
-        "git",
-        ["log", "-1", "--format=%B", "--", "data/catalog-snapshot.json"],
-        { encoding: "utf8" },
-      );
-      if (log.includes(`/actions/runs/${run.id}`))
-        process.env.MAINTENANCE_REFRESH_PUBLISHED = "true";
-      await observe(state);
-      const artifacts = z
-        .object({
-          artifacts: z.array(
-            z.object({ name: z.string(), expired: z.boolean(), size_in_bytes: z.number() }),
-          ),
-        })
-        .parse(githubApi(`repos/${repo}/actions/runs/${run.id}/artifacts?per_page=100`));
-      for (const artifact of artifacts.artifacts.filter(
-        (artifact) =>
-          !artifact.expired &&
-          artifact.name.startsWith(`catalog-public-evidence-${run.id}-attempt-${run.run_attempt}-`),
-      )) {
-        if (artifact.size_in_bytes > 64 * 1024 * 1024) continue;
-        const path = join(env("RUNNER_TEMP"), "discovery", artifact.name);
-        execFileSync(
-          "gh",
-          ["run", "download", String(run.id), "--name", artifact.name, "--dir", path],
-          { timeout: 180000 },
-        );
-        for (const name of (await readdir(path)).filter((name) => name.endsWith(".json.gz"))) {
-          const receipt = z
-            .object({ source_id: z.string(), source_hash: z.string(), body: z.string().optional() })
-            .parse(
-              JSON.parse(
-                gunzipSync(await readFile(join(path, name)), {
-                  maxOutputLength: 34 * 1024 * 1024,
-                }).toString("utf8"),
-              ),
-            );
-          const manifest = manifests.find((manifest) =>
-            manifest.sources.some((source) => source.id === receipt.source_id),
-          );
-          if (manifest && receipt.body && digest(receipt.body) === receipt.source_hash)
-            recordDiscovery(state, manifest.provider.id, receipt.source_id, receipt.body, now);
-        }
-      }
-      const current = new Set(
-        catalogRepairCandidates(
-          JSON.parse(await readFile("data/refresh-summary.json", "utf8")),
-        ).map(candidateKey),
-      );
-      const ready = state.tasks.some(
-        (task) =>
-          task.status === "pending" &&
-          (current.has(task.id) || task.id.includes("/discovery:")) &&
-          (!task.retry_at || Date.parse(task.retry_at) <= now.getTime()),
-      );
-      if (
-        ready &&
-        (!state.last_dispatch || now.getTime() - Date.parse(state.last_dispatch) >= 6 * 3600000)
-      ) {
-        // Persist the dispatch claim before sending: an ambiguous API response cannot multiply jobs.
-        state.last_dispatch = now.toISOString();
-        writeState(repo, state, sha);
-        execFileSync("gh", ["workflow", "run", "catalog-repair.lock.yml", "--ref", "main"], {
-          timeout: 60000,
-        });
-        return;
-      }
-    } else {
-      const path = join(env("RUNNER_TEMP"), "deployed-revision");
+    const log = execFileSync(
+      "git",
+      ["log", "-1", "--format=%B", "--", "data/catalog-snapshot.json"],
+      { encoding: "utf8" },
+    );
+    if (log.includes(`/actions/runs/${run.id}`)) process.env.MAINTENANCE_REFRESH_PUBLISHED = "true";
+    await observe(state);
+    const artifacts = z
+      .object({
+        artifacts: z.array(
+          z.object({ name: z.string(), expired: z.boolean(), size_in_bytes: z.number() }),
+        ),
+      })
+      .parse(githubApi(`repos/${repo}/actions/runs/${run.id}/artifacts?per_page=100`));
+    for (const artifact of artifacts.artifacts.filter(
+      (artifact) =>
+        !artifact.expired &&
+        artifact.name.startsWith(`catalog-public-evidence-${run.id}-attempt-${run.run_attempt}-`),
+    )) {
+      if (artifact.size_in_bytes > 64 * 1024 * 1024) continue;
+      const path = join(env("RUNNER_TEMP"), "discovery", artifact.name);
       execFileSync(
         "gh",
-        [
-          "run",
-          "download",
-          String(run.id),
-          "--name",
-          `catalog-deployment-${run.id}-attempt-${run.run_attempt}`,
-          "--dir",
-          path,
-        ],
-        { timeout: 60000 },
+        ["run", "download", String(run.id), "--name", artifact.name, "--dir", path],
+        { timeout: 180000 },
       );
-      const deployed = z
-        .object({
-          revision: z.string().regex(/^[a-f0-9]{40}$/),
-          snapshot_sha256: z.string().regex(/^[a-f0-9]{64}$/),
-        })
-        .parse(JSON.parse(await readFile(join(path, "deployment.json"), "utf8")));
-      state.deployments = [
-        ...state.deployments,
-        {
-          revision: deployed.revision,
-          run_id: String(run.id),
-          conclusion: "success",
-          snapshot_sha256: deployed.snapshot_sha256,
-        },
-      ].slice(-100);
-      for (const task of state.tasks)
-        if (task.status === "adopted" && task.adopted_snapshot === deployed.snapshot_sha256) {
-          task.deployed_run = String(run.id);
-          task.next_action = "Repair is adopted in the deployed catalog.";
-        }
+      for (const name of (await readdir(path)).filter((name) => name.endsWith(".json.gz"))) {
+        const receipt = z
+          .object({ source_id: z.string(), source_hash: z.string(), body: z.string().optional() })
+          .parse(
+            JSON.parse(
+              gunzipSync(await readFile(join(path, name)), {
+                maxOutputLength: 34 * 1024 * 1024,
+              }).toString("utf8"),
+            ),
+          );
+        const manifest = manifests.find((manifest) =>
+          manifest.sources.some((source) => source.id === receipt.source_id),
+        );
+        if (manifest && receipt.body && digest(receipt.body) === receipt.source_hash)
+          recordDiscovery(state, manifest.provider.id, receipt.source_id, receipt.body, now);
+      }
+    }
+    const current = new Set(
+      catalogRepairCandidates(JSON.parse(await readFile("data/refresh-summary.json", "utf8"))).map(
+        candidateKey,
+      ),
+    );
+    const ready = state.tasks.some(
+      (task) =>
+        task.status === "pending" &&
+        (current.has(task.id) || task.id.includes("/discovery:")) &&
+        (!task.retry_at || Date.parse(task.retry_at) <= now.getTime()),
+    );
+    if (
+      ready &&
+      (!state.last_dispatch || now.getTime() - Date.parse(state.last_dispatch) >= 6 * 3600000)
+    ) {
+      // Persist the dispatch claim before sending: an ambiguous API response cannot multiply jobs.
+      state.last_dispatch = now.toISOString();
+      writeState(repo, state, sha);
+      execFileSync("gh", ["workflow", "run", "catalog-repair.lock.yml", "--ref", "main"], {
+        timeout: 60000,
+      });
+      return;
     }
     writeState(repo, state, sha);
   } else throw new Error("Expected prepare, finish or observe");

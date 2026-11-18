@@ -55,6 +55,7 @@ export const stateSchema = z.object({
       z.object({
         revision: z.string(),
         run_id: z.string(),
+        run_attempt: z.number().int().positive().optional(),
         conclusion: z.string(),
         snapshot_sha256: hash,
       }),
@@ -63,6 +64,42 @@ export const stateSchema = z.object({
     .default([]),
 });
 export type MaintenanceState = z.infer<typeof stateSchema>;
+export function recordDeployment(state: MaintenanceState, run: string, input: unknown): boolean {
+  const receipt = z
+    .object({
+      revision: z.string().regex(/^[a-f0-9]{40}$/),
+      snapshot_sha256: hash,
+      run_attempt: z.number().int().positive(),
+    })
+    .parse(input);
+  if (!/^\d+$/.test(run)) throw new Error("Invalid deployment run ID");
+  const existing = state.deployments.find(
+    (row) =>
+      row.run_id === run &&
+      (row.run_attempt === receipt.run_attempt ||
+        (row.run_attempt === undefined &&
+          row.revision === receipt.revision &&
+          row.snapshot_sha256 === receipt.snapshot_sha256)),
+  );
+  if (existing) {
+    if (
+      existing.revision !== receipt.revision ||
+      existing.snapshot_sha256 !== receipt.snapshot_sha256
+    )
+      throw new Error("Conflicting deployment receipt");
+    if (existing.run_attempt !== undefined) return false;
+    existing.run_attempt = receipt.run_attempt;
+  } else {
+    state.deployments.push({ ...receipt, run_id: run, conclusion: "success" });
+    state.deployments = state.deployments.slice(-100);
+  }
+  for (const task of state.tasks)
+    if (task.status === "adopted" && task.adopted_snapshot === receipt.snapshot_sha256) {
+      task.deployed_run = run;
+      task.next_action = "Repair is adopted in the deployed catalog.";
+    }
+  return true;
+}
 export const emptyState = (): MaintenanceState => ({
   schema_version: 1,
   tasks: [],

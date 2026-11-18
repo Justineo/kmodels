@@ -21,6 +21,7 @@ import {
   emptyState,
   observeCandidates,
   recordOutcome,
+  recordDeployment,
   prepareBudgetLease,
   reserveRunBudget,
   boundedIncidentBatch,
@@ -69,6 +70,21 @@ function taskState() {
   if (!task) throw new Error("Missing fixture task");
   return { state, task, item };
 }
+
+it("records a deployed attempt once and only links adoption of its exact snapshot", () => {
+  const { state, task } = taskState();
+  task.status = "adopted";
+  task.adopted_snapshot = digest("current");
+  const receipt = { run_attempt: 1, revision: "a".repeat(40), snapshot_sha256: digest("old") };
+  expect(recordDeployment(state, "17", receipt)).toBe(true);
+  expect(task.deployed_run).toBeUndefined();
+  expect(recordDeployment(state, "17", receipt)).toBe(false);
+  const current = { ...receipt, snapshot_sha256: task.adopted_snapshot };
+  expect(() => recordDeployment(state, "17", current)).toThrow("Conflicting deployment receipt");
+  expect(recordDeployment(state, "17", { ...current, run_attempt: 2 })).toBe(true);
+  expect(task.deployed_run).toBe("17");
+  expect(state.deployments).toHaveLength(2);
+});
 
 it("reserves across runs, retains unknown spend and only refunds trusted settlements", () => {
   const state = emptyState();

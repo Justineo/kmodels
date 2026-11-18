@@ -2,7 +2,7 @@ name: Observe catalog maintenance
 
 on:
   workflow_run:
-    workflows: [Refresh catalog, Deploy to Void]
+    workflows: [Refresh catalog]
     types: [completed]
     branches: [main]
 
@@ -30,7 +30,7 @@ jobs:
           persist-credentials: false
       - name: Install the trusted toolchain and hydrate the current snapshot
         uses: ./.github/actions/setup-repair-toolchain
-      - name: Observe accepted data, discovery leads and successful deployment
+      - name: Observe accepted data and discovery leads
         env:
           GH_TOKEN: ${{ github.token }}
         run: vp node scripts/repair/maintenance.ts observe

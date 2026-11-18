@@ -9,6 +9,7 @@ await mkdir(directory, { recursive: true });
 await writeFile(
   join(directory, "deployment.json"),
   JSON.stringify({
+    run_attempt: Number(process.env.GITHUB_RUN_ATTEMPT),
     revision: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
     snapshot_sha256: digest(await readFile("data/catalog-snapshot.json", "utf8")),
   }),

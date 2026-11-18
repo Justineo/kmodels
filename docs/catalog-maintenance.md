@@ -159,7 +159,7 @@ matching final patch receipt. Stored data adoption remains a later refresh decis
 
 ## Discovery, adoption and deployment
 
-The observer accepts successful main-branch refresh/deployment runs from this repository and
+The observer accepts successful main-branch refresh runs from this repository and
 executes only the trusted main checkout. Public heading, navigation and tariff-column changes
 create discovery tasks even when a parser still succeeds. Cold start establishes a baseline;
 unchanged structure and amounts alone do not produce these leads. Discovery is deliberately
@@ -171,7 +171,10 @@ receipt records `code_published`. A subsequent successfully published refresh mu
 repair revision, freshly accept the provider's tracked sources at the intended extractor versions,
 pass the existing publication/consumer gates and no longer report the candidate before the task
 becomes `adopted`. A successful deployment receipt must match that exact snapshot hash to set
-`deployed_run`. Out-of-order observer delivery is reconciled by snapshot identity. These facts
+`deployed_run`. Push and dispatched deployments pass the uploaded receipt's artifact ID to a
+separate job in the same workflow. That job shares the maintenance ledger queue and records the
+deploying run and attempt idempotently, including when only the ledger job is retried.
+Out-of-order refresh and deployment delivery is reconciled by snapshot identity. These facts
 prove operational adoption, not that all provider semantics are complete. A retained old snapshot,
 passing parser alone or deployment of another snapshot cannot close adoption.
 

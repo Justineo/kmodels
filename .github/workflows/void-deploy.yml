@@ -9,12 +9,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
-concurrency:
-  group: void-production
-  cancel-in-progress: true
-
 jobs:
   deploy:
+    concurrency:
+      group: void-production
+      cancel-in-progress: true
+    outputs:
+      receipt: ${{ steps.receipt.outputs.artifact-id }}
     runs-on: ubuntu-latest
     env:
       VOID_API_URL: https://api.void.cloud
@@ -85,9 +86,34 @@ jobs:
         run: vp node scripts/repair/deployment-receipt.ts
 
       - name: Preserve the deployment receipt
+        id: receipt
         uses: actions/upload-artifact@v7
         with:
           name: catalog-deployment-${{ github.run_id }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/catalog-deployment/deployment.json
           if-no-files-found: error
           retention-days: 30
+
+  record-deployment:
+    needs: deploy
+    if: github.ref == 'refs/heads/main'
+    concurrency:
+      group: catalog-maintenance-state
+      queue: max
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-catalog-toolchain
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.deploy.outputs.receipt }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/deployed
+      - name: Record the deployed snapshot in the maintenance ledger
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: vp node scripts/repair/maintenance.ts record-deployment "$RUNNER_TEMP/deployed/deployment.json"
