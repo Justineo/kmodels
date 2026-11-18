@@ -244,8 +244,10 @@ service charges; it gains no inferred hosting SKU or claim of a complete inferen
 | Other capacity, training, notebook, storage, and ML services            | Excluded; no amortization into token/request prices.                                    |
 | Subscriptions, upfront contracts, free trials, and negotiated discounts | Excluded.                                                                               |
 
-Endpoint data processing is a shared service book linked to admitted models. It is a separate
-service charge, not an optional discount or a complete endpoint bill. Serverless execution
+Endpoint data processing is a shared service book for InvokeEndpoint input and output.
+Links require a published instance-backed SDK deployment profile or an exact Marketplace
+real-time inference or hosting offer. A catalog or SDK inventory row alone establishes identity.
+Serverless execution
 is a standalone service book with no blanket model references: AWS excludes GPU and Marketplace
 model-package deployments from Serverless. Its presence must not assert support for all JumpStart
 models. Marketplace software belongs to each exactly linked model's book, with a real-time
@@ -253,9 +255,8 @@ inference offer. It appears under model rates, while request-level infrastructur
 service books. A listing shared by multiple model IDs produces a separate book for each model;
 unsupported inference rates retain their raw facts in that same model book. The shared
 provider snapshot → book → offer → term → variant hierarchy is unchanged.
-The pricing bundle uses the same open/proprietary manifest admission rules as the model supplement,
-so new SDK-only models also join the shared service book and their exact Marketplace listing.
-The assembly layer resolves this ownership from normalized source facts, so `vp run compile:pricing`
+The pricing bundle uses the same open/proprietary manifest admission rules as the model supplement.
+The assembly layer joins deployment evidence to the endpoint charge and exact listing tariffs, so `vp run compile:pricing`
 can rebuild it offline without refetching AWS or advancing the source verification time.
 Each hosting instance remains a separate price book with its exact SKU identity and SDK-supported
 model links. In model details, books with the same hosting offer and billed-instance-time signal

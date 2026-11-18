@@ -111,9 +111,8 @@ export function extractKimiCommercialFacts(
     });
 
   if (evidence.fileService) {
-    const refs = [...models.values()].map(({ uid }) => uid).sort();
     facts.push({
-      ...service(sourceId, "service:files", "Kimi Files", "files", refs),
+      ...service(sourceId, "service:files", "Kimi Files", "files", []),
       offer_key: "operations",
       offer_name: "File upload, extraction, storage, retrieval, and deletion",
       pricing_state: "free",

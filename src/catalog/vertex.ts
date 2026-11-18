@@ -2539,7 +2539,11 @@ function inlineUnitTables(
 }
 
 type GeminiPricingGeneration = "gemini-4" | "gemini-3" | "gemini-2.5" | "gemini-2.0";
-type GroundingReferences = Readonly<Record<"search" | "maps" | "data", string>>;
+type GroundingReferences = Readonly<
+  Record<"search" | "maps" | "data", string> & {
+    enterprise?: string;
+  }
+>;
 
 function geminiPricingGeneration(
   $: LoadedDocument,
@@ -2640,6 +2644,15 @@ function googleGroundingTables(
     search: groundingReferenceTargets(models, references.search, "Google Search", reconcile),
     maps: groundingReferenceTargets(models, references.maps, "Google Maps", reconcile),
     data: groundingReferenceTargets(models, references.data, "customer data", reconcile),
+    enterprise:
+      references.enterprise === undefined
+        ? []
+        : groundingReferenceTargets(
+            models,
+            references.enterprise,
+            "Web Grounding for Enterprise",
+            reconcile,
+          ),
   };
   $(".devsite-article-body table").each((_tableIndex, tableElement) => {
     const table = $(tableElement);
@@ -2678,7 +2691,9 @@ function googleGroundingTables(
               ? referenceTargets.maps
               : operation === "grounding_with_your_data"
                 ? referenceTargets.data
-                : referenceTargets.search
+                : operation === "web_grounding_enterprise"
+                  ? referenceTargets.enterprise
+                  : referenceTargets.search
           ).filter((model) => belongsToPricingGeneration(model.model_id, generation));
           if (targets.length === 0) {
             reconcile?.({
@@ -2748,10 +2763,13 @@ function googleGroundingTables(
     /Grounding with Google Search and Web Grounding for enterprise is billed only when a prompt successfully returns web results.*?Gemini model usage fees apply separately\./i,
   )?.[0];
   if (legacySuccessRule === undefined) return;
-  for (const model of referenceTargets.search.filter((candidate) =>
-    belongsToPricingGeneration(candidate.model_id, "gemini-2.5"),
-  ))
-    for (const operation of ["google_search", "web_grounding_enterprise"])
+  for (const [operation, targets] of [
+    ["google_search", referenceTargets.search],
+    ["web_grounding_enterprise", referenceTargets.enterprise],
+  ] as const)
+    for (const model of targets.filter((candidate) =>
+      belongsToPricingGeneration(candidate.model_id, "gemini-2.5"),
+    ))
       groundingNote(
         model,
         sourceId,
@@ -2989,6 +3007,7 @@ export function parseVertexPricing(input: Input): SourceParseResult {
       }),
       aliases: [...target.aliases],
       tasks: [...target.tasks],
+      status: target.status,
       service_families:
         target.service_families === undefined ? undefined : [...target.service_families],
     } satisfies ProviderModel;
@@ -3008,10 +3027,18 @@ export function parseVertexPricing(input: Input): SourceParseResult {
   const groundingData = document(
     "/gemini-enterprise-agent-platform/models/grounding/grounding-with-vertex-ai-search",
   )?.body;
+  const groundingEnterprise = document(
+    "/gemini-enterprise-agent-platform/models/grounding/web-grounding-enterprise",
+  )?.body;
   const groundingReferences =
     groundingSearch === undefined || groundingMaps === undefined || groundingData === undefined
       ? undefined
-      : { search: groundingSearch, maps: groundingMaps, data: groundingData };
+      : {
+          search: groundingSearch,
+          maps: groundingMaps,
+          data: groundingData,
+          ...(groundingEnterprise === undefined ? {} : { enterprise: groundingEnterprise }),
+        };
   const evidence = pricingEvidence(bundle.documents);
   const partnerPrices = bundle.documents.filter(
     ({ url }) => url === "https://cloud.google.com/model-garden/partner-models/pricing",

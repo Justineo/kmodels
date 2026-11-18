@@ -31,7 +31,9 @@ export interface SourceParseInput {
     | "uid"
     | "version"
   > &
-    Partial<Pick<ProviderModel, "price_facts" | "pricing_state" | "modalities">>)[];
+    Partial<
+      Pick<ProviderModel, "price_facts" | "pricing_state" | "modalities" | "openai_responses_tools">
+    >)[];
   previousCatalogModels?: SourceParseInput["catalogModels"];
   // Scoped observations remain separate from public catalog admission.
   inventoryModels?: readonly Pick<

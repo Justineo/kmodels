@@ -34,32 +34,35 @@ export function extractVertexCommercialFacts(
   for (const model of models) {
     model.price_facts = model.price_facts.filter((rate) => {
       if (rate.meter === "cache_storage") {
-        serviceFact(facts, model, [
-          "context-cache-storage",
-          "Explicit context cache storage",
-          "cache_storage",
-        ]).price_facts.push(rate);
+        if (model.status !== "retired")
+          serviceFact(facts, model, [
+            "context-cache-storage",
+            "Explicit context cache storage",
+            "cache_storage",
+          ]).price_facts.push(rate);
         return false;
       }
       if (rate.meter !== "tool_call") return true;
       const service = services.get(rate.conditions.operation ?? "");
       if (service === undefined) return true;
-      serviceFact(facts, model, service).price_facts.push({ ...rate, meter: service[2] });
+      if (model.status !== "retired")
+        serviceFact(facts, model, service).price_facts.push({ ...rate, meter: service[2] });
       return false;
     });
     model.raw_price_facts = model.raw_price_facts.filter((raw) => {
       if (raw.raw.meter === "cache_storage") {
-        serviceFact(facts, model, [
-          "context-cache-storage",
-          "Explicit context cache storage",
-          "cache_storage",
-        ]).raw_price_facts.push(raw);
+        if (model.status !== "retired")
+          serviceFact(facts, model, [
+            "context-cache-storage",
+            "Explicit context cache storage",
+            "cache_storage",
+          ]).raw_price_facts.push(raw);
         return false;
       }
       if (!raw.term_key.startsWith("grounding_")) return raw.impact !== "allowance";
       const service = services.get(raw.conditions.operation ?? "");
       if (service === undefined) return true;
-      serviceFact(facts, model, service).raw_price_facts.push(raw);
+      if (model.status !== "retired") serviceFact(facts, model, service).raw_price_facts.push(raw);
       return false;
     });
   }

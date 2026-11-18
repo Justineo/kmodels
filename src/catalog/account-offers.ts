@@ -6,6 +6,7 @@ import {
   raw,
 } from "./offer-boundary.ts";
 import { applicabilitiesOverlap, unconditionalApplicability } from "./pricing-canonical.ts";
+import { evaluateModelApplicability } from "./pricing-applicability.ts";
 import { pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
 import {
   reassembleProviderPricing,
@@ -249,6 +250,14 @@ export function canonicalizeOfferBoundaries(
         ];
         const applicable = (value: { applicability: PriceApplicability }) =>
           priceScopes.some((price) => applicabilitiesOverlap(price, value.applicability));
+        const modelRefs =
+          book.scope.kind === "provider_resource" && priceScopes.length > 0
+            ? (offer.model_refs ?? book.scope.model_refs).filter((modelRef) =>
+                priceScopes.some(
+                  (price) => evaluateModelApplicability(price, modelRef, []).state !== "false",
+                ),
+              )
+            : offer.model_refs;
         const selection = narrow(offer.selection ?? [], scope)
           .filter(applicable)
           .map((c) => ({
@@ -276,6 +285,7 @@ export function canonicalizeOfferBoundaries(
         return {
           offer_key: entry.key,
           name: entry.value === undefined ? "Public rates" : entry.value.replaceAll("_", " "),
+          ...(modelRefs === undefined || modelRefs.length === 0 ? {} : { model_refs: modelRefs }),
           billing_mode: offer.billing_mode,
           source_contexts: narrow(offer.source_contexts ?? [], scope).filter(applicable),
           selection,

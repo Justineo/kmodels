@@ -744,13 +744,13 @@ describe("canonical pricing presentation", () => {
     function serviceOffer(
       id: string,
       key: string,
-      modelRefs: string[],
+      modelRefs: string[] | undefined,
       relation?: { kind: "requires" | "incurs"; target: string },
     ): PricingOffer {
       return {
         id,
         offer_key: key,
-        model_refs: modelRefs,
+        ...(modelRefs === undefined ? {} : { model_refs: modelRefs }),
         billing_mode: { namespace: "kmodels", value: "usage" },
         states: [
           {
@@ -845,5 +845,26 @@ describe("canonical pricing presentation", () => {
     expect(view.mechanismRefsByRelatedOffer.get(requiredOfferId)).toEqual([offerId]);
     expect(view.mechanismRefsByRelatedOffer.get(incurringOfferId)).toEqual([offerId]);
     expect(view.mechanismRefsByRelatedOffer.get(automaticOfferId)).toEqual([offerId]);
+
+    const providerResource = data.books.find(({ id }) => id === resourceBookId);
+    if (providerResource === undefined) throw new Error("Missing service book");
+    providerResource.scope = { ...resourceScope, model_refs: [] };
+    providerResource.offers = [
+      serviceOffer(automaticOfferId, "automatic", undefined),
+      serviceOffer(unrelatedResourceOfferId, "other-standalone", undefined),
+    ];
+    expect(modelPricingView(data, model())).toMatchObject({
+      optionalServices: [],
+      standaloneOffers: [],
+      automaticComponents: [expect.objectContaining({ id: automaticOfferId })],
+    });
+    const relation = modelOffer.relations[0];
+    if (relation === undefined) throw new Error("Missing service relation");
+    relation.kind = "exclusive_with";
+    expect(modelPricingView(data, model())).toMatchObject({
+      optionalServices: [],
+      automaticComponents: [],
+      standaloneOffers: [],
+    });
   });
 });

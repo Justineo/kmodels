@@ -266,9 +266,10 @@ Library OCR and indexing are ingestion/preprocessing charges and are not publish
 does not receive a separate book because Mistral states that its price is model usage plus tool
 usage; it has no independent orchestration rate.
 
-Exact current models with Agents or Conversations endpoints form the model projection of these
-service books. The projection is compatibility metadata, not a commercial relation graph. Model
-offers and service offers contain no enrollment or settlement topology.
+Exact current models with explicit Agents support form the model projection of these service
+books. Generic Conversations rows derived from chat or structured-output features supply no
+tool compatibility evidence. Model offers and service offers contain no enrollment or settlement
+topology.
 
 ## Usage binding and resilience
 

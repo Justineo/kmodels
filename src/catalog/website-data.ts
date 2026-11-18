@@ -576,6 +576,11 @@ function pricingStatus(
         description:
           "A published capacity rate applies to this model. Open model details to select the resource and Region; request usage charges may be separate.",
       };
+    if (view.optionalServices.length === 0 && view.automaticComponents.length === 0)
+      return {
+        label: "Related offers",
+        description: "Open model details to see the related pricing offers.",
+      };
     return {
       label: "Service charges",
       description:

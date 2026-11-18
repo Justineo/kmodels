@@ -219,9 +219,10 @@ must not erase the rate or sibling terms.
 ### Request services and composition
 
 A separately priced request component gets its own service book instead of being flattened into
-token pricing. Exact model references on that book are sufficient when they fully express
-compatibility. Add a relation only when composition behavior materially affects request-cost
-reconstruction:
+token pricing. A model reference requires first-party evidence for that model, service, and API
+or deployment path. Keep the tariff at provider scope when the available evidence covers only
+the service rate or a general API. Exact model references are sufficient when they fully express
+compatibility. Use an offer relation when composition behavior affects request cost:
 
 - `compatible_with`: the caller may select the component with the model request;
 - `incurs`: executing the source automatically creates separately priced target usage;
@@ -230,6 +231,9 @@ reconstruction:
 
 Relations reference exact offers and never imply a price. When a component reuses another offer's
 rate, a contribution references that rate instead of copying its amount.
+Model details follow each applicable association to its exact offer. An exclusive relation
+cannot establish compatibility. Opening one related offer cannot expose siblings outside the
+model's scope.
 
 ## Evidence, conflicts, and refresh
 

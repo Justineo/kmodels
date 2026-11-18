@@ -641,6 +641,10 @@ async function vertexModelSource(
       "grounding-search.html",
     ],
     [
+      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/web-grounding-enterprise",
+      "grounding-search.html",
+    ],
+    [
       "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/grounding-with-google-maps",
       "grounding-maps.html",
     ],
@@ -816,6 +820,7 @@ async function vertexModelSource(
           [
             "/$discovery/rest",
             "/gemini-enterprise-agent-platform/models/grounding/grounding-with-google-search",
+            "/gemini-enterprise-agent-platform/models/grounding/web-grounding-enterprise",
             "/gemini-enterprise-agent-platform/models/grounding/grounding-with-google-maps",
             "/gemini-enterprise-agent-platform/models/grounding/grounding-with-vertex-ai-search",
             "/gemini-enterprise-agent-platform/models/capabilities/batch-inference/new-job-from-cloud-storage",
@@ -3538,7 +3543,7 @@ describe("Vertex AI adapters", () => {
     const pricing = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
     expect(pricing).toMatchObject({
       url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
-      extractorVersion: "vertex-pricing-v28",
+      extractorVersion: "vertex-pricing-v29",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(pricing?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual(
@@ -12118,7 +12123,7 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/pricing/chat",
       scope: "region",
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-pricing-v20",
+      extractorVersion: "kimi-pricing-v21",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(source("kimi-releases")).toMatchObject({
@@ -12346,7 +12351,9 @@ describe("Kimi adapters", () => {
       expect(
         commercial.find(({ resource_key }) => resource_key === "web-search")?.price_facts,
       ).toEqual(expect.arrayContaining([expect.objectContaining({ price: legacy })]));
-      expect(commercial.some(({ resource_key }) => resource_key === "files")).toBe(true);
+      expect(commercial.find(({ resource_key }) => resource_key === "files")?.model_refs).toEqual(
+        [],
+      );
       expect(
         reconciliation.filter(({ reason_code }) =>
           /pricing_row_rejected|billing_contract_drift|web_search_warning_drift/.test(reason_code),
@@ -13799,10 +13806,12 @@ describe("Kimi adapters", () => {
         ?.offers.flatMap(offerContexts)
         .find(({ context_key: offer_key }) => offer_key === "fiber:convert")?.states,
     ).toEqual(expect.arrayContaining([expect.objectContaining({ state: "free" })]));
-    expect(resource("files")?.offers[0]).toMatchObject({
+    const files = resource("files");
+    expect(files?.scope.model_refs).toEqual([]);
+    expect(files?.offers[0]).toMatchObject({
       offer_key: "operations",
       states: [expect.objectContaining({ state: "free" })],
-      relations: expect.arrayContaining([expect.objectContaining({ kind: "compatible_with" })]),
+      relations: [],
     });
   });
 

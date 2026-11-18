@@ -333,7 +333,9 @@ export type SourcePricingInputFact = z.infer<typeof sourcePricingInputFactSchema
 export type ParsedPricingState = z.infer<typeof parsedPricingStateSchema>;
 export type ParsedPricingModel = z.infer<typeof parsedPricingModelSchema>;
 export type ParsedProviderModel = ProviderModel &
-  Pick<ParsedPricingModel, "pricing_state" | "price_facts" | "raw_price_facts" | "state_facts">;
+  Pick<ParsedPricingModel, "pricing_state" | "price_facts" | "raw_price_facts" | "state_facts"> & {
+    openai_responses_tools?: readonly string[];
+  };
 
 export function commercialFactSourceRefs(fact: SourceCommercialPricingFact): string[] {
   return [
@@ -440,6 +442,7 @@ export function publishedModel(model: ParsedProviderModel): ProviderModel {
     price_facts: _priceFacts,
     raw_price_facts: _rawPriceFacts,
     state_facts: _stateFacts,
+    openai_responses_tools: _openaiResponsesTools,
     ...published
   } = model;
   return providerModelSchema.parse(published);

@@ -245,8 +245,7 @@ export function parseSagemakerPricing(input: Input): SourceParseResult {
       );
     }
   }
-  const modelRefs = models.map((model) => model.uid);
-  const facts = infrastructureFacts(input, bundle.prices, modelRefs);
+  const facts = infrastructureFacts(input, bundle.prices);
   facts.push(...marketplacePricingFacts(input, bundle, admitted));
   // JumpStart/listing identities do not establish an account-created runtime endpoint or target.
   return { models, commercial_facts: facts, inference_prices: [] };
@@ -344,18 +343,14 @@ function resource(
   };
 }
 
-function infrastructureFacts(
-  input: Input,
-  body: string,
-  modelRefs: string[],
-): SourceCommercialPricingFact[] {
+function infrastructureFacts(input: Input, body: string): SourceCommercialPricingFact[] {
   const data = priceListSchema.parse(JSON.parse(body));
   const dataProcessing = resource(
     input,
     "service",
     "endpoint-data-processing",
     "Endpoint data processing",
-    modelRefs,
+    [],
   );
   // Serverless deployment is conditional and excludes Marketplace/GPU containers. No
   // blanket model references: this service book does not assert model compatibility.

@@ -271,8 +271,7 @@ export function extractMistralCommercialFacts(
   const agentModels = input.models
     .filter(
       ({ api_endpoints, status }) =>
-        status !== "retired" &&
-        api_endpoints?.some(({ name }) => name === "Agents" || name === "Conversations"),
+        status !== "retired" && api_endpoints?.some(({ path }) => path === "/v1/agents"),
     )
     .map(({ uid }) => uid)
     .sort();

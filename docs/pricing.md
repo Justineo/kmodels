@@ -1205,7 +1205,9 @@ all three price columns and exposes its explanation through the shared tooltip:
   provider-credit rates and transcription duration are projected directly; a count remains for
   genuinely composite pricing such as simultaneous realtime message and session-duration charges;
 - `Capacity` when a linked running-resource rate exists without a model inference offer;
-- `Service charges` when only separate service prices relate to the model;
+- `Service charges` when an applicable separate service offer is linked to the model and
+  there is no model inference or hosting offer to summarize;
+- `Related offers` for other applicable resources without model inference or hosting prices;
 - `No offer`: an exact `not_applicable` disposition establishes that no public
   hosted pricing offer applies;
 - `Unknown`: no reliable public book or disposition exists.

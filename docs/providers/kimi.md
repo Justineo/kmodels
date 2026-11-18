@@ -214,6 +214,8 @@ changed trigger withholds that row and leaves its verified siblings available.
 The other nine official Formula tools and the Files service are published as temporary `free` states,
 not numeric zero rates. Their promotion end and post-promotion pricing are unknown. Ordinary
 caller-defined functions are not Kimi services and receive no Kimi tool rate.
+File upload, extraction, storage, retrieval, and deletion have provider scope. Using extracted
+content in a model request bills the corresponding model input separately.
 
 ## Calculation-input contract
 

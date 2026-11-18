@@ -1266,7 +1266,7 @@ describe("OpenAI adapters", () => {
     ).toBe(false);
     expect(
       commercial
-        .filter(({ resource_key }) => resource_key === "web-search")
+        .filter(({ resource_key }) => resource_key.startsWith("web-search"))
         .flatMap(({ price_facts }) => price_facts)
         .map(({ conditions }) => conditions.operation ?? "")
         .sort(compareUtf8),
@@ -1558,14 +1558,14 @@ describe("OpenAI adapters", () => {
       {
         resource_kind: "service",
         resource_key: "fine-tuned-inference:gpt-4.1-2025-04-14",
-        model_refs: ["openai/gpt-4.1-2025-04-14"],
+        model_refs: [],
         pricing_state: "numeric",
         raw_price_facts: [],
       },
       {
         resource_kind: "service",
         resource_key: "fine-tuned-inference:gpt-4.1-2025-04-14",
-        model_refs: ["openai/gpt-4.1-2025-04-14"],
+        model_refs: [],
         pricing_state: "numeric",
         raw_price_facts: [],
       },
@@ -2006,11 +2006,12 @@ describe("OpenAI adapters", () => {
     expect(
       result.commercial_facts
         ?.flatMap(({ price_facts }) => price_facts)
-        .map(({ price, unit, conditions }) => [price, unit, conditions.operation]),
+        .map(({ price, unit, conditions }) => [price, unit, conditions.operation])
+        .sort(),
     ).toEqual([
-      ["10.00", "thousand_events", "search"],
       ["10.00", "thousand_events", "image"],
       ["10.00", "thousand_events", "preview_reasoning"],
+      ["10.00", "thousand_events", "search"],
       ["25.00", "thousand_events", "preview_non_reasoning"],
     ]);
   });

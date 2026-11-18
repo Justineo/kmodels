@@ -2398,10 +2398,10 @@ describe("Anthropic adapters", () => {
     ).toBe(false);
   });
   it("keeps independent Anthropic commercial claims when usage companions drift", async () => {
-    const search = (await fixture("anthropic/web-search-tool.md")).replaceAll(
-      "web_search_requests",
-      "search_requests",
-    );
+    const search = (
+      "---\nfeatureMetadata:\n  supportedModels:\n    - claude-fable-5\n---\n" +
+      (await fixture("anthropic/web-search-tool.md"))
+    ).replaceAll("web_search_requests", "search_requests");
     const code = (await fixture("anthropic/code-execution-tool.md")).replace(
       "minimum of 5 minutes",
       "minimum duration is documented elsewhere",
@@ -2431,6 +2431,7 @@ describe("Anthropic adapters", () => {
     });
     const partition = validatedPricing(modelsSource);
     const searchBook = partition?.books.find(({ book_key }) => book_key === "service:web-search");
+    expect(searchBook?.scope.model_refs).toEqual(["anthropic/claude-fable-5"]);
     const searchRate = searchBook?.offers
       .flatMap(({ terms }) => terms)
       .find(({ kind }) => kind === "rate");

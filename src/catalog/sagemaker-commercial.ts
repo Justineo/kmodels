@@ -121,6 +121,35 @@ function linkHostingModels(
   };
 }
 
+function linkEndpointDataProcessing(
+  book: AtomicPricingBook,
+  modelsBySource: ReadonlyMap<string, Set<string>>,
+): AtomicPricingBook {
+  if (
+    book.scope.kind !== "provider_resource" ||
+    book.scope.resource_key !== "endpoint-data-processing" ||
+    modelsBySource.size === 0
+  )
+    return book;
+  const modelRefs = [...new Set([...modelsBySource.values()].flatMap((refs) => [...refs]))];
+  const scope = { ...book.scope, model_refs: modelRefs };
+  return {
+    ...book,
+    scope,
+    source_refs: [...new Set([...book.source_refs, ...modelsBySource.keys()])],
+    scope_observations: [
+      ...book.scope_observations,
+      ...[...modelsBySource.entries()].map(([sourceRef, refs]) => ({
+        source_ref: sourceRef,
+        locator: { kind: "provider_key" as const, value: "deployment:realtime-endpoint" },
+        establishes: { ...scope, model_refs: [...refs] },
+        raw: { label: "Published real-time endpoint deployment" },
+      })),
+    ],
+    offers: book.offers.map((offer) => ({ ...offer, model_refs: modelRefs })),
+  };
+}
+
 // Commercial selection describes owned tariffs, independently of model capabilities.
 export const sagemaker_commercialSelectionPolicy = {
   offers: {
@@ -134,19 +163,45 @@ export function applySagemakerCommercialTopology(
   publishedModels: readonly PublishedPricingModel[],
 ): AtomicProviderPricing {
   const modelsByInstance = new Map<string, string[]>();
+  const endpointModelsBySource = new Map<string, Set<string>>();
+  const currentModels = new Set(
+    publishedModels.filter(({ status }) => status !== "retired").map(({ uid }) => uid),
+  );
+  const addEndpointModels = (sourceRef: string, refs: readonly string[]) => {
+    for (const ref of refs) {
+      if (!currentModels.has(ref)) continue;
+      const models = endpointModelsBySource.get(sourceRef) ?? new Set<string>();
+      models.add(ref);
+      endpointModelsBySource.set(sourceRef, models);
+    }
+  };
   for (const model of publishedModels) {
-    for (const instance of new Set(
+    const instances = new Set(
       model.deployment?.profiles.flatMap((profile) => profile.instance_types) ?? [],
-    )) {
+    );
+    if (instances.size > 0) addEndpointModels("sagemaker-sdk", [model.uid]);
+    for (const instance of instances) {
       const refs = modelsByInstance.get(instance) ?? [];
       refs.push(model.uid);
       modelsByInstance.set(instance, refs);
     }
   }
+  for (const book of input.books) {
+    if (
+      book.scope.kind !== "provider_resource" ||
+      !/^marketplace-(?:software-)?prodview-/.test(book.scope.resource_key)
+    )
+      continue;
+    for (const { source_ref, establishes } of book.scope_observations)
+      addEndpointModels(source_ref, establishes.model_refs);
+  }
   return {
     ...input,
     books: input.books.flatMap(marketplaceModelBooks).map((original) => {
-      const book = linkHostingModels(original, modelsByInstance);
+      const book = linkEndpointDataProcessing(
+        linkHostingModels(original, modelsByInstance),
+        endpointModelsBySource,
+      );
       return {
         ...book,
         offers: book.offers.map((offer) => ({

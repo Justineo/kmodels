@@ -108,7 +108,10 @@ is inferred from an API path, and no snapshot or alias borrows a price by name s
 
 ### Catalog facts
 
-- The model index establishes the exhaustive set of public model IDs and current/deprecated badge.
+- The model index establishes the exhaustive set of public model IDs. Its explicit `Deprecated`
+  and `Shut down` labels distinguish deprecated and retired models independently of the optional
+  schedule. An explicit shutdown badge also establishes a no-offer disposition for that exact ID.
+  The schedule can supply the exact shutdown date.
 - A card contributes rich facts only when its URL and single `Model ID` agree.
 - Display name, description, snapshots, routed aliases, modalities, limits, endpoint support,
   capabilities, and tool support are parsed independently where possible.
@@ -148,6 +151,9 @@ is inferred from an API path, and no snapshot or alias borrows a price by name s
   states preserve bounded raw quotes while readable sibling cells survive.
   Omitted overlay facts retain their previous observation;
   the dedicated pricing page remains the primary amount source.
+  Once catalog evidence establishes retirement, that model's own quotes are excluded from current
+  pricing. A card can retain historical prices and endpoint rows after its model shuts down.
+  Separately published fine-tuned inference schedules keep their own service subject.
   One owned Pricing region supplies cells and modifier paragraphs; competing regions stay raw.
   Quoted, code, and unrelated sections cannot supply executable modifiers. The exact full-request
   long-context rule establishes both the base upper bound and the derived lower bound. Counts
@@ -419,6 +425,12 @@ minute costs $0.075. Backend model and tool calls are separately priced componen
 fee alone is not the complete workflow cost. No whole-minute rounding is introduced.
 
 Web Search and File Search calls are separate service books because they have their own event rates.
+Their model links require an exact card's `Supported tools` entry and current Responses support.
+Current Web Search, Web Search Preview, and File Search use their own tool identifiers. Preview
+reasoning and other-model tariffs keep their own applicability. Missing tool evidence leaves the
+corresponding rate available at provider scope. Container links require declared Hosted Shell or
+Code Interpreter support on Responses. Retirement removes these links even when a card retains its
+endpoint or tool entries.
 Their provider-owned charge signals require billable per-request counts from the caller. Emitted or
 successful tool-call events and Organization Usage bucket totals do not establish that quantity.
 Web Search content normally uses the model input-token rate. For the non-preview tool on
@@ -456,6 +468,8 @@ peer in the page and changelog must agree on the minimum and effective date. Mis
 contradictory claims keep the native rules raw without affecting unrelated services or models.
 
 Fine-tuned input, cached-input, and output rates form a direct `fine-tuned-inference:<base>` service.
+The base ID identifies the schedule. The service is provider-scoped because the request uses a
+fine-tuned resource ID, with its own tariff.
 The native `Fine-tuning` section heading (also accepted as the earlier `Finetuning`) selects this
 table in either published column order of `Model | Training | Input | Output | Cached input`.
 Standard and Batch are split into the same synchronous/result-item mechanisms used by ordinary

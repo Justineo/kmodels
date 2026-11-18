@@ -864,8 +864,11 @@ function addUniqueModelIndex<T extends { model_id: string }>(
   );
 }
 
-type OpenAiCommercialModel = Pick<ProviderModel, "api_endpoints" | "capabilities" | "uid"> &
-  Partial<Pick<ProviderModel, "pricing_state">>;
+type OpenAiCommercialModel = Pick<
+  ProviderModel,
+  "api_endpoints" | "capabilities" | "status" | "uid"
+> &
+  Partial<Pick<ProviderModel, "pricing_state" | "openai_responses_tools">>;
 
 function openAiToolCommercialFacts(
   table: OpenAiPricingTable,
@@ -878,14 +881,13 @@ function openAiToolCommercialFacts(
   const details = row[table.headers.indexOf("Details")] ?? "";
   const published = row[table.headers.indexOf("Pricing")] ?? row.at(-1) ?? "";
   const responseModels = models.filter(
-    ({ api_endpoints, pricing_state }) =>
+    ({ api_endpoints, pricing_state, status }) =>
+      status !== "retired" &&
       pricing_state !== "not_applicable" &&
       api_endpoints?.some(({ path }) => path === "v1/responses"),
   );
-  const responseRefs = responseModels.map(({ uid }) => uid);
-  const codeExecutionRefs = responseModels
-    .filter(({ capabilities }) => capabilities.code_execution === true)
-    .map(({ uid }) => uid);
+  const supports = (model: OpenAiCommercialModel, tool: string) =>
+    model.openai_responses_tools?.includes(tool) === true;
   const fact = (
     key: string,
     name: string,
@@ -945,13 +947,22 @@ function openAiToolCommercialFacts(
               ? capabilities.reasoning === false
               : capabilities.reasoning === true,
           )
+          .filter((model) => supports(model, "web_search_preview"))
           .map(({ uid }) => uid)
-      : responseRefs;
+      : responseModels.filter((model) => supports(model, "web_search")).map(({ uid }) => uid);
     const claim = callClaim("web_search", { operation });
     return [
       fact(
-        "web-search",
-        "Web Search",
+        operation === "preview_reasoning"
+          ? "web-search-preview-reasoning"
+          : operation === "preview_non_reasoning"
+            ? "web-search-preview-other-models"
+            : "web-search",
+        operation === "preview_reasoning"
+          ? "Web Search Preview · reasoning models"
+          : operation === "preview_non_reasoning"
+            ? "Web Search Preview · other models"
+            : "Web Search",
         preview ? "preview" : "current",
         preview ? "Web Search Preview" : "Web Search",
         modelRefs,
@@ -982,7 +993,7 @@ function openAiToolCommercialFacts(
         "File Search",
         "usage",
         "File Search usage",
-        responseRefs,
+        responseModels.filter((model) => supports(model, "file_search")).map(({ uid }) => uid),
         claim.rate === undefined ? [] : [claim.rate],
         claim.raw === undefined ? [] : [claim.raw],
       ),
@@ -1022,7 +1033,9 @@ function openAiToolCommercialFacts(
         "Code execution containers",
         "runtime",
         "Code execution runtime",
-        codeExecutionRefs,
+        responseModels
+          .filter(({ capabilities }) => capabilities.code_execution === true)
+          .map(({ uid }) => uid),
         claims.flatMap(({ rate }) => (rate === undefined ? [] : [rate])),
         [
           ...claims.flatMap(({ raw }) => (raw === undefined ? [] : [raw])),
@@ -1440,7 +1453,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
           book_name: "Fine-tuned " + rawId + " inference",
           resource_kind: "service",
           resource_key: "fine-tuned-inference:" + rawId,
-          model_refs: target === undefined ? [] : [target.uid],
+          model_refs: [],
           offer_key: "inference",
           offer_name: "Fine-tuned model inference",
           billing_mode: "usage",
@@ -1448,6 +1461,11 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
           price_facts: claims.flatMap(({ rate }) => (rate === undefined ? [] : [rate])),
           raw_price_facts: claims.flatMap(({ raw }) => (raw === undefined ? [] : [raw])),
         });
+        continue;
+      }
+      if (target?.status === "retired") {
+        for (const { item } of claims)
+          record({ ...item, disposition: "excluded", reason_code: "retired_model_pricing" });
         continue;
       }
       target ??= createTarget(rawId);
@@ -1483,6 +1501,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
     throw new Error("Invalid OpenAI pricing extractor");
   for (const [aliasId, targetId] of pricingAliases) {
     const alias = exact.get(aliasId);
+    if (alias?.status === "retired") continue;
     const target = exact.get(targetId);
     const targetRates = rates.get(targetId);
     if (alias === undefined || target === undefined || targetRates === undefined) {
@@ -1722,9 +1741,10 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
     ),
   ].map(([fragment]) => fragment);
   if (fixedSearchContent.length > 0) {
-    const modelIds = (["gpt-4o-mini", "gpt-4.1-mini"] as const).filter((modelId) =>
-      exact.has(modelId),
-    );
+    const modelIds = (["gpt-4o-mini", "gpt-4.1-mini"] as const).filter((modelId) => {
+      const model = exact.get(modelId);
+      return model !== undefined && model.status !== "retired";
+    });
     const content = openAiSearchContent(modelIds, input.source.id, fixedSearchContent);
     commercialFacts.push(...content.facts);
     vocabulary.push(...content.vocabulary);
@@ -1895,10 +1915,12 @@ function openAiIndexStatuses(
   )) {
     const id = match[1];
     if (id === undefined) continue;
-    const deprecated = /\bDeprecated\b/i.test(match[2] ?? "");
-    const current = statuses.get(id);
+    const summary = match[2] ?? "";
+    const current = statuses.get(id)?.status;
+    const retired = /^Shut down(?:\.|$)/i.test(summary) || current === "retired";
+    const deprecated = /^Deprecated\b/i.test(summary) || current === "deprecated";
     statuses.set(id, {
-      status: deprecated || current?.status === "deprecated" ? "deprecated" : "active",
+      status: retired ? "retired" : deprecated ? "deprecated" : "active",
       release_stage: id.includes("preview") ? "preview" : "unknown",
     });
   }
@@ -1970,6 +1992,7 @@ function openAiMarkdownModel(
     aliases: openAiAliasesFromMarkdown(body, id, input.onContractFinding),
     tasks,
     api_endpoints: endpointEvidence.endpoints,
+    ...(tools === undefined ? {} : { openai_responses_tools: [...tools] }),
     modalities: modelModalities,
     capabilities: {
       ...unknownCapabilities(),
@@ -1996,11 +2019,12 @@ function openAiMarkdownModel(
       max_output_tokens: openAiLimit(details, "max output tokens"),
     },
     ...lifecycle,
-    pricing_state: body.includes("free models designed to detect harmful content")
-      ? "free"
-      : body.includes("open-weight model")
+    pricing_state:
+      lifecycle.status === "retired" || body.includes("open-weight model")
         ? "not_applicable"
-        : "unknown",
+        : body.includes("free models designed to detect harmful content")
+          ? "free"
+          : "unknown",
   };
 }
 
@@ -2023,7 +2047,7 @@ export function parseOpenAiCatalog(input: ParseInput): SourceParseResult {
     );
   const cards: OpenAiModelCard[] = [];
   const models = [...statuses.entries()]
-    .map(([id, lifecycle]) => {
+    .map(([id, lifecycle]): ProviderModel => {
       const matches = documents.get(id) ?? [];
       const [document] = matches;
       if (matches.length === 1 && document !== undefined)
@@ -2048,6 +2072,7 @@ export function parseOpenAiCatalog(input: ParseInput): SourceParseResult {
           observedAt: input.observedAt,
         }),
         ...lifecycle,
+        pricing_state: lifecycle.status === "retired" ? "not_applicable" : "unknown",
       };
     })
     .sort((left, right) => left.uid.localeCompare(right.uid));
@@ -2061,7 +2086,9 @@ export function parseOpenAiCatalog(input: ParseInput): SourceParseResult {
   return {
     models: inventory.models,
     inference_prices: inventory.cards.flatMap(({ model, document }) =>
-      openAiInferencePrices([model], input.source.id, document.url),
+      model.status === "retired"
+        ? []
+        : openAiInferencePrices([model], input.source.id, document.url),
     ),
   };
 }
@@ -2110,6 +2137,14 @@ export function parseOpenAiModelPricing(input: ParseInput): ProviderModel[] {
         input.onPricingReconciliation?.({
           disposition: "excluded",
           reason_code: "model_card_price_without_catalog_identity",
+          sample: id,
+        });
+        return [];
+      }
+      if (target.status === "retired") {
+        input.onPricingReconciliation?.({
+          disposition: "excluded",
+          reason_code: "retired_model_card_pricing",
           sample: id,
         });
         return [];

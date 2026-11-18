@@ -1663,7 +1663,6 @@ function commercialPricing(
 ): SourcePricingFacts {
   const facts: SourceCommercialPricingFact[] = [];
   const vocabulary: ProviderAtomRegistryEntry[] = [];
-  const callableRefs = [...models.values()].filter(callable).map(({ uid }) => uid);
   const report = (normalized: boolean | "raw", reasonCode: string, sample: string): void =>
     input.onPricingReconciliation?.({
       disposition: normalized === "raw" ? "raw" : normalized ? "normalized" : "unresolved",
@@ -1703,6 +1702,9 @@ function commercialPricing(
   const searchSignal = searchInput !== undefined;
   if (searchInput !== undefined) pricingInputs.push(searchInput);
   if (bodies.webSearch.trim() !== "") {
+    const searchRefs = (listedModels(bodies.webSearch, models, "Web Search", input) ?? [])
+      .filter((model) => callable(model) && model.status !== "retired")
+      .map(({ uid }) => uid);
     const rate =
       searchAmount === undefined
         ? undefined
@@ -1723,7 +1725,7 @@ function commercialPricing(
         bookKey: "service:web-search",
         bookName: "Web Search",
         resourceKey: "web-search",
-        modelRefs: callableRefs,
+        modelRefs: searchRefs,
         offerKey: "usage",
         offerName: "Successful search",
         state: "numeric",
@@ -1763,7 +1765,7 @@ function commercialPricing(
   }
   for (const id of codeIds) {
     const item = commercialModel(models, id);
-    if (item !== undefined && callable(item)) codeRefs.add(item.uid);
+    if (item !== undefined && callable(item) && item.status !== "retired") codeRefs.add(item.uid);
   }
   const codeAmount = agreedAmount(
     codeText,

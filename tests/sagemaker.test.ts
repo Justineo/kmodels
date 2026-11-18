@@ -708,7 +708,7 @@ describe("SageMaker price books", () => {
   });
 });
 describe("SageMaker public-hub projection", () => {
-  it("links SDK-only foundation models to service pricing without admitting classic ML", () => {
+  it("admits SDK-only foundation models without assuming endpoint deployment support", () => {
     const openManifest = JSON.stringify([
       ...sagemakerRows(catalog)
         .filter((row) => !row.proprietary)
@@ -743,7 +743,10 @@ describe("SageMaker public-hub projection", () => {
         book.scope.resource_key === "endpoint-data-processing",
     );
     expect(book).toBeDefined();
-    expect(book?.scope.model_refs).toContain("amazon-sagemaker/new-video");
+    expect(book?.scope.model_refs).toContain(
+      "amazon-sagemaker/meta-textgeneration-llama-3-1-8b-instruct",
+    );
+    expect(book?.scope.model_refs).not.toContain("amazon-sagemaker/new-video");
   });
   it("paginates and projects only admitted model metadata without account resource fields", async () => {
     aws.send.mockReset();

@@ -73,9 +73,16 @@ export function applyOpenAiCommercialTopology(
 function admittedBook(book: AtomicPricingBook): boolean {
   return (
     book.scope.kind === "models" ||
-    ["containers", "file-search", "web-search"].includes(book.scope.resource_key) ||
+    ["containers", "file-search"].includes(book.scope.resource_key) ||
+    isOpenAiWebSearch(book.scope.resource_key) ||
     book.scope.resource_key.startsWith("web-search-content:") ||
     book.scope.resource_key.startsWith("fine-tuned-inference:")
+  );
+}
+
+function isOpenAiWebSearch(key: string): boolean {
+  return ["web-search", "web-search-preview-reasoning", "web-search-preview-other-models"].includes(
+    key,
   );
 }
 
@@ -791,7 +798,7 @@ function resourceChargeBinding(
       "Provider-reported File Search call events",
       eventUnit,
     );
-  if (resourceKey === "web-search" && isUnitTerm(term, "event"))
+  if (isOpenAiWebSearch(resourceKey) && isUnitTerm(term, "event"))
     return providerBinding(
       input,
       "web_search_calls",

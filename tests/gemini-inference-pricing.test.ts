@@ -199,11 +199,24 @@ it("exports model-qualified cache storage with a token-time denominator independ
   ).toBe("matched");
   const model = baseline.catalog.models.find(({ uid }) => uid === "gemini/gemini-3.1-pro-preview");
   if (!model) throw new Error("Missing Gemini storage model");
-  expect(
-    modelPricingView(baseline.pricing.data, model).optionalServices.some(({ terms }) =>
+  const gemma = baseline.catalog.models.find(({ uid }) => uid === "gemini/gemma-4-31b-it");
+  if (!gemma) throw new Error("Missing Gemma storage model");
+  const paidStorage = book.offers.find(({ offer_key }) => offer_key === "account:paid_tier");
+  const freeStorage = book.offers.find(({ offer_key }) => offer_key === "account:free_tier");
+  expect(paidStorage?.model_refs).toContain(model.uid);
+  expect(paidStorage?.model_refs).not.toContain(gemma.uid);
+  expect(freeStorage?.model_refs).toContain(gemma.uid);
+  expect(freeStorage?.model_refs).not.toContain(model.uid);
+  const storageOffers = (candidate: typeof model) =>
+    modelPricingView(baseline.pricing.data, candidate).optionalServices.filter(({ terms }) =>
       terms.some((term) => term.kind === "rate" && term.meter.value === "storage"),
-    ),
-  ).toBe(true);
+    );
+  expect(
+    storageOffers(model)
+      .map(({ offer_key }) => offer_key)
+      .sort(),
+  ).toEqual(["account:paid_tier", "account:paid_tier_contributor"]);
+  expect(storageOffers(gemma).map(({ offer_key }) => offer_key)).toEqual(["account:free_tier"]);
 });
 
 it("selects independent account programs with canonical ownership and preserves their execution choices", () => {

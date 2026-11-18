@@ -55,19 +55,26 @@ const catalogModels = names.map(([id, name]) => {
 const fixture = () =>
   readFile(new URL("./fixtures/vertex/grounding-allowances.html", import.meta.url), "utf8");
 
-function parse(pricing: string) {
-  const supported = `<main><h2>Supported models</h2><ul>${names.map(([, label]) => `<li>${label}</li>`).join("")}</ul></main>`;
+function parse(pricing: string, enterpriseNames = names, models = catalogModels) {
+  const modelList = (entries: typeof names) =>
+    `<main><h2>Supported models</h2><ul>${entries.map(([, label]) => `<li>${label}</li>`).join("")}</ul></main>`;
   return parseSource({
     provider,
     source,
     observedAt,
-    catalogModels,
+    catalogModels: models,
     body: JSON.stringify({
       index: { url: source.url, body: pricing },
-      documents: ["google-search", "google-maps", "vertex-ai-search"].map((service) => ({
-        url: `https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/grounding-with-${service}`,
-        body: supported,
-      })),
+      documents: [
+        ...["google-search", "google-maps", "vertex-ai-search"].map((service) => ({
+          url: `https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/grounding-with-${service}`,
+          body: modelList(names),
+        })),
+        {
+          url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/web-grounding-enterprise",
+          body: modelList(enterpriseNames),
+        },
+      ],
     }),
   });
 }
@@ -104,6 +111,24 @@ function allowances(partition: ReturnType<typeof assemble>) {
 }
 
 describe("Vertex native grounding contracts", () => {
+  it("keeps Enterprise Web Grounding and Search compatibility independent", async () => {
+    const models = catalogModels.map((model) =>
+      model.model_id === "gemini-2.5-flash" ? { ...model, status: "retired" as const } : model,
+    );
+    const result = parse(
+      await fixture(),
+      names.filter(([id]) => id === "gemini-3-test" || id === "gemini-2.5-flash"),
+      models,
+    );
+    const refs = (key: string) =>
+      result.commercial_facts
+        ?.filter(({ resource_key }) => resource_key === key)
+        .flatMap(({ model_refs }) => model_refs);
+    expect(refs("web-grounding-enterprise")).toEqual(["vertex/gemini-3-test"]);
+    expect(refs("google-search")).toContain("vertex/gemini-3-other");
+    expect(refs("google-search")).not.toContain("vertex/gemini-2.5-flash");
+  });
+
   it("captures and replays independent service terms without catalog carrier models", async () => {
     const parsed = parse(await fixture());
     const captured = capturePricingReplaySources([{ source, ...parsed }], [sourceRecord])?.[0];

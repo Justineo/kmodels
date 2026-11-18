@@ -218,6 +218,7 @@ is separate from this producer integration.
 Explicit cache storage is a separate `service:context-cache-storage` resource book. Its
 model-qualified rates retain the table's account, tier, explicitly priced modality and validity
 conditions, with a token × second canonical denominator normalized from million-token-hours.
+Each account offer retains the models established by that offer's published storage facts.
 An unqualified storage quote applies to cached tokens without inventing a text-only condition.
 Gemma's explicit free storage declaration is one unqualified zero rate. Storage does not acquire
 generation execution choices or token-usage counters. Resource lookup and model details expose it

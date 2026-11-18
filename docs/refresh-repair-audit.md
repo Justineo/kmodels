@@ -71,6 +71,12 @@ reviewing unrelated providers. For each affected claim, establish:
   unknown/missing-input or disjoint-scope control. Use distinct quantities where totals overlap cache
   or modalities so a superficially plausible total cannot hide a wrong mapping.
 
+For lifecycle and pricing reviews, check retired identities against model offers, linked services,
+and exact inference IDs. Check the owner and effective scope of the shutdown, including versions,
+endpoints, and regions. A model card can retain historical rates and endpoint rows after shutdown.
+Separate that evidence from a retained commercial partition after a failed refresh. Replay a
+still-callable deprecated sibling and preserve independently published provider service rates.
+
 Fix the owning parser or shared boundary. A UI exception, synthetic commercial state or raw-text
 control protocol must not compensate for an unresolved source contract. After a justified change,
 review the full requested scope for removable repetition, indirection and unconsumed dependencies;

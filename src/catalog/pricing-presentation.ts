@@ -117,8 +117,10 @@ export function pricingViewIndex(data: PricingCatalog): PricingViewIndex {
   const mechanismScopedOffers = new Set(
     data.books.flatMap(({ offers }) =>
       offers.flatMap((offer) =>
-        offer.relations.some(({ target }) =>
-          target.offer_refs.some((offerRef) => modelOfferIds.has(offerRef)),
+        offer.relations.some(
+          ({ kind, target }) =>
+            kind !== "exclusive_with" &&
+            target.offer_refs.some((offerRef) => modelOfferIds.has(offerRef)),
         )
           ? [offer.id]
           : [],
@@ -127,7 +129,8 @@ export function pricingViewIndex(data: PricingCatalog): PricingViewIndex {
   );
   for (const offer of modelOffers)
     for (const relation of offer.relations)
-      for (const offerRef of relation.target.offer_refs) mechanismScopedOffers.add(offerRef);
+      if (relation.kind !== "exclusive_with")
+        for (const offerRef of relation.target.offer_refs) mechanismScopedOffers.add(offerRef);
   return {
     snapshots: new Map(data.provider_snapshots.map((snapshot) => [snapshot.provider_id, snapshot])),
     dispositions: new Set(data.model_dispositions.map(({ model_ref }) => model_ref)),
@@ -188,11 +191,19 @@ export function modelPricingViewFromIndex(
   const mechanismIds = new Set(modelMechanisms.map(({ id }) => id));
   const automaticIds = new Set(
     modelMechanisms.flatMap(({ relations }) =>
-      relations.flatMap(({ kind, target }) => (kind === "incurs" ? target.offer_refs : [])),
+      relations.flatMap(({ kind, target, applicability }) =>
+        kind === "incurs" && evaluateApplicability(applicability, context).state !== "false"
+          ? target.offer_refs
+          : [],
+      ),
     ),
   );
   const related = modelMechanisms.flatMap(({ relations }) =>
-    relations.flatMap(({ target }) => target.offer_refs),
+    relations.flatMap(({ kind, target, applicability }) =>
+      kind !== "exclusive_with" && evaluateApplicability(applicability, context).state !== "false"
+        ? target.offer_refs
+        : [],
+    ),
   );
   const books = uniqueBooks([
     ...projectedBooks,
@@ -204,15 +215,17 @@ export function modelPricingViewFromIndex(
   const resources = books.flatMap((book) =>
     book.scope.kind === "provider_resource"
       ? book.offers
-          .filter(
-            (offer) =>
-              offerIncludesModel(offer, model.uid) &&
-              (!index.mechanismScopedOffers.has(offer.id) ||
-                isRelatedToMechanism(offer, mechanismIds, modelMechanisms)),
-          )
+          .filter((offer) => {
+            if (!offerIncludesModel(offer, model.uid)) return false;
+            return index.mechanismScopedOffers.has(offer.id)
+              ? isRelatedToMechanism(offer, mechanismIds, modelMechanisms, context)
+              : book.scope.model_refs.includes(model.uid);
+          })
           .map((offer) => ({ book, offer }))
       : [],
   );
+  if (modelMechanisms.length === 0 && resources.length === 0)
+    return { outcome: "unknown", ...empty, ...metadata };
   const automaticComponents = uniqueOffers(
     resources.flatMap(({ offer }) => (automaticIds.has(offer.id) ? [offer] : [])),
   );
@@ -221,7 +234,7 @@ export function modelPricingViewFromIndex(
       isStandardResourceKind(book, "service") &&
       !automaticIds.has(offer.id) &&
       (!index.mechanismScopedOffers.has(offer.id) ||
-        isCompatibleWithMechanism(offer, mechanismIds, modelMechanisms))
+        isCompatibleWithMechanism(offer, mechanismIds, modelMechanisms, context))
         ? [offer]
         : [],
     ),
@@ -253,7 +266,7 @@ export function modelPricingViewFromIndex(
     relatedOffers.map((offer) => {
       const mechanismRefs = modelMechanisms.flatMap((mechanism) =>
         !index.mechanismScopedOffers.has(offer.id) ||
-        isRelatedToMechanism(offer, new Set([mechanism.id]), [mechanism])
+        isRelatedToMechanism(offer, new Set([mechanism.id]), [mechanism], context)
           ? [mechanism.id]
           : [],
       );
@@ -828,16 +841,21 @@ function isCompatibleWithMechanism(
   offer: PricingOffer,
   mechanismIds: ReadonlySet<string>,
   mechanisms: readonly PricingOffer[],
+  context: readonly PricingSelection[],
 ): boolean {
   return (
     offer.relations.some(
-      ({ kind, target }) =>
+      ({ kind, target, applicability }) =>
         (kind === "compatible_with" || kind === "requires" || kind === "incurs") &&
+        evaluateApplicability(applicability, context).state !== "false" &&
         target.offer_refs.some((ref) => mechanismIds.has(ref)),
     ) ||
     mechanisms.some(({ relations }) =>
       relations.some(
-        ({ kind, target }) => kind === "compatible_with" && target.offer_refs.includes(offer.id),
+        ({ kind, target, applicability }) =>
+          kind === "compatible_with" &&
+          evaluateApplicability(applicability, context).state !== "false" &&
+          target.offer_refs.includes(offer.id),
       ),
     )
   );
@@ -847,11 +865,22 @@ function isRelatedToMechanism(
   offer: PricingOffer,
   mechanismIds: ReadonlySet<string>,
   mechanisms: readonly PricingOffer[],
+  context: readonly PricingSelection[],
 ): boolean {
   return (
-    offer.relations.some(({ target }) => target.offer_refs.some((ref) => mechanismIds.has(ref))) ||
+    offer.relations.some(
+      ({ kind, target, applicability }) =>
+        kind !== "exclusive_with" &&
+        evaluateApplicability(applicability, context).state !== "false" &&
+        target.offer_refs.some((ref) => mechanismIds.has(ref)),
+    ) ||
     mechanisms.some(({ relations }) =>
-      relations.some(({ target }) => target.offer_refs.includes(offer.id)),
+      relations.some(
+        ({ kind, target, applicability }) =>
+          kind !== "exclusive_with" &&
+          evaluateApplicability(applicability, context).state !== "false" &&
+          target.offer_refs.includes(offer.id),
+      ),
     )
   );
 }

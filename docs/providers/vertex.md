@@ -315,7 +315,10 @@ header-selected Usage cell owns allowance and billing-rule prose in the latter f
 price cell alone cannot establish those rules. Column layout changes must not silently erase the
 accepted allowance topology.
 
-A combined Google Search / Web Grounding for Enterprise label applies to both services. Published
+A combined Google Search / Web Grounding for Enterprise label publishes rates for both services.
+Each service uses its own exact supported-model guide. The pricing context preserves lifecycle,
+so retired models receive no current grounding, Maps, or explicit-cache storage links.
+Published
 monthly web-query allowances share one pool across the explicitly named model families and web
 services; Maps has a separate monthly pool. The current pricing page names Gemini 3 and Gemini 4
 together. A clause naming only Gemini 3 cannot grant the benefit to Gemini 4 or a future family.

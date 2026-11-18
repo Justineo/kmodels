@@ -358,6 +358,10 @@ service facts survive. A service rate does not depend on acquiring its usage cou
 
 ### Web Search
 
+The Web Search guide's exact supported-model list establishes model compatibility. Messages
+support establishes the request path, and retired models are excluded. The tariff remains
+available at provider scope if the model list is missing or unreadable.
+
 One service offer publishes USD 10 per 1,000 successful searches. The same rate applies in Messages
 and Batches, so duplicating it into sync and Batch offers would add no information. The charge binds
 to the provider-owned successful-search signal and maps it to the terminal response field
