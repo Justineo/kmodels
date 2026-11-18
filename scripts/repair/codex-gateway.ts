@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -110,6 +110,48 @@ export function streamCharge(text: string): number {
   );
 }
 
+export function serialRoute(serve: (req: IncomingMessage, res: ServerResponse) => Promise<void>) {
+  let running: Promise<void> | undefined;
+  const waiting = new Set<() => void>();
+  const submit = (req: IncomingMessage, res: ServerResponse) => {
+    const start = () => {
+      running = serve(req, res).finally(() => {
+        running = undefined;
+        waiting.values().next().value?.();
+      });
+    };
+    if (!running) {
+      start();
+      return;
+    }
+    if (waiting.size >= 8) {
+      res.writeHead(429).end("Gateway request queue is full");
+      return;
+    }
+    const remove = () => {
+      waiting.delete(next);
+      clearTimeout(timer);
+      res.off("close", remove);
+    };
+    const next = () => {
+      remove();
+      start();
+    };
+    const timer = setTimeout(() => {
+      remove();
+      res.writeHead(503).end("Gateway request timed out in queue");
+    }, 180_000);
+    waiting.add(next);
+    res.once("close", remove);
+  };
+  return {
+    submit,
+    drain: async () => {
+      while (running) await running;
+    },
+  };
+}
+
 export async function startCodexGateway(options: {
   key: string;
   lease: BudgetLease;
@@ -124,7 +166,6 @@ export async function startCodexGateway(options: {
   let phaseLimit = charged;
   let calls = 0;
   let fetches = 0;
-  let busy = false;
   let poisoned = false;
   const save = () =>
     writePrivateJson(join(options.privateDirectory, "review-usage.json"), {
@@ -133,7 +174,6 @@ export async function startCodexGateway(options: {
     });
   await save();
   const handle = async (req: IncomingMessage): Promise<{ type: string; body: string }> => {
-    if (req.method !== "POST") throw new Error("Only bounded POST requests are supported");
     const input: unknown = JSON.parse(await boundedBody(req, 170_000));
     if (req.url === "/source") {
       if (++fetches > 40) throw new Error("Independent source acquisition limit reached");
@@ -167,8 +207,7 @@ export async function startCodexGateway(options: {
         }),
       };
     }
-    if (req.url !== "/v1/responses" || poisoned)
-      throw new Error("Unsupported or stopped inference route");
+    if (poisoned) throw new Error("Stopped inference route");
     if (options.lease.month !== new Date().toISOString().slice(0, 7))
       throw new Error("OpenAI lease expired");
     if (++calls > 60) throw new Error("Codex request limit reached");
@@ -207,32 +246,27 @@ export async function startCodexGateway(options: {
       throw error;
     }
   };
-  const server = createServer((req, res) => {
-    if (busy) {
-      res.writeHead(429);
-      res.end("Concurrent requests are not admitted");
-      return;
+  const serve = async (req: IncomingMessage, res: ServerResponse) => {
+    try {
+      const { type, body } = await handle(req);
+      res.writeHead(200, { "Content-Type": type }).end(body);
+    } catch (error) {
+      res.writeHead(400, { "Content-Type": "application/json" }).end(
+        JSON.stringify({
+          error: {
+            message: error instanceof Error ? error.message : "Gateway failed",
+            type: "invalid_request_error",
+          },
+        }),
+      );
     }
-    busy = true;
-    void handle(req)
-      .then(({ type, body }) => {
-        res.writeHead(200, { "Content-Type": type });
-        res.end(body);
-      })
-      .catch((error: unknown) => {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(
-          JSON.stringify({
-            error: {
-              message: error instanceof Error ? error.message : "Gateway failed",
-              type: "invalid_request_error",
-            },
-          }),
-        );
-      })
-      .finally(() => {
-        busy = false;
-      });
+  };
+  const source = serialRoute(serve);
+  const inference = serialRoute(serve);
+  const server = createServer((req, res) => {
+    if (req.method === "POST" && req.url === "/source") source.submit(req, res);
+    else if (req.method === "POST" && req.url === "/v1/responses") inference.submit(req, res);
+    else res.writeHead(400).end("Unsupported gateway request");
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -245,9 +279,12 @@ export async function startCodexGateway(options: {
     },
     charged: () => charged,
     remaining: () => phaseLimit - charged,
-    close: () =>
-      new Promise<void>((resolve, reject) =>
+    close: async () => {
+      await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
-      ),
+      );
+      // A disconnected client can leave an active acquisition or settlement on the host.
+      await Promise.all([source.drain(), inference.drain()]);
+    },
   };
 }

@@ -73,8 +73,14 @@ Unchanged evidence fingerprints cannot repeatedly trigger takeover. A separate p
 continuation still requires all ordinary gates.
 
 The Codex gateway accepts at most 60 serial Responses calls per stage, each bounded to 160 KB
-of text and 4,096 output tokens, and at most 40 public source acquisitions. Codex uses a
-32,000-token context with early compaction. Prompts specify the remaining budget, request narrow
+of text and 4,096 output tokens, and at most 40 public source acquisitions. The gateway admits
+one source acquisition and one Responses call concurrently so a slow acquisition cannot block
+the verifier's next inference call. Each route serves requests in arrival order with up to eight
+waiting for up to three minutes. A full queue returns HTTP 429 and an expired wait returns
+HTTP 503. Disconnecting releases a waiting slot. Only requests that start processing count toward the
+stage limits, and inference checks the available budget after the preceding call settles.
+Codex reads full source receipts from their read-only mount and uses a 32,000-token context
+with early compaction. Prompts specify the remaining budget, request narrow
 reads and focused checks, and reuse full acquired receipts without repeatedly dumping their bodies.
 Each Codex session has a 20-minute wall-clock limit. There are no automatic HTTP/stream retries,
 model fallbacks or unlimited escalation loops. Actions summaries report the stage reservation and

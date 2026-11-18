@@ -183,24 +183,53 @@ try {
     throw new Error("Codex protocol smoke did not complete with exact mocked usage");
   // Exercise ambiguous transport failure and contention against the same real Unix gateway.
   const requestInput = { model: "gpt-6.2-sol", input: [], instructions: "x".repeat(90_000) };
-  const post = () =>
+  const post = (path = "/v1/responses", body: unknown = requestInput) =>
     new Promise<number>((resolve, reject) => {
       const req = request(
-        { socketPath: join(directory, "api.sock"), path: "/v1/responses", method: "POST" },
+        { socketPath: join(directory, "api.sock"), path, method: "POST" },
         (res) => {
           res.resume();
           res.on("end", () => resolve(res.statusCode ?? 0));
         },
       );
       req.on("error", reject);
-      req.end(JSON.stringify(requestInput));
+      req.end(JSON.stringify(body));
     });
   gateway.startPhase(1_000_000);
   assert(codexRequest(requestInput).reservation > gateway.remaining());
-  assert.equal(await post(), 400);
+  // Hold a source request open while the inference route evaluates its own budget.
+  const source = request({
+    socketPath: join(directory, "api.sock"),
+    path: "/source",
+    method: "POST",
+    headers: { Expect: "100-continue" },
+  });
+  const ready = new Promise<void>((resolve, reject) => {
+    source.once("continue", resolve);
+    source.once("error", reject);
+  });
+  const sourceResult = new Promise<number>((resolve, reject) => {
+    source.once("response", (response) => {
+      response.resume();
+      resolve(response.statusCode ?? 0);
+    });
+    source.once("error", reject);
+  });
+  source.flushHeaders();
+  try {
+    await ready;
+    const queued = post("/source", { source: "outside-admission" });
+    assert.equal(await post(), 400);
+    source.end(JSON.stringify({ source: "outside-admission" }));
+    assert.equal(await sourceResult, 400);
+    assert.equal(await queued, 400);
+  } finally {
+    source.destroy();
+  }
   assert.equal(calls, 2);
   gateway.startPhase();
   assert.equal(gateway.remaining(), runAllowance - 800);
+  gateway.startPhase(codexRequest(requestInput).reservation);
   failNext = true;
   const pending = post();
   await started;
@@ -209,13 +238,26 @@ try {
     .object({ charged_microusd: z.number() })
     .parse(JSON.parse(await readFile(join(output, "review-usage.json"), "utf8")));
   assert.equal(journal.charged_microusd, reserved);
-  assert.equal(await post(), 429);
+  const queued = post();
+  assert.equal(await post("/source", { source: "outside-admission" }), 400);
   failNetwork(new Error("Ambiguous transport failure"));
   assert.equal(await pending, 400);
+  assert.equal(await queued, 400);
   assert.equal(gateway.charged(), reserved);
   gateway.startPhase(0);
   assert.equal(await post(), 400);
   assert.equal(calls, 3);
+  failNext = false;
+  gateway.startPhase();
+  const burst = Array.from({ length: 4 }, () =>
+    post("/v1/responses", {
+      model: "gpt-6.2-sol",
+      input: [{ type: "custom_tool_call_output", output: "catalog-tool-ok" }],
+    }),
+  );
+  assert.deepEqual(await Promise.all(burst), [200, 200, 200, 200]);
+  assert.equal(calls, 7);
+  assert.equal(gateway.charged(), reserved + 4 * 400);
   console.log(
     "Codex tool protocol, private accounting and failure-budget smoke passed without paid inference.",
   );

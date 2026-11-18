@@ -1,4 +1,6 @@
-import { expect, it } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
+import { IncomingMessage, ServerResponse } from "node:http";
+import { Socket } from "node:net";
 import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +10,12 @@ import {
   closedCandidates,
   verificationVerdict,
 } from "../scripts/repair/verification.ts";
-import { codexRequest, streamCharge, boundedBody } from "../scripts/repair/codex-gateway.ts";
+import {
+  codexRequest,
+  streamCharge,
+  boundedBody,
+  serialRoute,
+} from "../scripts/repair/codex-gateway.ts";
 import {
   checkEvidenceTree,
   codexArguments,
@@ -185,6 +192,48 @@ it("settles only one completed SSE response and charges reasoning output", async
     ),
   ).rejects.toThrow("limit");
 });
+it("serves a burst in arrival order and drops excess, expired and disconnected requests", async () => {
+  vi.useFakeTimers();
+  let release: () => void = () => undefined;
+  const hold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const processed: string[] = [];
+  const route = serialRoute(async (req, res) => {
+    processed.push(req.url ?? "");
+    await hold;
+    res.end();
+  });
+  const submit = (label: string) => {
+    const req = new IncomingMessage(new Socket());
+    req.url = label;
+    const res = new ServerResponse(req);
+    route.submit(req, res);
+    return res;
+  };
+  try {
+    submit("active");
+    const expired = submit("expired");
+    await vi.advanceTimersByTimeAsync(180_000);
+    expect(expired.statusCode).toBe(503);
+    const disconnected = submit("disconnected");
+    const labels = Array.from({ length: 7 }, (_, index) => String(index));
+    const waiting = labels.map(submit);
+    expect(submit("excess").statusCode).toBe(429);
+    disconnected.emit("close");
+    waiting.push(submit("last"));
+    expect(processed).toEqual(["active"]);
+    release();
+    await route.drain();
+    expect(processed).toEqual(["active", ...labels, "last"]);
+    expect(waiting.every((res) => res.statusCode === 200 && res.writableEnded)).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    release();
+    vi.useRealTimers();
+  }
+});
+
 it("isolates Codex from host secrets, external networks, Git metadata and publication credentials", () => {
   const args = containerArguments(
     {

@@ -21,9 +21,11 @@ export function startRelay(socket: string, port = 8765) {
       },
     );
     forwarded.on("error", () => {
+      if (outgoing.destroyed) return;
       outgoing.writeHead(502);
       outgoing.end("Gateway unavailable");
     });
+    outgoing.once("close", () => forwarded.destroy());
     incoming.pipe(forwarded);
   }).listen(port, "127.0.0.1");
 }
