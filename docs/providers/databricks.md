@@ -6,7 +6,7 @@ Status: current
 
 [Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.
 
-Keep one public pay-per-token relationship per model, denominated in the published DBU unit. Actual Priority tier, endpoint geography, context and promotion/validity qualify rates. Do not turn DBU-to-currency settlement into a request price. Provisioned throughput, job-duration Batch compute and account commitments remain excluded.
+Keep one public pay-per-token relationship per model, denominated in the published DBU unit. Actual Priority tier, endpoint geography, context, and published validity qualify rates. Do not turn DBU-to-currency settlement into a request price. Provisioned throughput, job-duration Batch compute and account commitments remain excluded.
 
 The source authorities and evidence limits below remain authoritative. Adapter keys such as
 `sync`, `batch`, `usage`, and operation/model-specific labels describe extraction contexts;
@@ -22,7 +22,7 @@ one upstream invocation. It is not a Databricks product catalog or account invoi
 Admitted facts are:
 
 - pay-per-token input, output, embedding, cache-read, and cache-write rates;
-- request-visible endpoint geography, context tier, service tier, promotion, and effective dates;
+- endpoint geography, context tier, service tier, and effective dates including public promotion windows;
 - Priority rates when the official model-qualified row publishes an amount; and
 - exact Google pass-through image/text rates only where a Databricks model section explicitly
   delegates to a uniquely anchored first-party Google pricing section.
@@ -192,9 +192,10 @@ pricing joins remain required.
   Standard-rate families are parsed from first-party footnotes. Tiered tables also recognize
   explicit discounts, post-promotion percentages, and the documented two-times list-price rule.
   Model IDs, rates, and dates are not hard-coded.
-  A post-promotion list price keeps its published start date without acquiring an unobserved
-  `promotion=false` condition. Promotion eligibility is retained only where the source establishes
-  it; another dated or differently scoped promotional quote cannot supply the opposite predicate.
+  Public promotion and launch notes establish successive rate versions within the same offer.
+  Keep the promotion's inclusive end date and the following calendar date as the start of the
+  restored list rate. The source notes remain evidence, and both versions retain date precision.
+  The reviewed notes establish no independent promotion eligibility condition.
 - Blank, `-`, `n/a`, and `Coming soon` cells publish no numeric rate. One malformed amount loses only
   that numeric amount; tiered tables retain its raw evidence. A malformed pricing page loses only that page; catalog identity and the independent
   pricing page survive.
@@ -218,11 +219,12 @@ display name, an upstream ID, a regional prefix or a similar private deployment 
 the full original endpoint string, including the `databricks-` prefix. A freshly withdrawn tariff
 row withdraws its association unless independent price evidence still establishes one.
 
-The public lookup and website use the shared matcher. Served tier, regional processing, context,
-cache retention, promotions and price validity remain on existing rates; missing conditions return
-candidates. DBU stays DBU, and a published input-only rate does not imply free output. Date-only
-promotions retain the shared unresolved-validity limitation; known raw or conflicting prices stay
-explicitly unresolved. A mapping therefore does not promise a complete numeric quote for every ID.
+The public lookup and website use the shared matcher. Served tier, regional processing, context, and
+cache retention remain on existing rates. Missing conditions return candidates. The evaluation time
+selects the applicable rate version. Near a date-only promotion boundary, lookup and the website
+retain candidates with unresolved validity and require no Promotion selection. DBU stays DBU, and a
+published input-only rate does not imply free output. Known raw or conflicting prices stay explicitly
+unresolved. A mapping therefore does not promise a complete numeric quote for every ID.
 
 Protocol references and the task-route matrix are optional metadata. Their absence or drift
 withholds the affected endpoints, streaming claims or usage-field acquisition paths and emits a
@@ -237,8 +239,8 @@ including tariff withdrawal and optional protocol omission. Stored-data adoption
 
 ### Offers and usage
 
-Every priced model has one `pay-per-token` offer. Endpoint geography, context band, Priority,
-promotion, and validity remain applicability dimensions rather than separate offers. There are no
+Every priced model has one `pay-per-token` offer. Endpoint geography, context band, and Priority
+qualify its rates, and published validity versions those rates. There are no
 Databricks provider-resource books, capacity books, settlement facts, allowances, resource edges,
 or offer relations.
 

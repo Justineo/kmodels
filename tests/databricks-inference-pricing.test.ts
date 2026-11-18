@@ -23,8 +23,13 @@ import type { Catalog } from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
 import { compressedAsset } from "../src/catalog/asset-pack.ts";
-import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
+import {
+  websiteDetailChunkSchema,
+  websiteOfferChunkSchema,
+} from "../src/catalog/website-schema.ts";
 import { queryWebsiteInferencePrice } from "../src/catalog/inference-price-presentation.ts";
+import InferencePrices from "../src/components/InferencePrices.vue";
+import { renderComponent } from "./render-component.ts";
 import { restoreWebsiteInferenceDetail } from "./website-inference-detail.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
@@ -358,7 +363,6 @@ it("binds a promotion note whose marker is longer than the row marker", async ()
           price: "10.714",
           conditions: expect.objectContaining({
             effective_until: "2026-12-31",
-            promotion: true,
           }),
         },
         { price: "21.428", conditions: expect.objectContaining({ effective_from: "2027-01-01" }) },
@@ -368,7 +372,7 @@ it("binds a promotion note whose marker is longer than the row marker", async ()
   expect(inputFacts("databricks-gemini-4-argon").standard).toEqual([
     {
       price: "35.714",
-      conditions: expect.objectContaining({ effective_until: "2026-11-30", promotion: true }),
+      conditions: expect.objectContaining({ effective_until: "2026-11-30" }),
     },
     { price: "71.428", conditions: expect.objectContaining({ effective_from: "2026-12-01" }) },
   ]);
@@ -376,7 +380,7 @@ it("binds a promotion note whose marker is longer than the row marker", async ()
   expect(inputFacts("databricks-gemini-3-1-pro").standard).toEqual([
     {
       price: "28.5712",
-      conditions: expect.objectContaining({ effective_until: "2027-01-31", promotion: true }),
+      conditions: expect.objectContaining({ effective_until: "2027-01-31" }),
     },
     { price: "35.714", conditions: expect.objectContaining({ effective_from: "2027-02-01" }) },
   ]);
@@ -387,7 +391,7 @@ it("binds a promotion note whose marker is longer than the row marker", async ()
     evaluated_at: "2026-12-31T00:00:00Z",
   });
   expect(gemini.status).toBe("candidates");
-  expect(gemini.missing_conditions).toContainEqual({ namespace: "kmodels", value: "promotion" });
+  expect(gemini.missing_conditions).toEqual([]);
   expect(prices(gemini, "input_text")).toHaveLength(2);
   expect(prices(gemini, "input_text")).toEqual(
     expect.arrayContaining([
@@ -404,7 +408,7 @@ it("binds a promotion note whose marker is longer than the row marker", async ()
       evaluated_at: "2026-12-31T00:00:00Z",
     });
     expect(result.status).toBe("candidates");
-    expect(result.missing_conditions).toEqual([{ namespace: "kmodels", value: "promotion" }]);
+    expect(result.missing_conditions).toEqual([]);
     expect(prices(result, "input_text")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ value: { numerator: "5357", denominator: "250000000" } }),
@@ -447,4 +451,89 @@ it("projects the same direct lookup into static exports and compact UI data", as
     "Cache retention",
   );
   expect(claude.missing_conditions).toContain("Cache retention");
+}, 15000);
+
+it("uses date-only Grok promotion boundaries in lookup and the pricing inspector", async () => {
+  const projection = await projectCatalogPair(baseline);
+  const modelId = "databricks-grok-4-7";
+  const modelRef = `databricks/${modelId}`;
+  const detail = projection.ui.manifest.assets
+    .filter(({ file_name }) => file_name.includes("/details/"))
+    .flatMap(
+      (asset) =>
+        websiteDetailChunkSchema.parse(
+          JSON.parse(gunzipSync(compressedAsset(projection.ui.pack, asset)).toString("utf8")),
+        ).details,
+    )
+    .find(({ model_ref }) => model_ref === modelRef);
+  const price = detail && restoreWebsiteInferenceDetail(detail).inference_prices?.[0];
+  if (!price) throw new Error("Missing Grok price projection");
+  const offers = projection.ui.manifest.assets
+    .filter(({ file_name }) => file_name.includes("/offers/"))
+    .flatMap(
+      (asset) =>
+        websiteOfferChunkSchema.parse(
+          JSON.parse(gunzipSync(compressedAsset(projection.ui.pack, asset)).toString("utf8")),
+        ).offers,
+    );
+  const query = lookup();
+  const selectors = [standard, condition("deployment_scope", "non_regional_processing")];
+  const discounted = {
+    price: { value: { numerator: "17857", denominator: "625000000" } },
+    validity: { until: { value: "2027-01-31", precision: "date" } },
+  };
+  const list = {
+    price: { value: { numerator: "17857", denominator: "500000000" } },
+    validity: { from: { value: "2027-02-01", precision: "date" } },
+  };
+  expect(price.pricing_options?.map(({ dimension }) => dimension.value)).toContain(
+    "deployment_scope",
+  );
+  expect(price.pricing_options?.map(({ dimension }) => dimension.value)).not.toContain("promotion");
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    for (const [evaluated_at, status, expected] of [
+      ["2027-01-29T00:00:00Z", "matched", [discounted]],
+      ["2027-01-31T00:00:00Z", "candidates", [discounted, list]],
+      ["2027-02-03T00:00:00Z", "matched", [list]],
+    ] as const) {
+      const result = query({
+        provider_id: "databricks",
+        model_id: modelId,
+        selectors,
+        evaluated_at,
+      });
+      expect(result.status).toBe(status);
+      expect(result.missing_conditions).toEqual([]);
+      const rates = result.candidates.flatMap(({ offer }) =>
+        offer.terms.flatMap((term) =>
+          term.kind === "rate" && term.meter.value === "input_text" ? term.variants : [],
+        ),
+      );
+      expect(rates).toHaveLength(expected.length);
+      expect(rates).toEqual(
+        expect.arrayContaining(
+          expected.map((variant) =>
+            expect.objectContaining({ ...variant, price: expect.objectContaining(variant.price) }),
+          ),
+        ),
+      );
+
+      const now = new Date(evaluated_at);
+      const ui = queryWebsiteInferencePrice(price, selectors, now.toISOString());
+      expect(ui.status).toBe(status);
+      expect(ui.missing_conditions).toEqual([]);
+      if (status === "candidates") expect(ui.explanation).toContain("Price validity");
+      vi.setSystemTime(now);
+      const html = await renderComponent(InferencePrices, { modelRef, prices: [price], offers });
+      const $ = load(html);
+      const labels = $("label")
+        .map((_index, label) => $(label).text().trim())
+        .get();
+      expect(labels).toContain("Deployment scope");
+      expect(labels).not.toContain("Promotion");
+    }
+  } finally {
+    vi.useRealTimers();
+  }
 }, 15000);

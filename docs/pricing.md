@@ -791,9 +791,12 @@ datetime precision and inclusive/exclusive endpoint metadata. The canonical
 contract records that fact without asserting currentness. Lookup and model details evaluate
 the same preserved boundaries without rewriting or discarding published validity.
 
-Recurring schedules and published validity are independent: the schedule says which categorical
-value applies within a day or week, while validity says when that published rule starts or stops
-being offered.
+A one-time price change within a commercial relationship belongs in the validity of its rate
+variants. This includes a public discount that applies to the published scope throughout a
+promotion window and a documented return to list rates. Preserve the promotion label and terms
+as source evidence. Add a promotion or eligibility predicate only when the source establishes a
+condition independent of the date range. A recurring billing rule describes which categorical
+value applies within a day or week. Validity defines when that rule is in force.
 
 An invalid validity declaration keeps the rate raw with its other known applicability predicates.
 It does not broaden that evidence to unrelated regions, tiers or other disjoint price scopes.

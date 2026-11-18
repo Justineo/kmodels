@@ -5054,7 +5054,7 @@ describe("Databricks adapters", () => {
 
   it("classifies fixed companions by claim and pricing dependency", () => {
     const source = manifest("databricks").sources.find(({ id }) => id === "databricks-models");
-    expect(source?.extractorVersion).toBe("databricks-catalog-v22");
+    expect(source?.extractorVersion).toBe("databricks-catalog-v23");
     expect(source?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     const companions = new Map(
       source?.linkedDocuments?.documents?.map((document) => [document.id, document]),
@@ -5566,7 +5566,7 @@ describe("Databricks adapters", () => {
     const sonnet = models.find((model) => model.model_id === "databricks-claude-sonnet-5");
     expect(
       gemini?.price_facts.find(
-        (rate) => rate.meter === "input_text" && rate.conditions.promotion === true,
+        (rate) => rate.meter === "input_text" && rate.conditions.effective_until !== undefined,
       ),
     ).toMatchObject({
       price: "21.4288",
@@ -5586,9 +5586,12 @@ describe("Databricks adapters", () => {
     ).toMatchObject({ price: "42.857", derived: true });
     expect(
       sonnet?.price_facts.find(
-        (rate) => rate.meter === "input_text" && rate.conditions.promotion === true,
-      )?.conditions.effective_until,
-    ).toBe("2026-08-31");
+        (rate) => rate.meter === "input_text" && rate.conditions.effective_until !== undefined,
+      ),
+    ).toMatchObject({
+      conditions: { effective_until: "2026-08-31" },
+      raw_validity: expect.stringContaining("introductory launch pricing"),
+    });
     const source = manifest("databricks").sources[0];
     if (source === undefined) throw new Error("Missing Databricks pricing source");
     const partition = assembleParsedProviderPricing(
@@ -5597,16 +5600,16 @@ describe("Databricks adapters", () => {
       [{ source, models }],
       models,
     );
-    const future = partition?.books
+    const dated = partition?.books
       .flatMap((book) =>
         book.offers.flatMap((offer) =>
           offer.terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
         ),
       )
-      .filter(({ validity }) => validity?.from?.value === "2027-02-01");
-    expect(future?.length).toBeGreaterThan(0);
+      .filter(({ validity }) => validity !== undefined);
+    expect(dated?.length).toBeGreaterThan(0);
     expect(
-      future?.every(({ applicability }) =>
+      dated?.every(({ applicability }) =>
         applicability.any_of.every(({ all_of }) =>
           all_of.every(({ dimension }) => dimension.value !== "promotion"),
         ),
@@ -5624,11 +5627,12 @@ describe("Databricks adapters", () => {
 
     expect(
       gemini?.price_facts.find(
-        (rate) => rate.meter === "input_text" && rate.conditions.promotion === true,
+        (rate) => rate.meter === "input_text" && rate.conditions.effective_until !== undefined,
       ),
     ).toMatchObject({
       price: "20.0895",
       conditions: { effective_until: "2027-02-28" },
+      raw_validity: expect.stringContaining("promotional discount of 25%"),
     });
     expect(
       gemini?.price_facts.find(
@@ -5879,7 +5883,6 @@ describe("Databricks adapters", () => {
           service_tier: "priority",
           context_tier: "short",
           deployment_scope: "non_regional_processing",
-          promotion: true,
           effective_until: "2026-11-21",
         }),
       }),
@@ -5950,7 +5953,7 @@ describe("Databricks adapters", () => {
         conditions: expect.objectContaining({
           modality: "image",
           deployment_scope: "regional_processing",
-          promotion: true,
+          effective_until: "2027-01-31",
         }),
       }),
     );

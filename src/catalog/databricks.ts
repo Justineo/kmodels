@@ -1032,7 +1032,6 @@ function promotional(
     conditions: {
       ...conditions,
       effective_until: until,
-      promotion: true,
     },
     derived: true,
     derivation: reason,
@@ -1101,12 +1100,14 @@ function applyPriceNotes(
       for (const value of launchRates.values())
         add(rates, target.model_id, {
           ...value,
-          conditions: { ...value.conditions, effective_until: until, promotion: true },
+          conditions: { ...value.conditions, effective_until: until },
+          raw_validity: launch[0],
         });
       for (const value of standard.values())
         add(rates, target.model_id, {
           ...value,
           conditions: { ...value.conditions, effective_from: nextDate(until) },
+          raw_validity: launch[0],
           derived: true,
           derivation: `${targetLabel} standard rate = published ${standardLabel} rate`,
         });
@@ -1147,14 +1148,15 @@ function applyPriceNotes(
         throw new Error("Databricks promotional-pricing model omitted rates");
       rates.delete(model.model_id);
       for (const value of published.values()) {
+        const quoted = { ...value, raw_validity: discount[0] };
         add(rates, model.model_id, {
-          ...value,
+          ...quoted,
           conditions: { ...value.conditions, effective_from: nextDate(until) },
         });
         add(
           rates,
           model.model_id,
-          promotional(value, factor, until, `${value.meter} = published DBU rate × ${factor}`),
+          promotional(quoted, factor, until, `${value.meter} = published DBU rate × ${factor}`),
         );
       }
       covered.add(model.model_id);
