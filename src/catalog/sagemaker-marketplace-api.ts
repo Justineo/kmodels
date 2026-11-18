@@ -19,7 +19,7 @@ const endpoint = "https://discovery.marketplace.us-east-1.amazonaws.com/GetListi
 export async function fetchSagemakerMarketplaceApi(
   source: SourceManifest,
   readPublic: (source: SourceManifest) => Promise<FetchPayload>,
-  post: (body: string, send: () => Promise<Response>) => Promise<StatusPayload>,
+  post: (request: string, body: string, send: () => Promise<Response>) => Promise<StatusPayload>,
 ): Promise<FetchResult> {
   if (
     source.url !== endpoint ||
@@ -84,7 +84,8 @@ export async function fetchSagemakerMarketplaceApi(
         RequestContext: { IntegrationId: "integ-v27la47re4rlo", Locale: "en" },
         ExecutionSemantics: "ALL_OR_NOTHING",
       });
-      const response = await post(body, async () => {
+      const listing = id.length <= 96 ? id : `${id.slice(0, 93)}...`;
+      const response = await post(`GetListingView/${listing}`, body, async () => {
         // The SDK supplies signing only; raw Fetch requests need their own shared limiter.
         await rateLimiter.getSendToken();
         const signed = await signer.sign(

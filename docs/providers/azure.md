@@ -295,12 +295,22 @@ Retail matching is deterministic:
 
 1. constrain the Microsoft product/SKU family;
 2. match normalized ordered identity tokens and explicit version markers;
-3. bind only an exact catalog version, an existing versionless tuple, or the sole eligible public
-   version; and
+3. bind only an exact catalog version, an existing versionless tuple, or the sole verified public
+   version when no differently versioned tuple is already known; and
 4. infer a meter only when the native unit and a unique task/meter interpretation agree.
 
-Never fuzzy-match a SKU, guess input versus output, or copy a family price to every version. An
-unbound row is reported but does not reject recognized siblings.
+Unmatched version markers cannot qualify an older version or a versionless model. Use last
+verified, non-retired public identities when the nonexhaustive catalog omits an entire model ID.
+The prior identity must have provenance from a current, unchanged public catalog or supplement
+extractor. A current identity, version or documented alias takes precedence over this fallback.
+Rates for a retained identity still come from the current Retail response and are published only
+when the final core contains that exact identity.
+
+The public pricing tables also require an exact tuple when a row names a specific version.
+The Azure OpenAI page's `2024-0513` and `2024-1120` labels identify the matching GPT-4o
+dates in Microsoft Learn. The `GPT-3.5-Turbo-0301` row names a retired version outside the
+published catalog. The `GPT-Chat Latest 10142026` row names a version without a catalog tuple.
+Neither row owns a versionless tariff for the family.
 
 For an exact overlapping claim, authority is:
 
@@ -336,13 +346,16 @@ placeholders such as `Pending` before they can enter a numeric fact.
   A successful page's retry-after header alone does not request a sleep while requests remain.
   Remaining-request samples do not establish a global requests-per-minute quota; ARM and model
   inference quotas do not define this separate public feed's limits.
+  Each page must report an item count consistent with its rows and an explicit next link or
+  terminal null. Continuations preserve the reviewed API version, currency and consumption filter
+  and advance by the number of returned rows. Missing or inconsistent pagination fails the source
+  with contract evidence.
 - A pricing `source_unavailable` outcome can also wrap a parser rejection after a successful
   fetch. Inspect the underlying warning and replay the Retail parser before diagnosing transport.
   The public feed includes model SKUs absent from the documented catalog and versionless rows
-  with multiple possible catalog versions. These emit `retail_identity_not_unique` or
-  `retail_version_not_unique`; if exact bindings fall below the reviewed coverage guard, the
-  previous pricing partition remains stale. Fetch success does not justify guessing identities,
-  assigning an ambiguous family rate to every version, or lowering `minHandledRatio`.
+  with multiple possible catalog versions. These remain unbound or ambiguous while recognized
+  siblings can publish. Exact model/version joins with an unsupported meter or unit contribute
+  bounded repair evidence. Ordinary catalog gaps do not enter repair on the basis of row volume.
   Azure OpenAI's compact GPT numbers (`54`, `55`, `56luna`, `61 terra`) and `ShCo`/`LoCo`/`Fl`
   labels are expanded only inside the OpenAI product family. Standard, Priority and Flex remain
   disjoint served tiers within synchronous inference; Batch remains a distinct rate condition. Microsoft's
@@ -351,7 +364,15 @@ placeholders such as `Pending` before they can enter a numeric fact.
   establish standard processing as the default tariff and Flex as a Global Standard processing
   tier. This does not invent a context class for an unqualified quote. BFL's Flex identity is not
   a processing tier. Scoped `MM3.5` and omitted Llama `Instruct` suffixes still require a unique
-  catalog identity; competing base/instruct identities remain ambiguous. The 70% guard is unchanged.
+  catalog identity. Competing base/instruct identities remain ambiguous.
+- Compare the candidate's native meter, exact public subject, unit and applicability against the
+  accepted Retail source observations. A same-scope amount update or a later effective price
+  already in force can rebill the same meter. An unexplained missing scope, a future successor
+  without a current rate, or missing accepted comparison evidence keeps the prior provider pricing
+  partition stale with bounded examples for repair. Verified catalog retirement can remove a
+  model's old quotes. When migrating from an extractor that accepted unknown compact versions,
+  positive evidence from the same native row can disqualify its old binding. Absence from the
+  Retail response supplies neither retirement nor a tariff end.
 - A local Retail Prices failure can occur before any HTTP response: the observed local proxy
   path timed out during TLS, while the same public request completed directly. Diagnose curl exit
   code and phase before changing an extractor. Where direct access is verified and intended, add

@@ -524,6 +524,23 @@ function sourceAttemptValue(source: SourceAttempt, generatedAt: string): string 
   return `\`${source.outcome}\`${details.length === 0 ? "" : ` · ${details.join(" · ")}`}`;
 }
 
+function sourceFailureValue(source: SourceAttempt, generatedAt: string): string {
+  const value = sourceAttemptValue(source, generatedAt);
+  const retry = source.retry_failure;
+  if (retry === undefined) return value;
+  const status = source.http_status === undefined ? "" : ` · HTTP ${source.http_status}`;
+  const attempts = `${retry.attempts} ${retry.attempts === 1 ? "attempt" : "attempts"}`;
+  const wait = retry.reason === "retry_after_exceeds_budget" ? "Retry-After" : "Backoff";
+  const delay = retry.delay_ms === undefined ? "" : ` (${retry.delay_ms} ms)`;
+  const remaining =
+    retry.remaining_budget_ms === undefined ? "" : ` (${retry.remaining_budget_ms} ms)`;
+  const reason =
+    retry.reason === "attempt_limit"
+      ? "retry attempts exhausted"
+      : `${wait}${delay} exceeds remaining retry budget${remaining}`;
+  return `${value}${status} · ${inlineCode(retry.request)} · ${attempts} · ${reason}`;
+}
+
 function contractFindingRows(source: SourceAttempt): ProviderDetailRow[] {
   const rows = contractFindings(source).flatMap((evidence): ProviderDetailRow[] => {
     const rows: ProviderDetailRow[] = evidence.diagnostics.map((diagnostic) => {
@@ -859,7 +876,7 @@ export function refreshReport(value: unknown): RefreshReportOutput {
       detailRows.push([
         "Source",
         `\`${source.source_id}\``,
-        sourceAttemptValue(source, report.generated_at),
+        sourceFailureValue(source, report.generated_at),
       ]);
     for (const source of findingSources) detailRows.push(...contractFindingRows(source));
     for (const source of dependencySources)

@@ -540,6 +540,38 @@ describe("catalog repair candidate selection", () => {
       catalogRepairCandidates(input("unknown_public_pricing_card", 20, "fetch_failed")),
     ).toEqual([]);
   });
+  it("reviews exact Azure Retail meter gaps while leaving unrelated inventory unbound", () => {
+    const input = (reason: string) =>
+      report([
+        provider({
+          provider_id: "azure",
+          attempt: {
+            outcome: "accepted",
+            sources: [
+              {
+                source_id: "azure-retail-prices",
+                outcome: "unchanged",
+                pricing_reconciliation: {
+                  reason_counts: { [reason]: 75 },
+                  diagnostics: [
+                    { reason_code: reason, sample: "Azure OpenAI Media / Live 1 Gl Unit" },
+                  ],
+                },
+              },
+            ],
+          },
+        }),
+      ]);
+    expect(catalogRepairCandidates(input("retail_identity_not_unique"))).toEqual([]);
+    expect(catalogRepairCandidates(input("retail_version_not_unique"))).toEqual([]);
+    expect(catalogRepairCandidates(input("retail_meter_or_unit_unsupported"))).toEqual([
+      expect.objectContaining({
+        source_id: "azure-retail-prices",
+        trigger: "source_pricing_structure",
+        message: expect.stringContaining("Azure OpenAI Media / Live 1 Gl Unit"),
+      }),
+    ]);
+  });
   it("selects a parser contract failure from any reviewed source", () => {
     expect(
       catalogRepairCandidates(

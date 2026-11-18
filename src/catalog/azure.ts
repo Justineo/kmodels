@@ -8,6 +8,7 @@ import {
   type AzureArmSku,
 } from "./azure-commercial.ts";
 import { azureCommercialFacts } from "./azure-commercial-source.ts";
+import { azureRetailMeterKey, azureRetailModelRetired } from "./azure-retail-publication.ts";
 import { anthropicPromptScope } from "./anthropic-price-row.ts";
 import { linkedBundleSchema } from "./bundle.ts";
 import { htmlText } from "./html.ts";
@@ -22,16 +23,18 @@ import {
   rationalToFiniteDecimal,
 } from "./pricing-rational.ts";
 import type { SourceParseInput as Input, SourceParseResult } from "./source-parse.ts";
+import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import {
   sourcePriceFactKey,
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
 } from "./pricing-source.ts";
 import {
-  assertCoverage,
   assertItemCount,
   contractExtensionEvidence,
+  parseSourceJson,
   recognizeItems,
+  recognizeValue,
 } from "./source-contract.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { type Modality, type ModelTask, unknownCapabilities } from "./schema.ts";
@@ -194,7 +197,11 @@ const azureApiBundleSchema = z.object({
 });
 
 const azureRetailBundleSchema = z.object({
-  prices: z.array(z.unknown()).min(1),
+  prices: z.array(z.unknown()).min(1).max(50_000),
+});
+const publicRetailPriceSchema = retailPriceSchema.extend({
+  currencyCode: z.literal("USD"),
+  type: z.literal("Consumption"),
 });
 
 const azurePortalTaskMap: Readonly<Record<string, readonly ModelTask[]>> = {
@@ -1873,7 +1880,7 @@ function versionMarkers(version: string | undefined): string[] {
   return unique([
     ...(normalized === "" || /^\d{1,3}$/.test(version) ? [] : [normalized]),
     ...(digits.length >= 4 ? [digits, digits.slice(-4)] : []),
-    ...(date === null ? [] : [`${date[2]}${date[3]}${date[1]}`]),
+    ...(date === null ? [] : [`${date[2]}${date[3]}${date[1]}`, `${date[1]} ${date[2]}${date[3]}`]),
     ...(semantic === undefined || semantic === "preview" ? [] : [semantic]),
   ]);
 }
@@ -1881,13 +1888,11 @@ function versionMarkers(version: string | undefined): string[] {
 function markerPresent(tokens: readonly string[], marker: string): boolean {
   const markerTokens = marker.split(/\s+/);
   if (markerTokens.length === 1) return tokens.includes(marker);
-  return tokens.join(" ").includes(marker);
+  return ` ${tokens.join(" ")} `.includes(` ${marker} `);
 }
 
 function retailCatalogQualifier(token: string): boolean {
-  return (
-    retailQualifierTokens.has(token) || /^\d+(?:k|m|p|s)$/.test(token) || /^\d{4,8}$/.test(token)
-  );
+  return retailQualifierTokens.has(token) || /^\d+(?:k|m|p|s)$/.test(token);
 }
 
 function identityWeight(token: string): number {
@@ -1911,6 +1916,7 @@ function signatureMatch(
   signature: readonly string[],
   sku: readonly string[],
   markers: readonly string[],
+  legacyVersionQualifiers: boolean,
 ): number | undefined {
   const matched = new Set<number>();
   let cursor = 0;
@@ -1924,11 +1930,16 @@ function signatureMatch(
     cursor = index + 1;
     score += identityWeight(token);
   }
-  const markerTokens = new Set(markers.flatMap((marker) => marker.split(/\s+/)));
+  const markerTokens = new Set(
+    markers.filter((marker) => markerPresent(sku, marker)).flatMap((marker) => marker.split(/\s+/)),
+  );
   if (
     sku.some(
       (token, index) =>
-        !matched.has(index) && !markerTokens.has(token) && !retailCatalogQualifier(token),
+        !matched.has(index) &&
+        !markerTokens.has(token) &&
+        !retailCatalogQualifier(token) &&
+        !(legacyVersionQualifiers && /^\d{4,8}$/.test(token)),
     )
   )
     return;
@@ -2009,6 +2020,7 @@ function isOpenAiRetailModel(model: RetailCatalogModel): boolean {
 function catalogRetailModelIdentity(
   price: RetailIdentity,
   catalogModels: readonly RetailCatalogModel[],
+  legacyVersionQualifiers = false,
 ): { id: string; version?: string } | undefined {
   const openAi = price.productName.startsWith("Azure OpenAI");
   const label = openAi
@@ -2022,7 +2034,9 @@ function catalogRetailModelIdentity(
     const markers = versionMarkers(model.version);
     const score = Math.max(
       ...modelSignatures(model, candidates.scope).map(
-        (signature) => signatureMatch(signature, sku, markers) ?? Number.NEGATIVE_INFINITY,
+        (signature) =>
+          signatureMatch(signature, sku, markers, legacyVersionQualifiers) ??
+          Number.NEGATIVE_INFINITY,
       ),
     );
     return Number.isFinite(score) ? [{ model, score, markers }] : [];
@@ -2039,7 +2053,7 @@ function catalogRetailModelIdentity(
   if (id === undefined) return;
   if (explicitlyVersioned.length === 0) return { id };
   const versions = unique(best.map(({ model }) => model.version));
-  return versions.length === 1 && versions[0] !== undefined ? { id, version: versions[0] } : { id };
+  if (versions.length === 1 && versions[0] !== undefined) return { id, version: versions[0] };
 }
 
 function bindRetailModelIdentity(
@@ -2279,67 +2293,123 @@ export function parseAzureRetailPrices(input: Input): SourceParseResult {
   const extractor = input.source.extractor;
   if (extractor.kind !== "azure-retail-prices")
     throw new Error("Wrong Azure Retail Prices extractor");
-  const bundle = azureRetailBundleSchema.parse(JSON.parse(input.body));
+  const label = "Azure Retail Prices";
+  const bundle = recognizeValue(label, azureRetailBundleSchema, parseSourceJson(input.body, label));
   const prices = recognizeItems({
     label: "Azure retail price",
     items: bundle.prices,
-    schema: retailPriceSchema,
+    schema: publicRetailPriceSchema,
     skipInvalidItems: true,
     ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
   });
-  const catalogModels = input.catalogModels;
-  if (catalogModels === undefined || catalogModels.length === 0)
+  const currentCatalog = input.catalogModels;
+  if (currentCatalog === undefined || currentCatalog.length === 0)
     throw new Error("Azure Retail Prices require the public catalog");
+  const currentIds = new Set(
+    currentCatalog.flatMap(({ model_id, aliases }) => [model_id, ...aliases]),
+  );
+  const previousCatalog = input.previousCatalogModels ?? [];
+  const catalogModels = [
+    ...currentCatalog,
+    ...previousCatalog.filter(
+      (model) =>
+        !currentIds.has(model.model_id) &&
+        !model.aliases.some((alias) => currentIds.has(alias)) &&
+        !azureRetailModelRetired(model, input.observedAt),
+    ),
+  ];
+  const previousVersions = new Set(previousCatalog.map(({ uid }) => uid));
+  const previousIds = new Set(
+    previousCatalog.flatMap(({ model_id, aliases }) => [model_id, ...aliases]),
+  );
+  const changedVersionSubjects = new Set(
+    currentCatalog.flatMap(({ uid, model_id, aliases, version }) =>
+      version !== undefined &&
+      !previousVersions.has(uid) &&
+      [model_id, ...aliases].some((id) => previousIds.has(id))
+        ? [uid]
+        : [],
+    ),
+  );
 
   const models = new Map<string, ProviderModel>();
-  let baseRows = 0;
-  let boundRows = 0;
+  const unmatchedVersionMeters = new Set<string>();
+  const unsupportedSamples = new Set<string>();
+  const remainingDiagnostics: PricingReconciliationItem[] = [];
   for (const price of prices) {
+    const sample = `${price.productName} / ${price.skuName} / ${price.meterName}`.slice(0, 256);
     if (!isBaseRetailPrice(price)) {
       input.onPricingReconciliation?.({
         disposition: "excluded",
         reason_code: "non_base_consumption_row",
-        sample: `${price.productName} / ${price.skuName} / ${price.meterName}`,
-      });
-      continue;
-    }
-    baseRows += 1;
-    const sample = `${price.productName} / ${price.skuName} / ${price.meterName}`;
-    const parsedIdentity = catalogRetailModelIdentity(price, catalogModels);
-    if (parsedIdentity === undefined) {
-      input.onPricingReconciliation?.({
-        disposition: "unbound",
-        reason_code: "retail_identity_not_unique",
         sample,
       });
       continue;
     }
-    const label = `${price.meterName} ${price.skuName}`;
-    const fact = retailPriceFact(
-      price,
-      label,
-      retailConditions(price),
-      input.source.id,
-      retailDefaultMeter(parsedIdentity, catalogModels),
-    );
-    if (fact === undefined) {
-      input.onPricingReconciliation?.({
-        disposition: "unsupported",
-        reason_code: "retail_meter_or_unit_unsupported",
+    const parsedIdentity = catalogRetailModelIdentity(price, catalogModels);
+    if (parsedIdentity === undefined) {
+      // The same native row can disqualify an older binding that discarded its version marker.
+      const hasVersionMarker = retailIdentityTokens(price.skuName).some((token) =>
+        /^\d{4,8}$/.test(token),
+      );
+      const formerIdentity = hasVersionMarker
+        ? catalogRetailModelIdentity(price, catalogModels, true)
+        : undefined;
+      const formerBinding =
+        formerIdentity === undefined
+          ? undefined
+          : bindRetailModelIdentity(formerIdentity, catalogModels);
+      if (formerBinding !== undefined)
+        unmatchedVersionMeters.add(
+          azureRetailMeterKey(
+            modelUid(input.provider.id, formerBinding.id, formerBinding.version),
+            price.meterId,
+            price.armRegionName,
+          ),
+        );
+      remainingDiagnostics.push({
+        disposition: "unbound",
+        reason_code:
+          formerBinding === undefined
+            ? "retail_identity_not_unique"
+            : "retail_version_marker_unmatched",
         sample,
       });
       continue;
     }
     const identity = bindRetailModelIdentity(parsedIdentity, catalogModels);
-    if (identity === undefined) {
-      input.onPricingReconciliation?.({
+    if (
+      identity === undefined ||
+      (parsedIdentity.version === undefined &&
+        changedVersionSubjects.has(modelUid(input.provider.id, identity.id, identity.version)))
+    ) {
+      remainingDiagnostics.push({
         disposition: "ambiguous",
         reason_code: "retail_version_not_unique",
         sample,
       });
       continue;
     }
-    boundRows += 1;
+    const fact = retailPriceFact(
+      price,
+      `${price.meterName} ${price.skuName}`,
+      retailConditions(price),
+      input.source.id,
+      retailDefaultMeter(identity, catalogModels),
+    );
+    if (fact === undefined) {
+      const diagnostic: PricingReconciliationItem = {
+        disposition: "unsupported",
+        reason_code: "retail_meter_or_unit_unsupported",
+        sample,
+      };
+      if (unsupportedSamples.has(sample)) remainingDiagnostics.push(diagnostic);
+      else {
+        unsupportedSamples.add(sample);
+        input.onPricingReconciliation?.(diagnostic);
+      }
+      continue;
+    }
     input.onPricingReconciliation?.({
       disposition: "normalized",
       reason_code: "retail_row_bound",
@@ -2373,12 +2443,13 @@ export function parseAzureRetailPrices(input: Input): SourceParseResult {
     extractor.minModels,
     extractor.maxModels,
   );
-  assertCoverage("Azure retail-price binding", boundRows, baseRows, extractor.minHandledRatio, [
-    "prices",
-  ]);
+  for (const entry of remainingDiagnostics) input.onPricingReconciliation?.(entry);
   return {
     models: values.sort((left, right) => left.uid.localeCompare(right.uid)),
     inference_prices: [],
+    ...(unmatchedVersionMeters.size === 0
+      ? {}
+      : { azureRetailUnmatchedVersionMeters: [...unmatchedVersionMeters].sort() }),
   };
 }
 

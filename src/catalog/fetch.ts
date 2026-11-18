@@ -39,9 +39,11 @@ import {
 } from "./source-contract.ts";
 import {
   SourceFetchError,
+  SourceRetryError,
   sourceFailure,
   sourceErrorMessage,
   type DependencyFailure,
+  type SourceRetryFailure,
 } from "./source-failure.ts";
 import { cohereModelDocumentUrls } from "./cohere-documents.ts";
 import { ollamaPricedModelPageIds, ollamaPricingUrl } from "./ollama-pricing.ts";
@@ -88,8 +90,9 @@ const azureArmPageSchema = z.object({
   nextLink: z.string().nullable().optional(),
 });
 const azurePricesPageSchema = z.object({
-  Items: z.array(z.unknown()),
-  NextPageLink: z.string().nullable().optional(),
+  Count: z.number().int().min(1).max(1_000),
+  Items: z.array(z.unknown()).min(1).max(1_000),
+  NextPageLink: z.url().nullable(),
 });
 const emptyAzurePortalErrorMapSchema = z
   .record(z.string(), z.unknown())
@@ -228,21 +231,32 @@ class TransientFetchError extends SourceFetchError {
 
 const sourceRetryBudgetMs = 5 * 60_000;
 
-async function retryTransient<T>(operation: () => Promise<T>): Promise<T> {
+async function retryTransient<T>(operation: () => Promise<T>, request?: string): Promise<T> {
   const deadline = Date.now() + sourceRetryBudgetMs;
-  let lastError: Error = new Error("Source fetch failed");
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempts = 1; ; attempts += 1) {
     try {
       return await operation();
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error("Unknown source fetch failure");
-      if (!(lastError instanceof TransientFetchError) || attempt === 2) break;
-      const delay = lastError.retryAfter || Math.floor(Math.random() * (500 * 2 ** attempt));
-      if (Date.now() + delay > deadline) break;
-      await wait(delay);
+      if (!(error instanceof TransientFetchError))
+        throw error instanceof Error ? error : new Error("Unknown source fetch failure");
+      let detail: Omit<SourceRetryFailure, "request" | "attempts"> = { reason: "attempt_limit" };
+      if (attempts < 3) {
+        const delay = error.retryAfter || Math.floor(Math.random() * (500 * 2 ** (attempts - 1)));
+        const remaining = deadline - Date.now();
+        if (delay <= remaining) {
+          await wait(delay);
+          continue;
+        }
+        detail = {
+          reason: error.retryAfter > 0 ? "retry_after_exceeds_budget" : "backoff_exceeds_budget",
+          ...(Number.isSafeInteger(delay) ? { delay_ms: delay } : {}),
+          remaining_budget_ms: Math.max(remaining, 0),
+        };
+      }
+      if (request === undefined) throw error;
+      throw new SourceRetryError(error, { ...detail, request, attempts });
     }
   }
-  throw lastError;
 }
 
 function retryDelay(response: Response): number {
@@ -556,20 +570,6 @@ async function fetchAzureArmItems(
   return items;
 }
 
-function retailPageUrl(raw: string): URL {
-  const url = new URL(raw);
-  if (
-    url.protocol !== "https:" ||
-    url.hostname !== "prices.azure.com" ||
-    url.port !== "" ||
-    url.username !== "" ||
-    url.password !== "" ||
-    url.pathname !== "/api/retail/prices"
-  )
-    throw new Error("Azure pricing pagination left the reviewed endpoint");
-  return url;
-}
-
 async function fetchAzureRetailPrices(source: SourceManifest): Promise<string> {
   const label = "Azure Retail Prices";
   const first = new URL(source.url);
@@ -580,8 +580,8 @@ async function fetchAzureRetailPrices(source: SourceManifest): Promise<string> {
     "serviceName eq 'Foundry Models' and priceType eq 'Consumption'",
   );
   const prices: unknown[] = [];
-  let next: URL | undefined = first;
-  for (let pageNumber = 1; next !== undefined; pageNumber += 1) {
+  let next = first;
+  for (let pageNumber = 1; ; pageNumber += 1) {
     let cooldown = 0;
     const payload = await cloudJson(
       label,
@@ -606,13 +606,31 @@ async function fetchAzureRetailPrices(source: SourceManifest): Promise<string> {
       azurePricesPageSchema,
       payload,
     );
+    assertSourceConstraint(
+      `${label} page ${pageNumber} reported an inconsistent item count`,
+      page.Count === page.Items.length,
+      page.Count,
+      ["Count"],
+    );
     prices.push(...page.Items);
-    if (prices.length > 50_000) throw new Error("Azure Retail Prices API exceeded item limit");
-    next =
-      page.NextPageLink === undefined || page.NextPageLink === null
-        ? undefined
-        : retailPageUrl(page.NextPageLink);
-    if (next === undefined) break;
+    if (page.NextPageLink === null) break;
+    next = new URL(page.NextPageLink);
+    const expected = new URL(first);
+    expected.searchParams.set("$skip", String(prices.length));
+    expected.searchParams.sort();
+    const continuationQuery = new URLSearchParams(next.searchParams);
+    continuationQuery.sort();
+    assertSourceConstraint(
+      `${label} page ${pageNumber} continuation changed endpoint, query scope or offset`,
+      next.origin === expected.origin &&
+        next.pathname === expected.pathname &&
+        next.username === "" &&
+        next.password === "" &&
+        next.hash === "" &&
+        continuationQuery.toString() === expected.searchParams.toString(),
+      page.NextPageLink,
+      ["NextPageLink"],
+    );
     if (pageNumber === 50) throw new Error("Azure Retail Prices API exceeded page limit");
     if (cooldown > 0) {
       if (cooldown > sourceRetryBudgetMs)
@@ -622,7 +640,6 @@ async function fetchAzureRetailPrices(source: SourceManifest): Promise<string> {
       await wait(cooldown);
     }
   }
-  assertItemCount("Azure Retail Prices API", prices.length, 1);
   const body = JSON.stringify({ prices });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Azure Retail Prices bundle exceeded byte limit");
@@ -1086,14 +1103,16 @@ async function attemptPost(
       : await send().catch(() => {
           throw new TransientFetchError("Signed source request failed");
         });
-  if (response.status === 429 || response.status >= 500)
-    throw new TransientFetchError(
-      `Transient HTTP ${response.status}`,
-      retryDelay(response),
-      response.status,
-    );
-  if (![200, 404, 410].includes(response.status))
+  if (response.status !== 200 && response.status !== 404 && response.status !== 410) {
+    if (send !== undefined) void response.body?.cancel().catch(() => undefined);
+    if (response.status === 429 || response.status >= 500)
+      throw new TransientFetchError(
+        `Transient HTTP ${response.status}`,
+        retryDelay(response),
+        response.status,
+      );
     throw new SourceFetchError(`HTTP ${response.status}`, response.status);
+  }
   const responseBody = await readLimited(response, source.maxResponseBytes);
   if (responseBody.trim() === "") throw new Error("Source returned an empty body");
   return {
@@ -1101,7 +1120,7 @@ async function attemptPost(
     contentHash: sha256(responseBody),
     etag: undefined,
     lastModified: undefined,
-    status: response.status === 200 ? 200 : response.status === 404 ? 404 : 410,
+    status: response.status,
   };
 }
 
@@ -1109,8 +1128,9 @@ async function fetchPost(
   source: SourceManifest,
   body: string,
   send?: () => Promise<Response>,
+  request?: string,
 ): Promise<StatusPayload> {
-  return retryTransient(() => attemptPost(source, body, send));
+  return retryTransient(() => attemptPost(source, body, send), request);
 }
 
 async function fetchResponse(
@@ -2886,8 +2906,8 @@ export async function fetchSource(
   if (source.transport?.kind === "nvidia-nim-cards") return fetchNvidiaCards(source);
   const readDiscovery = (input: SourceManifest) => sagemakerDiscoveryPayload(input, discoveryCache);
   if (source.transport?.kind === "sagemaker-marketplace-pricing")
-    return fetchSagemakerMarketplaceApi(source, readDiscovery, (body, send) =>
-      fetchPost({ ...source, maxResponseBytes: 4 * 1024 * 1024 }, body, send),
+    return fetchSagemakerMarketplaceApi(source, readDiscovery, (request, body, send) =>
+      fetchPost({ ...source, maxResponseBytes: 4 * 1024 * 1024 }, body, send, request),
     );
   if (source.transport?.kind === "sagemaker-sdk") return fetchSagemakerSdk(source, readDiscovery);
   if (source.transport?.kind === "aws-sagemaker") {

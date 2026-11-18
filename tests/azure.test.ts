@@ -101,17 +101,13 @@ function azurePricingModel(id: string, version?: string): ProviderModel {
     service_families: ["Azure OpenAI"],
   };
 }
-function azureRetailSource(
-  minModels: number,
-  maxModels: number,
-  minHandledRatio: number,
-): SourceManifest {
+function azureRetailSource(minModels: number, maxModels: number): SourceManifest {
   const configured = manifest("azure").sources.find(({ id }) => id === "azure-retail-prices");
   if (configured === undefined || configured.extractor.kind !== "azure-retail-prices")
     throw new Error("Missing Azure retail-price source");
   return {
     ...configured,
-    extractor: { kind: "azure-retail-prices", minModels, maxModels, minHandledRatio },
+    extractor: { kind: "azure-retail-prices", minModels, maxModels },
   };
 }
 function azurePublicPricingSource(minModels: number, maxModels: number): SourceManifest {
@@ -1069,7 +1065,7 @@ describe("Azure adapters", () => {
     "does not invent a context class for an unqualified native SKU (long peer=%s)",
     (withLong) => {
       const value = manifest("azure");
-      const source = azureRetailSource(1, 1, 1);
+      const source = azureRetailSource(1, 1);
       const price = {
         currencyCode: "USD",
         retailPrice: 2.5,
@@ -1130,7 +1126,7 @@ describe("Azure adapters", () => {
   );
   it("extracts current public retail rates without Azure credentials", async () => {
     const value = manifest("azure");
-    const source = azureRetailSource(3, 5, 0.8);
+    const source = azureRetailSource(3, 5);
     const parsed = parseSource({
       provider: provider(value),
       source,
@@ -1210,7 +1206,7 @@ describe("Azure adapters", () => {
     expect(models.some(({ model_id }) => model_id === "gpt-5")).toBe(false);
   });
   it("binds compact GPT identities and keeps Standard, Flex and Priority tariffs disjoint", () => {
-    const source = azureRetailSource(1, 1, 1);
+    const source = azureRetailSource(1, 1);
     const catalog = azurePricingModel("gpt-6.1-terra", "2026-10-26");
     const prices = [
       { skuName: "61 terra ShortCo Inp std Gl", retailPrice: 2 },
@@ -1270,7 +1266,7 @@ describe("Azure adapters", () => {
     }
     const unknown = parseSource({
       provider: provider(manifest("azure")),
-      source: azureRetailSource(0, 1, 0),
+      source: azureRetailSource(0, 1),
       observedAt,
       body: JSON.stringify({
         prices: prices.map((price) => ({ ...price, productName: "Azure BFL Flux Models" })),
@@ -1319,6 +1315,43 @@ describe("Azure adapters", () => {
         ),
       ),
     );
+  });
+  it("matches Azure OpenAI page dates to exact GPT-4o versions and withholds uncataloged versions", () => {
+    const source = azurePublicPricingSource(2, 2);
+    const row = (label: string, amount: number) =>
+      `<tr><td>${label}</td><td>Input: <span data-amount='{"regional":{"australia-east":${amount}}}'>$-</span></td></tr>`;
+    const result = parseSource({
+      provider: provider(manifest("azure")),
+      source,
+      observedAt,
+      catalogModels: [
+        azurePricingModel("gpt-4o", "2024-05-13"),
+        azurePricingModel("gpt-4o", "2024-11-20"),
+        azurePricingModel("gpt-35-turbo"),
+        azurePricingModel("gpt-35-turbo", "0125"),
+        azurePricingModel("gpt-chat-latest"),
+        azurePricingModel("gpt-chat-latest", "2026-10-07"),
+      ],
+      body: JSON.stringify({
+        index: {
+          url: "https://azure.microsoft.com/en-us/pricing/details/azure-openai/",
+          body: `<table aria-label="Azure OpenAI">
+            <thead><tr><th>Model</th><th>Pricing (1M Tokens)</th></tr></thead>
+            <tbody>
+              ${row("GPT-4o-2024-0513 Global", 5)}
+              ${row("GPT-4o-2024-1120 Global", 6)}
+              ${row("GPT-3.5-Turbo-0301", 1)}
+              ${row("GPT-Chat Latest 10142026 Global", 2)}
+            </tbody>
+          </table>`,
+        },
+        documents: [],
+      }),
+    });
+    expect(result.models.map(({ uid, price_facts }) => [uid, price_facts[0]?.price])).toEqual([
+      ["azure/gpt-4o@2024-05-13", "5"],
+      ["azure/gpt-4o@2024-11-20", "6"],
+    ]);
   });
   it("uses public Microsoft price pages at their published version scope", async () => {
     const value = manifest("azure");
@@ -1676,7 +1709,7 @@ describe("Azure adapters", () => {
     });
     const models = parseSource({
       provider: provider(value),
-      source: azureRetailSource(5, 5, 1),
+      source: azureRetailSource(5, 5),
       body: JSON.stringify({
         prices: [
           row("Cohere Models", "Rerank v4 Pro Glbl", "Rerank v4 Pro Glbl Search", "1", 1),
@@ -2081,7 +2114,7 @@ describe("Azure adapters", () => {
     ];
     const models = parseSource({
       provider: provider(value),
-      source: azureRetailSource(9, 9, 1),
+      source: azureRetailSource(9, 9),
       body: await fixture("azure/retail-catalog-matching.json"),
       observedAt,
       catalogModels,
@@ -2118,7 +2151,7 @@ describe("Azure adapters", () => {
     expect(
       parseSource({
         provider: provider(value),
-        source: azureRetailSource(0, 0, 0),
+        source: azureRetailSource(0, 0),
         body,
         observedAt,
         catalogModels: [
@@ -2137,7 +2170,7 @@ describe("Azure adapters", () => {
     ]);
   });
   it("recognizes scoped Mistral and Llama SKU spellings without resolving competing base identities", () => {
-    const source = azureRetailSource(0, 2, 0);
+    const source = azureRetailSource(0, 2);
     const llama = {
       ...azurePricingModel("Llama-3.3-70B-Instruct"),
       service_families: ["Foundry Models sold by Azure"],
@@ -2184,7 +2217,7 @@ describe("Azure adapters", () => {
     }[] = [];
     const models = parseSource({
       provider: provider(value),
-      source: azureRetailSource(3, 5, 0.8),
+      source: azureRetailSource(3, 5),
       body,
       observedAt,
       catalogModels: [
@@ -2212,6 +2245,74 @@ describe("Azure adapters", () => {
       reason_code: "retail_identity_not_unique",
       sample: "Azure OpenAI / Unknown Inp glbl / Unknown Inp glbl Tokens",
     });
+  });
+  it("keeps scoped Retail updates independent of unrelated SKUs and missing versions", async () => {
+    const bundle = z
+      .object({ prices: z.array(z.object({ skuName: z.string() }).passthrough()) })
+      .parse(JSON.parse(await fixture("azure/retail-prices.json")));
+    const exact = bundle.prices.find(({ skuName }) => skuName === "5.6 terra ShortCo Inp Std Gl");
+    const audio = bundle.prices.find(({ skuName }) => skuName === "gpt4omini-aud1217-txt Inp glbl");
+    if (exact === undefined || audio === undefined) throw new Error("Missing Retail observations");
+    const terra = azurePricingModel("gpt-5.6-terra", "2026-07-09");
+    const bareMini = azurePricingModel("gpt-4o-mini");
+    const rejected: PricingReconciliationItem[] = [];
+    const result = parseSource({
+      provider: provider(manifest("azure")),
+      source: azureRetailSource(1, 2),
+      observedAt,
+      catalogModels: [terra, bareMini],
+      body: JSON.stringify({
+        prices: [
+          { ...exact, retailPrice: "0.123" },
+          { ...exact, skuName: `${exact.skuName} 1219`, meterId: "future-version" },
+          audio,
+          ...Array.from({ length: 30 }, (_, i) => ({
+            ...exact,
+            skuName: `Future product ${i} Inp Gl`,
+            meterId: `unknown-${i}`,
+          })),
+        ],
+      }),
+      onPricingReconciliation: (item) => rejected.push(item),
+    });
+    expect(
+      result.models.map(({ uid, price_facts }) => [uid, price_facts.map(({ price }) => price)]),
+    ).toEqual([[terra.uid, ["0.123"]]]);
+    expect(result.azureRetailUnmatchedVersionMeters).toHaveLength(2);
+    expect(rejected.filter(({ disposition }) => disposition === "unbound")).toHaveLength(32);
+  });
+
+  it("joins an omitted verified identity and withholds it when current catalog scope changes", async () => {
+    const bundle = z
+      .object({ prices: z.array(z.object({ skuName: z.string() }).passthrough()) })
+      .parse(JSON.parse(await fixture("azure/retail-catalog-matching.json")));
+    const row = bundle.prices.find(({ skuName }) => skuName === "Sora 2 glbl");
+    if (row === undefined) throw new Error("Missing Retail observation");
+    const unrelated = azurePricingModel("gpt-4.1", "2025-04-14");
+    const old = {
+      ...azurePricingModel("sora-2", "2025-10-06"),
+      tasks: ["video_generation" as const],
+    };
+    const newVersion = { ...azurePricingModel("sora-2", "2025-12-08"), tasks: old.tasks };
+    const parse = (catalogModels: ProviderModel[], previousCatalogModels: ProviderModel[]) =>
+      parseSource({
+        provider: provider(manifest("azure")),
+        source: azureRetailSource(0, 2),
+        observedAt,
+        catalogModels,
+        previousCatalogModels,
+        body: JSON.stringify({ prices: [row] }),
+      }).models;
+    expect(parse([unrelated], [old]).map(({ uid }) => uid)).toEqual([old.uid]);
+    expect(parse([unrelated], [{ ...old, status: "retired" }])).toEqual([]);
+    expect(parse([unrelated], [{ ...old, retired_at: "2026-02-01" }])).toEqual([]);
+    expect(parse([unrelated, newVersion], [old])).toEqual([]);
+    const alias = {
+      ...azurePricingModel("sora-new", "2025-12-08"),
+      aliases: [old.model_id],
+      tasks: old.tasks,
+    };
+    expect(parse([unrelated, alias], [old])).toEqual([]);
   });
   it("preserves ARM Legacy as a callable lifecycle state", async () => {
     const value = manifest("azure");

@@ -198,13 +198,18 @@ per-response and bundle bytes, retries and redirect rejection. Empty usage rate-
 explicit unresolved coverage, including two listings labeled `FREE`: that label supplies no numeric
 software rate or infrastructure price. Eight current listings have empty rate cards and one
 returns 404. These observations do not establish retirement or the absence of a hosted product.
-Marketplace requests share the Smithy adaptive rate limiter for one collection attempt. It observes
-HTTP 429 responses and controls both new listing requests and retries; public S3 spec reads keep
-their independent four-request concurrency. The SageMaker client supplies credentials and signing
-only, so configuring its SDK retry mode would not throttle these raw Fetch calls. The existing
-three-attempt retry and server-cooldown budget remain in force. The reviewed endpoint can return
-`ThrottlingException` with duplicate zero-valued `Retry-After` headers; that provides no positive
-cooldown and must not be treated as permission for every worker to continue at its original rate.
+Marketplace requests share the Smithy adaptive rate limiter for one collection attempt. At most
+four listings run concurrently. After the limiter observes an HTTP 429, it controls both new
+listing requests and retries. Public S3 spec reads keep their independent four-request concurrency.
+The SageMaker client supplies credentials and signing only, so configuring its SDK retry mode
+would not throttle these raw Fetch calls. The shared policy allows at most three attempts and
+checks the proposed cooldown against the remaining five-minute retry budget. A terminal retry
+failure reports the HTTP status when available, `GetListingView` and its SDK-selected listing ID,
+the attempts made, and whether the attempt limit or remaining wait budget ended the request.
+The JSON refresh report and job summary retain bounded timing values. Failed signed HTTP
+response bodies are discarded. The reviewed endpoint can return `ThrottlingException` with
+duplicate zero-valued `Retry-After` headers. That provides no positive cooldown, so the adaptive
+limiter still regulates new listing requests and retries.
 The [documented Discovery API](https://docs.aws.amazon.com/marketplace/latest/developerguide/discovery-apis.html)
 has a separate endpoint and [per-account operation quotas](https://docs.aws.amazon.com/marketplace/latest/developerguide/discovery-service-quotas.html).
 Its `GetListing` quota does not establish the quota for this frontend's `GetListingView`.

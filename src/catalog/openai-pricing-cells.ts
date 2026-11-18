@@ -5,9 +5,11 @@ import type { ModelTask } from "./schema.ts";
 import { openAiTextQuantity } from "./openai-commercial-source.ts";
 
 export type OpenAiPricingTier = "standard" | "batch" | "flex" | "fast" | "ultrafast";
+export type OpenAiUltrafastPeriod = "promotion" | "list";
 export interface OpenAiPricingTable {
   section: string;
   tier?: OpenAiPricingTier;
+  ultrafastPeriod?: OpenAiUltrafastPeriod;
   headers: string[];
   rows: string[][];
 }
@@ -30,6 +32,7 @@ export interface OpenAiPricingClaim {
 export function parseOpenAiPricingCell(
   cell: OpenAiPricingCell,
   sourceId: string,
+  validity?: { label: string; conditions?: SourcePriceFact["conditions"] },
 ): OpenAiPricingClaim {
   const sample = (cell.label + ": " + cell.value).slice(0, 256);
   const item = (disposition: PricingReconciliationItem["disposition"], reason_code: string) => ({
@@ -49,15 +52,17 @@ export function parseOpenAiPricingCell(
     : cell.value.endsWith(" / 1M characters")
       ? cell.unit === "million_characters"
       : true;
-  if (amount !== undefined && cell.meter !== undefined && cell.unit !== undefined && unitAgrees) {
-    const rate = publishedRate(
-      cell.meter,
-      amount,
-      cell.unit,
-      sourceId,
-      cell.rawUnit,
-      cell.conditions,
-    );
+  const conditions = { ...cell.conditions, ...validity?.conditions };
+  const unresolvedValidity = validity !== undefined && validity.conditions === undefined;
+  if (
+    amount !== undefined &&
+    cell.meter !== undefined &&
+    cell.unit !== undefined &&
+    unitAgrees &&
+    !unresolvedValidity
+  ) {
+    const rate = publishedRate(cell.meter, amount, cell.unit, sourceId, cell.rawUnit, conditions);
+    if (validity !== undefined) rate.raw_validity = validity.label;
     if (cell.value === "Free") rate.raw_price = "Free";
     const quantity =
       cell.textTokens === true && cell.unit === "million_tokens"
@@ -93,13 +98,14 @@ export function parseOpenAiPricingCell(
             .replace(/[^a-z0-9]+/g, "-")
             .slice(0, 80)),
       impact: "base_price",
-      reason:
-        cell.meter === undefined
+      reason: unresolvedValidity
+        ? "unsupported_structure"
+        : cell.meter === undefined
           ? "unknown_meter"
           : cell.unit === undefined || !unitAgrees
             ? "unknown_unit"
             : "unknown_amount",
-      conditions: cell.conditions,
+      conditions,
       source_ref: sourceId,
       raw: {
         label: cell.label,
@@ -107,9 +113,15 @@ export function parseOpenAiPricingCell(
         meter: cell.meter ?? cell.label,
         unit: cell.rawUnit,
         ...(cell.value.startsWith("$") ? { denomination: "USD" } : {}),
+        ...(validity === undefined ? {} : { validity: validity.label }),
       },
     },
-    item: item("raw", "unsupported_pricing_cell_preserved"),
+    item: unresolvedValidity
+      ? {
+          ...item("unsupported", "public_price_shape_unsupported"),
+          sample: `${validity.label}: ${sample}`.slice(0, 256),
+        }
+      : item("raw", "unsupported_pricing_cell_preserved"),
   };
 }
 

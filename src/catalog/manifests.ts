@@ -49,12 +49,7 @@ export type Extractor =
   | { kind: "databricks-api" }
   | { kind: "azure-catalog"; minModels: number; maxModels: number }
   | { kind: "azure-portal-catalog"; minModels: number; maxModels: number }
-  | {
-      kind: "azure-retail-prices";
-      minModels: number;
-      maxModels: number;
-      minHandledRatio: number;
-    }
+  | { kind: "azure-retail-prices"; minModels: number; maxModels: number }
   | { kind: "azure-public-pricing"; minModels: number; maxModels: number }
   | { kind: "azure-claude-pricing"; minModels: number; maxModels: number }
   | { kind: "azure-accounting" }
@@ -976,7 +971,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-pricing" },
-        extractorVersion: "openai-pricing-v26",
+        extractorVersion: "openai-pricing-v27",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing"],
         allowedHosts: ["developers.openai.com"],
@@ -2304,9 +2299,8 @@ export const manifests = [
           kind: "azure-retail-prices",
           minModels: 20,
           maxModels: 200,
-          minHandledRatio: 0.7,
         },
-        extractorVersion: "azure-retail-prices-v10",
+        extractorVersion: "azure-retail-prices-v11",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -2329,7 +2323,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "azure-public-pricing", minModels: 1, maxModels: 300 },
-        extractorVersion: "azure-public-pricing-v10",
+        extractorVersion: "azure-public-pricing-v11",
         pricingEvidence: firstPartyPricing("price_book", "base_model_id"),
         fields: ["pricing"],
         allowedHosts: ["azure.microsoft.com"],

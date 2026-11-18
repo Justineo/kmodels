@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { load } from "cheerio";
-import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
+import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { normalizeSagemakerMarketplaceApi } from "../src/catalog/sagemaker-pricing.ts";
 import { fetchSagemakerMarketplaceApi } from "../src/catalog/sagemaker-marketplace-api.ts";
@@ -15,26 +15,51 @@ import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
 import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createCommercialPriceLookup } from "../src/pricing/commercial.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
+import { collectProvider } from "../src/catalog/collector.ts";
+import {
+  composeCatalogPair,
+  type ComposedCatalogPair,
+} from "../src/catalog/pricing-pair-transition.ts";
+import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
+import { failedPricingTransition } from "../src/catalog/pricing-transition.ts";
+import { summarizeRefresh } from "../src/catalog/summary.ts";
+import { refreshReport } from "../src/catalog/refresh-report.ts";
+import {
+  sagemakerCatalogUrl,
+  sagemakerOpenManifestUrl,
+  sagemakerRows,
+} from "../src/catalog/sagemaker.ts";
 
-const aws = vi.hoisted(() => ({ sign: vi.fn(), destroy: vi.fn() }));
+const aws = vi.hoisted(() => ({ sign: vi.fn(), destroy: vi.fn(), curl: vi.fn() }));
 vi.mock("@aws-sdk/client-sagemaker", () => ({
   SageMakerClient: class {
     config = { signer: async () => ({ sign: aws.sign }) };
     destroy = aws.destroy;
   },
 }));
+vi.mock("node:child_process", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:child_process")>()),
+  execFile: aws.curl,
+}));
+vi.mock("node:timers/promises", () => ({
+  setTimeout: (delay: number) => new Promise<void>((resolve) => setTimeout(resolve, delay)),
+}));
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.clearAllMocks();
 });
-const manifest = manifests.find(({ provider }) => provider.id === "amazon-sagemaker");
+const manifest: ProviderManifest | undefined = manifests.find(
+  ({ provider }) => provider.id === "amazon-sagemaker",
+);
 if (!manifest) throw new Error("Missing SageMaker manifest");
 const provider = { ...manifest.provider, source_ids: manifest.sources.map(({ id }) => id) };
 const apiSource = manifest.sources.find(({ id }) => id === "sagemaker-marketplace-api");
 const sdkSource = manifest.sources.find(({ id }) => id === "sagemaker-sdk");
-if (!apiSource || !sdkSource) throw new Error("Missing SageMaker sources");
+const catalogSource = manifest.sources.find(({ id }) => id === "sagemaker-models");
+if (!apiSource || !sdkSource || !catalogSource) throw new Error("Missing SageMaker sources");
 const source: SourceManifest = apiSource;
 const sdk: SourceManifest = sdkSource;
 const observedAt = "2026-11-14T00:00:00.000Z";
@@ -346,17 +371,21 @@ it.each([200, 404] as const)(
     const nativeFetch = vi.fn(async () => new Response(JSON.stringify(wire()), { status }));
     vi.stubGlobal("fetch", nativeFetch);
     const queries: unknown[] = [];
-    const fetched = await fetchSagemakerMarketplaceApi(source, read, async (body, send) => {
-      queries.push(JSON.parse(body));
-      const response = await send();
-      return {
-        body: await response.text(),
-        contentHash: "b".repeat(64),
-        etag: undefined,
-        lastModified: undefined,
-        status,
-      };
-    });
+    const fetched = await fetchSagemakerMarketplaceApi(
+      source,
+      read,
+      async (_request, body, send) => {
+        queries.push(JSON.parse(body));
+        const response = await send();
+        return {
+          body: await response.text(),
+          contentHash: "b".repeat(64),
+          etag: undefined,
+          lastModified: undefined,
+          status,
+        };
+      },
+    );
     expect(publicReads).toHaveLength(3);
     expect(publicReads.every((input) => !Object.hasOwn(input, "auth"))).toBe(true);
     expect(queries).toEqual([
@@ -388,13 +417,17 @@ it.each([200, 404] as const)(
   },
 );
 
-it("slows new listings as well as retries after Marketplace throttles one request", async () => {
+function useRetryTimers() {
   vi.useFakeTimers();
   // Match Node's minimum delay when the SDK schedules a fractional token wait.
   const schedule = globalThis.setTimeout;
   vi.spyOn(globalThis, "setTimeout").mockImplementation((callback, delay, ...args) =>
     schedule(callback, Math.max(1, Math.trunc(delay ?? 1)), ...args),
   );
+}
+
+it("slows new listings as well as retries after Marketplace throttles one request", async () => {
+  useRetryTimers();
   const { read } = publicInputs(6);
   aws.sign.mockImplementation(async (request: unknown) => request);
   const nativeFetch = vi.fn(async (_input: unknown, options?: RequestInit) => {
@@ -406,7 +439,7 @@ it("slows new listings as well as retries after Marketplace throttles one reques
       : new Response(JSON.stringify(wire(fixture.summary, {}, listingId)));
   });
   vi.stubGlobal("fetch", nativeFetch);
-  const result = fetchSagemakerMarketplaceApi(source, read, async (_body, send) => {
+  const result = fetchSagemakerMarketplaceApi(source, read, async (_request, _body, send) => {
     let response = await send();
     if (response.status === 429) response = await send();
     if (response.status !== 200) throw new Error("Listing retry did not recover");
@@ -434,6 +467,152 @@ it("slows new listings as well as retries after Marketplace throttles one reques
   ).toBe(true);
   expect(nativeFetch).toHaveBeenCalledTimes(7);
 });
+
+it.each([
+  {
+    header: "0, 0",
+    attempts: 3,
+    reason: "attempt_limit",
+    display: "3 attempts · retry attempts exhausted",
+  },
+  {
+    header: "301",
+    attempts: 1,
+    reason: "retry_after_exceeds_budget",
+    delay_ms: 301_000,
+    remaining_budget_ms: 300_000,
+    display: "1 attempt · Retry-After (301000 ms) exceeds remaining retry budget (300000 ms)",
+  },
+])(
+  "reports $reason through refresh, retains prices and recovers",
+  async ({ header, display, ...failure }) => {
+    useRetryTimers();
+    vi.setSystemTime(new Date(observedAt));
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    vi.stubEnv("AWS_ACCESS_KEY_ID", "PRIVATE_FIXTURE_KEY");
+    vi.stubEnv("AWS_SECRET_ACCESS_KEY", "PRIVATE_FIXTURE_SECRET");
+    const selected: ProviderManifest = {
+      ...manifest,
+      sources: [catalogSource, sdk, source],
+    };
+    const { read } = publicInputs();
+    const catalogBody = (await read({ ...source, url: sagemakerCatalogUrl })).body;
+    const openHeaders = sagemakerRows(catalogBody)
+      .filter(({ proprietary }) => !proprietary)
+      .map(({ id }) => ({
+        model_id: id,
+        version: "1.0",
+        spec_key: `models/${id}/specs_v1.0.json`,
+      }));
+    aws.curl.mockImplementation((_program, args: string[], _options, callback) => {
+      expect(args.at(-1)).toBe(sagemakerCatalogUrl);
+      callback(null, { stdout: `HTTP/1.1 200 OK\r\n\r\n${catalogBody}`, stderr: "" });
+    });
+    aws.sign.mockImplementation(async (request) => ({
+      ...request,
+      headers: { ...request.headers, authorization: "PRIVATE_FIXTURE_SIGNATURE" },
+    }));
+    const discard = vi.fn();
+    const marketplace = vi.fn(() => new Response(JSON.stringify(wire())));
+    vi.stubGlobal("fetch", async (url: string | URL) => {
+      if (url === source.url) return marketplace();
+      if (String(url) === sagemakerOpenManifestUrl)
+        return new Response(JSON.stringify(openHeaders));
+      const openSpec = openHeaders.find(({ spec_key }) => String(url).endsWith(`/${spec_key}`));
+      return new Response(
+        openSpec === undefined
+          ? (await read({ ...source, url: String(url) })).body
+          : JSON.stringify(openSpec),
+      );
+    });
+
+    const state = { sources: {} };
+    const collect = async (at: string, prior?: ComposedCatalogPair) => {
+      const result = collectProvider(selected, prior?.catalog, state, at);
+      await vi.runAllTimersAsync();
+      const { attempt, provider, models, sources, coverage, warnings, pricing, pricingFailure } =
+        await result;
+      const previousPricing = prior?.pricing ?? emptyPricingCatalog();
+      const pair = composeCatalogPair(
+        prior?.catalog,
+        {
+          catalog_version: "a".repeat(64),
+          generated_at: at,
+          providers: [provider],
+          models,
+          sources,
+          coverage: [coverage],
+          warnings,
+        },
+        previousPricing,
+        [
+          pricing === undefined
+            ? failedPricingTransition(provider.id, at, pricingFailure ?? "pricing_not_observed")
+            : { kind: "fresh", partition: pricing },
+        ],
+      );
+      return {
+        pair,
+        summary: summarizeRefresh(prior?.catalog, pair.catalog, previousPricing, pair.pricing, [
+          attempt,
+        ]),
+      };
+    };
+    const initial = await collect(observedAt);
+    expect(initial.pair.pricing.books.length).toBeGreaterThan(0);
+    marketplace.mockClear().mockImplementation(
+      () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("PRIVATE_FIXTURE_RESPONSE"));
+            },
+            cancel: discard,
+          }),
+          {
+            status: 429,
+            headers: { "Retry-After": header, "x-aws-test": "PRIVATE_FIXTURE_HEADER" },
+          },
+        ),
+    );
+    const failed = await collect("2026-11-15T00:00:00.000Z", initial.pair);
+    expect(marketplace).toHaveBeenCalledTimes(failure.attempts);
+    expect(discard).toHaveBeenCalledTimes(failure.attempts);
+    const request = `GetListingView/${fixture.listingId}`;
+    expect(failed.summary.providers[0]).toMatchObject({
+      publication: "accepted",
+      pricing_publication: "retained",
+      attempt: { pricing: { outcome: "failed", failure_code: "source_unavailable" } },
+    });
+    expect(failed.summary.providers[0]?.attempt?.sources).toContainEqual(
+      expect.objectContaining({
+        source_id: source.id,
+        outcome: "fetch_failed",
+        http_status: 429,
+        consecutive_failures: 1,
+        last_success_at: observedAt,
+        retry_failure: { request, ...failure },
+      }),
+    );
+    expect(failed.pair.pricing.books).toEqual(initial.pair.pricing.books);
+    const summaryJson = JSON.stringify(failed.summary);
+    expect(summaryJson).not.toContain("PRIVATE_FIXTURE");
+    expect(refreshReport(JSON.parse(summaryJson)).markdown).toContain(
+      `HTTP 429 · <code>${request}</code> · ${display}`,
+    );
+
+    marketplace.mockClear().mockImplementation(() => new Response(JSON.stringify(wire())));
+    const recovered = await collect("2026-11-16T00:00:00.000Z", failed.pair);
+    expect(marketplace).toHaveBeenCalledOnce();
+    expect(recovered.summary.providers[0]?.pricing_publication).toBe("accepted");
+    expect(
+      recovered.summary.providers[0]?.attempt?.sources.find(
+        ({ source_id }) => source_id === source.id,
+      ),
+    ).toMatchObject({ outcome: "unchanged" });
+    expect(JSON.stringify(recovered.summary)).not.toContain("retry_failure");
+  },
+);
 
 it("runs native timers after the throttled collection", async () => {
   await new Promise<void>((resolve) => setTimeout(resolve, 1));

@@ -891,19 +891,42 @@ it("keeps successor research within the existing transport and redirect budget",
 
 function retailResponse(status: number, headers = ""): string {
   return `HTTP/1.1 ${status} Test\r\ncontent-type: application/json\r\n${headers}\r\n${
-    status === 200 ? '{"Items":[{"meterId":"test-meter"}],"NextPageLink":null}' : "{}"
+    status === 200 ? '{"Count":1,"Items":[{"meterId":"test-meter"}],"NextPageLink":null}' : "{}"
   }`;
 }
+
+function retailContinuation(skip: number): string {
+  return `https://prices.azure.com/api/retail/prices?api-version=2023-01-01-preview&currencyCode=USD&$filter=serviceName%20eq%20%27Foundry%20Models%27%20and%20priceType%20eq%20%27Consumption%27&$skip=${skip}`;
+}
+
+it.each([
+  { Count: 1, Items: [1] },
+  { Count: 2, Items: [1], NextPageLink: null },
+  { Count: 0, Items: [], NextPageLink: null },
+  { Count: 1, Items: [1], NextPageLink: retailContinuation(0) },
+  { Count: 1, Items: [1], NextPageLink: retailContinuation(2) },
+  { Count: 1, Items: [1], NextPageLink: retailContinuation(1).replace("USD", "EUR") },
+  {
+    Count: 1,
+    Items: [1],
+    NextPageLink: retailContinuation(1).replace("prices.azure.com", "other.test"),
+  },
+])("rejects an incomplete or out-of-scope Retail Prices page without advancing", async (page) => {
+  transport.responses.set("prices.azure.com", [`HTTP/1.1 200 OK\r\n\r\n${JSON.stringify(page)}`]);
+  const error: unknown = await fetchSource(retailSource()).catch((failure: unknown) => failure);
+  expect(sourceFailure(error)).toMatchObject({ outcome: "parse_failed" });
+  expect(transport.calls).toHaveLength(1);
+});
 
 describe("source retry cooldown", () => {
   it("waits for the reported Retail Prices quota reset before requesting the next page", async () => {
     vi.useFakeTimers();
-    const second = "https://prices.azure.com/api/retail/prices?$skip=1000";
-    const third = "https://prices.azure.com/api/retail/prices?$skip=2000";
+    const second = retailContinuation(1);
+    const third = retailContinuation(2);
     transport.responses.set("prices.azure.com", [
-      `HTTP/1.1 200 OK\r\nx-ms-ratelimit-remaining-retailprices-requests: 1\r\nx-ms-ratelimit-retailprices-retry-after: 60\r\n\r\n${JSON.stringify({ Items: [1], NextPageLink: second })}`,
-      `HTTP/1.1 200 OK\r\nx-ms-ratelimit-remaining-retailprices-requests: 0\r\nx-ms-ratelimit-retailprices-retry-after: 60\r\nRetry-After: 90\r\n\r\n${JSON.stringify({ Items: [2], NextPageLink: third })}`,
-      'HTTP/1.1 200 OK\r\nx-ms-ratelimit-remaining-retailprices-requests: 0\r\n\r\n{"Items":[3],"NextPageLink":null}',
+      `HTTP/1.1 200 OK\r\nx-ms-ratelimit-remaining-retailprices-requests: 1\r\nx-ms-ratelimit-retailprices-retry-after: 60\r\n\r\n${JSON.stringify({ Count: 1, Items: [1], NextPageLink: second })}`,
+      `HTTP/1.1 200 OK\r\nx-ms-ratelimit-remaining-retailprices-requests: 0\r\nx-ms-ratelimit-retailprices-retry-after: 60\r\nRetry-After: 90\r\n\r\n${JSON.stringify({ Count: 1, Items: [2], NextPageLink: third })}`,
+      'HTTP/1.1 200 OK\r\nx-ms-ratelimit-remaining-retailprices-requests: 0\r\n\r\n{"Count":1,"Items":[3],"NextPageLink":null}',
     ]);
     const result = fetchSource(retailSource());
     await vi.advanceTimersByTimeAsync(89_999);
@@ -915,9 +938,9 @@ describe("source retry cooldown", () => {
   });
 
   it("reports the throttled page without returning prices from an incomplete crawl", async () => {
-    const next = "https://prices.azure.com/api/retail/prices?$skip=1000";
+    const next = retailContinuation(1);
     transport.responses.set("prices.azure.com", [
-      `HTTP/1.1 200 OK\r\n\r\n${JSON.stringify({ Items: [1], NextPageLink: next })}`,
+      `HTTP/1.1 200 OK\r\n\r\n${JSON.stringify({ Count: 1, Items: [1], NextPageLink: next })}`,
       retailResponse(429, "Retry-After: 301\r\n"),
     ]);
     const error: unknown = await fetchSource(retailSource()).catch((failure: unknown) => failure);

@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import type { ZodType } from "zod";
 import { parseSource } from "./adapters.ts";
+import { azureRetailSourceId, validateAzureRetailPublication } from "./azure-retail-publication.ts";
 import { captureRepairSource } from "./catalog-repair-capture.ts";
 import {
   captureInferencePriceSources,
@@ -1061,6 +1062,7 @@ export async function collectProvider(
     const inventories: SourceGroup[] = [];
     const unavailableInventories: SourceManifest[] = [];
     const retainedOmissions: { source: SourceManifest; observed: Set<string> }[] = [];
+    let azureRetailUnmatchedVersionMeters: string[] | undefined;
     function recordOptionalOmission(source: SourceManifest, role: SourceRecord["role"]): void {
       if (role === "inventory") unavailableInventories.push(source);
       else if (source.retainOmittedFacts === true)
@@ -1181,6 +1183,22 @@ export async function collectProvider(
                 ],
               }),
           onContractFinding: contractFindings.add,
+          ...(source.extractor.kind === "azure-retail-prices"
+            ? {
+                previousCatalogModels: comparableOldModels.filter(({ source_refs }) =>
+                  source_refs.some((id) => {
+                    const owner = currentSources.get(id);
+                    return (
+                      owner !== undefined &&
+                      (owner.role === "catalog" || owner.role === "supplement") &&
+                      owner.scope === "global" &&
+                      owner.exhaustive !== true &&
+                      oldSourceById.get(id)?.extractor_version === owner.extractorVersion
+                    );
+                  }),
+                ),
+              }
+            : {}),
           onPricingReconciliation: (item) => {
             pricingReconciliationItems.push(item);
           },
@@ -1188,6 +1206,7 @@ export async function collectProvider(
             if (retainsPricingOnFailure(source)) invalidPricingDependencies.add(url);
           },
         });
+        azureRetailUnmatchedVersionMeters ??= parsedSource.azureRetailUnmatchedVersionMeters;
         parsed = parsedSource.models
           .map(normalizeModelTasks)
           .map(normalizeDeliveryModes)
@@ -1518,6 +1537,9 @@ export async function collectProvider(
       warnings: [...warnings, ...missingFieldWarnings(manifest, candidate)],
       ...(pricing === undefined ? {} : { pricing }),
       ...(pricingReplaySources === undefined ? {} : { pricingReplaySources }),
+      ...(azureRetailUnmatchedVersionMeters === undefined
+        ? {}
+        : { azureRetailUnmatchedVersionMeters }),
       ...(pricingFailure === undefined ? {} : { pricingFailure }),
       attempt: {
         provider_id: manifest.provider.id,
@@ -1752,7 +1774,23 @@ async function prepareCollectionInputs(options: CollectionOptions) {
 
   const collected =
     received ?? (await collectProviders(previous, state, observedAt, options.rebuildProvider));
-  const { results } = collected;
+  const acceptedAzure = acceptedPricing.provider_snapshots.find(
+    ({ provider_id }) => provider_id === "azure",
+  );
+  const acceptedAzureRetail = previousPricingCompilation?.providers
+    .find(({ provider_id }) => provider_id === "azure")
+    ?.sources.find(({ source_id }) => source_id === azureRetailSourceId);
+  const previousRetailRecord = acceptedCatalog?.sources.find(
+    ({ id }) => id === azureRetailSourceId,
+  );
+  const results = collected.results.map((result) =>
+    validateAzureRetailPublication(
+      result,
+      acceptedAzure,
+      acceptedAzureRetail,
+      previousRetailRecord,
+    ),
+  );
 
   const providers = results
     .map((result) => result.provider)

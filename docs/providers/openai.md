@@ -24,7 +24,7 @@ transport, source order, publication or replay boundaries.
 The OpenAI partition follows the shared invocation-cost boundary. It publishes public rates that
 can be selected from a proxied request or attributed from its response or asynchronous result:
 
-- Standard, Batch, Flex, and Fast model inference;
+- Standard, Batch, Flex, Fast, and Ultrafast model inference;
 - text, cached input, cache write, audio, image, embedding, transcription-duration, generated
   image, and generated video rates;
 - Web Search and File Search calls;
@@ -51,6 +51,7 @@ that call and are excluded.
 | [Official OpenAPI](https://github.com/openai/openai-openapi/blob/master/openapi.yaml)                                     | Optional response and Realtime pricing-input contracts                           |
 | [Batch guide](https://developers.openai.com/api/docs/guides/batch)                                                        | Asynchronous result and output-file accounting contract evidence                 |
 | [Fast mode](https://developers.openai.com/api/docs/guides/fast-mode)                                                      | Fast request and returned served-tier semantics                                  |
+| [Ultrafast mode](https://developers.openai.com/api/docs/guides/ultrafast-mode)                                            | Exact request models and Ultrafast data-residency eligibility                    |
 | [Flex processing](https://developers.openai.com/api/docs/guides/flex-processing)                                          | Flex request-tier and processing semantics                                       |
 | [Deprecations](https://developers.openai.com/api/docs/deprecations)                                                       | Non-exhaustive lifecycle dates and replacements                                  |
 | [Data residency](https://developers.openai.com/api/docs/guides/data-residency)                                            | Exact endpoint, regional-processing and regional-mode eligibility                |
@@ -270,8 +271,20 @@ The normalized selectors are source-backed dimensions shared with other provider
 - operation for Web Search variants; and
 - `account_eligibility=data_sharing` for the published fine-tuned inference discount.
 
-Both `Fast` and the older `Fast mode` heading select the same tier. `Ultrafast` has its own published
-table; it never inherits Fast amounts. Unknown tier/table/cell diagnostics remain local.
+Both `Fast` and the older `Fast mode` heading select the same tier. The Ultrafast promotion and list
+tables bind their own explicit USD amounts for the exact models named in the dated declaration.
+For GPT-6.2 Astra and GPT-6.2 Sol, the promotion ends exclusively and the list rates begin at
+midnight Pacific time on March 1, 2027 (`2027-03-01T08:00:00Z`). The preceding date and the
+declared time zone must agree with the transition. The two schedules retain both context bands
+at the 272,000-token boundary, cached input, and the 30-minute and 12-hour write rates. An unresolved
+schedule preserves the affected quotes and panel labels as raw evidence. A missing panel or priced
+row for a named model triggers source repair while the corresponding schedule is active or upcoming.
+The declaration alone can establish a coverage gap when both panels are missing. Undated Ultrafast
+prices and other tiers keep their own applicability. Within a reviewed pricing section, a model table
+with a literal dollar quote under an unrecognized tier heading emits `public_price_shape_unsupported`
+with the heading and a bounded example row. This admits the source to automated repair even when
+the pricing partition is accepted. A heading alone remains informational. Other recognized tiers
+continue to publish while the affected table awaits interpretation.
 Exact tier labels may be plain text or ATX Markdown headings. In particular, a `#### Flex`
 subsection within the Batch pricing panel starts Flex scope; it cannot inherit the surrounding
 Batch label. Generated headings such as `### Batch pricing data` are presentation, not new tiers.
@@ -373,9 +386,10 @@ Optional first-party Fast, Ultrafast and data-residency guides are claim-local p
 The Fast guide's explicit EU exclusion list binds exact named models, currently GPT-6 Astra and
 GPT-6 Sol. Their Fast variants require `eu_data_residency=false`, with `not_supported` for
 the excluded combination. The older pricing-page Astra declaration is still recognized.
-Ultrafast binds each named model's own guide statement: GPT-6.1 Sol supports US/EU regional
-processing and global processing; GPT-6 Astra supports US regional and global processing. A
-generic historical US-only statement remains recognized only as a complete standalone sentence.
+Ultrafast binds each named model's own guide statement. GPT-6.2 Astra, GPT-6.2 Sol and GPT-6 Astra
+support US regional processing and global processing. GPT-6.1 Sol supports US/EU regional processing
+and global processing. The historical generic US-only statement requires a complete standalone
+sentence.
 Regional variants require independent model-matrix eligibility and carry the published uplift.
 If the guide is absent, conflicting or that model's claim drifts, Ultrafast amounts remain bounded raw evidence while other tiers
 survive. The renamed Fast table likewise retains amounts as raw when neither its guide nor the

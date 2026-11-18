@@ -2,11 +2,17 @@ import { readFile } from "node:fs/promises";
 import { expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { parseSource } from "../src/catalog/adapters.ts";
+import {
+  azureRetailMeterKey,
+  azureRetailPricingLoss,
+} from "../src/catalog/azure-retail-publication.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
+import type { PricingReplaySource } from "../src/catalog/pricing-compilation.ts";
 import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
+import type { ProviderPricingSnapshot } from "../src/catalog/pricing-schema.ts";
 import { providerModelSchema } from "../src/catalog/schema.ts";
 import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import type { Selector } from "../src/pricing/schema.ts";
@@ -24,7 +30,7 @@ function configuration() {
     api,
     source: {
       ...retail,
-      extractor: { ...retail.extractor, minModels: 1, maxModels: 1, minHandledRatio: 1 },
+      extractor: { ...retail.extractor, minModels: 1, maxModels: 1 },
     },
   };
 }
@@ -179,6 +185,89 @@ const rates = (data: ReturnType<typeof priceDataExport>) =>
       b.offers.flatMap((o) => o.terms.flatMap((t) => (t.kind === "rate" ? t.variants : []))),
     ),
   );
+
+function retailLoss(
+  oldRows: unknown[],
+  currentRows: unknown[],
+  options: {
+    retired?: boolean;
+    legacy?: boolean;
+    unmatchedMeters?: string[];
+  } = {},
+) {
+  const prior: PricingReplaySource = {
+    source_id: source.id,
+    content_hash: "a".repeat(64),
+    extractor_version: options.legacy ? "azure-retail-prices-v10" : source.extractorVersion,
+    models: parse(oldRows).models,
+  };
+  const snapshot: ProviderPricingSnapshot = {
+    provider_id: "azure",
+    observed_at: at,
+    publication: "fresh",
+    source_records: [
+      {
+        id: source.id,
+        url: source.url,
+        content_hash: prior.content_hash,
+        extractor_version: prior.extractor_version,
+        observed_at: at,
+      },
+    ],
+  };
+  const result = {
+    models: [{ ...model, ...(options.retired ? { status: "retired" as const } : {}) }],
+    pricingReplaySources: [{ ...prior, models: parse(currentRows).models }],
+    coverage: {
+      provider_id: "azure",
+      status: "fresh" as const,
+      model_count: 1,
+      pricing_term_count: 1,
+      checked_at: at,
+    },
+    ...(options.unmatchedMeters === undefined
+      ? {}
+      : { azureRetailUnmatchedVersionMeters: options.unmatchedMeters }),
+  };
+  return azureRetailPricingLoss(result, snapshot, prior, undefined);
+}
+
+it("publishes a later effective amount in the same scoped Retail meter once it is in force", () => {
+  const updated = { ...native, effectiveStartDate: "2026-10-01T00:00:00Z", retailPrice: 250 };
+  expect(retailLoss([native], [updated])).toBeUndefined();
+  expect(
+    retailLoss([native], [{ ...updated, effectiveStartDate: "2026-03-01T01:00:00+01:00" }]),
+  ).toBeUndefined();
+  const { data, lookup } = assemble([updated]);
+  expect(query(lookup, at).status).toBe("matched");
+  expect(rates(data)[0]?.price.value).toEqual({ numerator: "1", denominator: "4000" });
+});
+
+it("withholds a candidate missing a current region, a previously announced future rate or an exact tier", () => {
+  const sibling = { ...native, armRegionName: "eastus", meterId: "eastus-output" };
+  const future = { ...native, effectiveStartDate: "2027-01-01T00:00:00Z" };
+  const changedTier = { ...native, skuName: `${String(native.skuName)} PP` };
+  expect(retailLoss([native], [future])).toContain("lost 1 previously supported");
+  expect(retailLoss([native, sibling], [native])).toContain("eastus-output");
+  expect(retailLoss([native, future], [native])).toContain("lost 1 previously supported");
+  expect(retailLoss([native], [changedTier])).toContain("lost 1 previously supported");
+  expect(
+    retailLoss([native], [{ ...withoutStart, effectiveEndDate: native.effectiveStartDate }]),
+  ).toContain("lost 1 previously supported");
+  expect(retailLoss([native, sibling], [native], { retired: true })).toBeUndefined();
+});
+
+it("requires exact current evidence to remove a legacy unmatched-version binding", () => {
+  const sibling = { ...native, armRegionName: "eastus", meterId: "eastus-output" };
+  const witness = azureRetailMeterKey(model.uid, String(native.meterId), "centralus");
+  expect(retailLoss([native, sibling], [sibling])).toContain("lost 1 previously supported");
+  expect(retailLoss([native, sibling], [sibling], { unmatchedMeters: [witness] })).toContain(
+    "lost 1 previously supported",
+  );
+  expect(
+    retailLoss([native, sibling], [sibling], { legacy: true, unmatchedMeters: [witness] }),
+  ).toBeUndefined();
+});
 
 it("preserves the owned native start independently of release and observation clocks", () => {
   const { parsed, data, lookup } = assemble([native]);

@@ -23,6 +23,7 @@ import {
   type OpenAiPricingTable,
   type OpenAiPricingTier,
   type OpenAiPricingClaim,
+  type OpenAiUltrafastPeriod,
 } from "./openai-pricing-cells.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import {
@@ -683,16 +684,22 @@ export function parseOpenAiDataResidency(input: ParseInput): ProviderModel[] {
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
+const openAiUltrafastPeriods = new Map<string, OpenAiUltrafastPeriod>([
+  ["Ultrafast promotion pricing data", "promotion"],
+  ["Ultrafast list pricing data", "list"],
+]);
+
 function openAiPricingTables(
   body: string,
   onReconciliation: ParseInput["onPricingReconciliation"],
-): OpenAiPricingTable[] {
-  const lines = body.split(/\r?\n/);
+) {
+  const lines = markdownProse(body).split(/\r?\n/);
   const tables: OpenAiPricingTable[] = [];
+  const ultrafastDeclarations = new Set<string>();
   let section: string | undefined;
   let tier: OpenAiPricingTier | undefined;
-  let reviewedTier = true;
-  for (let index = 0; index < lines.length - 1; index += 1) {
+  let panel: { period: OpenAiUltrafastPeriod } | { unreviewed: string } | undefined;
+  for (let index = 0; index < lines.length; index += 1) {
     const line = normalizedText(lines[index] ?? "");
     const heading = line.match(/^#{1,6}\s+(.+)$/)?.[1];
     const tierLabel = heading ?? line;
@@ -700,14 +707,25 @@ function openAiPricingTables(
     if (observedSection !== undefined) {
       section = observedSection;
       tier = undefined;
-      reviewedTier = true;
+      panel = undefined;
       continue;
     }
     const observedTier = openAiPricingTiers.get(tierLabel);
     if (observedTier !== undefined) {
       tier = observedTier;
-      reviewedTier = true;
+      panel = undefined;
       continue;
+    }
+    if (section === "Flagship models" && tier === "ultrafast") {
+      const period = heading === undefined ? undefined : openAiUltrafastPeriods.get(heading);
+      if (period !== undefined) {
+        panel = { period };
+        continue;
+      }
+      if (heading === "Ultrafast pricing data" && panel !== undefined && "period" in panel)
+        panel = undefined;
+      if (panel === undefined && line.startsWith("For GPT-") && line.includes(", Ultrafast costs "))
+        ultrafastDeclarations.add(line);
     }
     if (line === "Our latest models" || line === "Multimodal models") continue;
     if (
@@ -721,7 +739,7 @@ function openAiPricingTables(
       /^(?:Standard|Batch|Flex|Fast|Ultrafast|Priority)\b/.test(tierLabel) ||
       (heading !== undefined && section !== undefined)
     ) {
-      reviewedTier = false;
+      panel = { unreviewed: tierLabel };
       onReconciliation?.({
         disposition: "unsupported",
         reason_code: "unreviewed_pricing_tier",
@@ -732,7 +750,7 @@ function openAiPricingTables(
     if (/^[A-Z][A-Za-z ]+ models$/.test(line)) {
       section = undefined;
       tier = undefined;
-      reviewedTier = true;
+      panel = undefined;
       continue;
     }
     if (!line.startsWith("|") || !normalizedText(lines[index + 1] ?? "").startsWith("|")) continue;
@@ -743,14 +761,6 @@ function openAiPricingTables(
       !separators.every((cell) => /^:?-{3,}:?$/.test(cell))
     )
       continue;
-    if (section === undefined || !reviewedTier) {
-      onReconciliation?.({
-        disposition: "unsupported",
-        reason_code: "unreviewed_pricing_table",
-        sample: headers.join(" | ").slice(0, 256),
-      });
-      continue;
-    }
     const rows: string[][] = [];
     index += 2;
     while (index < lines.length && normalizedText(lines[index] ?? "").startsWith("|")) {
@@ -765,14 +775,77 @@ function openAiPricingTables(
       index += 1;
     }
     index -= 1;
+    const unreviewed = panel !== undefined && "unreviewed" in panel ? panel.unreviewed : undefined;
+    if (section === undefined || unreviewed !== undefined) {
+      const pricedRow =
+        section !== undefined && unreviewed !== undefined && headers.includes("Model")
+          ? rows.find((row) => row.some((cell) => /^\$\s*\d/.test(cell)))
+          : undefined;
+      onReconciliation?.({
+        disposition: "unsupported",
+        reason_code:
+          pricedRow === undefined ? "unreviewed_pricing_table" : "public_price_shape_unsupported",
+        sample: (pricedRow === undefined
+          ? headers.join(" | ")
+          : `${unreviewed}: ${pricedRow.join(" | ")}`
+        ).slice(0, 256),
+      });
+      continue;
+    }
     tables.push({
       section,
       ...(tier === undefined ? {} : { tier }),
+      ...(panel !== undefined && "period" in panel ? { ultrafastPeriod: panel.period } : {}),
       headers,
       rows,
     });
   }
-  return tables;
+  return { tables, ultrafastDeclarations };
+}
+
+function openAiPricingModelId(name: string): string {
+  return name.toLowerCase().replaceAll(" ", "-");
+}
+
+function openAiUltrafastSchedule(declarations: ReadonlySet<string>) {
+  const [declaration] = declarations;
+  if (declarations.size !== 1 || declaration === undefined) return;
+  const match =
+    /^For (GPT-[\w.]+ \w+) and (GPT-[\w.]+ \w+), Ultrafast costs \d+ times the Standard rate through (.+), and \d+ times the Standard rate starting (.+) \(Pacific time\)\.$/.exec(
+      declaration,
+    );
+  if (
+    match?.[1] === undefined ||
+    match[2] === undefined ||
+    match[3] === undefined ||
+    match[4] === undefined
+  )
+    return;
+  const lastDay = openAiShutdownDate(match[3]);
+  const firstDay = openAiShutdownDate(match[4]);
+  if (
+    lastDay === undefined ||
+    firstDay === undefined ||
+    Date.parse(firstDay) - Date.parse(lastDay) !== 86_400_000
+  )
+    return;
+  const pacific = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  const cutoff = [`${firstDay}T07:00:00Z`, `${firstDay}T08:00:00Z`].find(
+    (instant) => pacific.format(new Date(instant)) === `${firstDay} 00:00`,
+  );
+  if (cutoff !== undefined)
+    return {
+      cutoff,
+      models: new Set([openAiPricingModelId(match[1]), openAiPricingModelId(match[2])]),
+    };
 }
 
 function addUniqueModelIndex<T extends { model_id: string }>(
@@ -1044,30 +1117,35 @@ function openAiRegionalProcessingRates(rates: readonly SourcePriceFact[]): Sourc
 }
 
 function openAiUltrafastRegions(body: string, modelId: string): readonly string[] | undefined {
-  const scopes: string[][] = [];
+  const scopes = new Set<string>();
+  const namesModel = (name: string | undefined) =>
+    name !== undefined && openAiPricingModelId(name) === modelId;
   for (const sentence of markdownProse(body)
     .split(/\n\s*\n/)
     .flatMap((paragraph) => normalizedText(paragraph).split(/(?<=\.)\s+/))) {
     const specific =
-      /^(?:Ultrafast mode for (GPT-[\w.]+ \w+)|(GPT-[\w.]+ \w+) Ultrafast) supports (US(?: and EU)?) data residency and global processing( only)?\.$/.exec(
+      /^(?:Ultrafast mode for (GPT-[\w.]+ \w+)|(GPT-[\w.]+ \w+) Ultrafast) supports (US(?: and EU)?) data residency and global processing(?: only)?\.$/.exec(
         sentence,
       );
-    if (specific !== null) {
-      if ((specific[1] ?? specific[2])?.toLowerCase().replaceAll(" ", "-") !== modelId) continue;
-      scopes.push(
-        specific[3] === "US and EU"
-          ? ["United States", "Europe (EEA + Switzerland)"]
-          : ["United States"],
-      );
-    } else if (sentence === "Ultrafast supports US data residency and global processing only.") {
-      scopes.push(["United States"]);
+    if (specific?.[3] !== undefined) {
+      if (namesModel(specific[1] ?? specific[2])) scopes.add(specific[3]);
+      continue;
     }
+    const usOnly =
+      /^Ultrafast data residency for (GPT-[\w.]+ \w+) and (GPT-[\w.]+ \w+) is limited to the US\.$/.exec(
+        sentence,
+      );
+    if (
+      sentence === "Ultrafast supports US data residency and global processing only." ||
+      namesModel(usOnly?.[1]) ||
+      namesModel(usOnly?.[2])
+    )
+      scopes.add("US");
   }
-  const first = scopes[0];
-  return first !== undefined &&
-    scopes.every((scope) => JSON.stringify(scope) === JSON.stringify(first))
-    ? first
-    : undefined;
+  if (scopes.size !== 1) return;
+  return scopes.has("US and EU")
+    ? ["United States", "Europe (EEA + Switzerland)"]
+    : ["United States"];
 }
 
 export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
@@ -1202,7 +1280,24 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
   const approvedResearch = lifeSciencesScope?.includes(
     "Access is limited to approved internal research through the [trusted-access program]",
   );
-  for (const table of openAiPricingTables(input.body, record)) {
+  const { tables, ultrafastDeclarations } = openAiPricingTables(input.body, record);
+  const ultrafastSchedule = openAiUltrafastSchedule(ultrafastDeclarations);
+  const missingUltrafastRows = new Map<OpenAiUltrafastPeriod, Set<string>>();
+  if (ultrafastSchedule !== undefined) {
+    if (Date.parse(input.observedAt) < Date.parse(ultrafastSchedule.cutoff))
+      missingUltrafastRows.set("promotion", new Set(ultrafastSchedule.models));
+    missingUltrafastRows.set("list", new Set(ultrafastSchedule.models));
+  } else if (ultrafastDeclarations.size > 0) {
+    record({
+      disposition: "unsupported",
+      reason_code: "public_price_shape_unsupported",
+      sample: `Unresolved Ultrafast transition: ${[...ultrafastDeclarations].join(" ")}`.slice(
+        0,
+        256,
+      ),
+    });
+  }
+  for (const table of tables) {
     if (table.section === "Life sciences models" && !approvedResearch) {
       record({ disposition: "unsupported", reason_code: "life_sciences_eligibility_unresolved" });
       continue;
@@ -1260,6 +1355,11 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
         });
       continue;
     }
+    const period = table.ultrafastPeriod;
+    const validityLabel =
+      period === undefined
+        ? undefined
+        : [`Ultrafast ${period} pricing data`, ...ultrafastDeclarations].join(". ");
     for (const row of table.rows) {
       const rawId = (row[modelIndex] ?? "").replace(
         / \((?:<272K context length|legacy|data sharing|short context|long context)\)$/,
@@ -1287,7 +1387,23 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
         });
         continue;
       }
-      const claims = cells.map((cell) => parseOpenAiPricingCell(cell, input.source.id));
+      const cutoff =
+        ultrafastSchedule?.models.has(rawId) === true ? ultrafastSchedule.cutoff : undefined;
+      const validity =
+        validityLabel === undefined
+          ? undefined
+          : {
+              label: validityLabel,
+              ...(cutoff === undefined
+                ? {}
+                : {
+                    conditions:
+                      period === "promotion"
+                        ? { effective_until: cutoff, effective_until_exclusive: true as const }
+                        : { effective_from: cutoff },
+                  }),
+            };
+      const claims = cells.map((cell) => parseOpenAiPricingCell(cell, input.source.id, validity));
       if (table.section === "Life sciences models")
         for (const { rate, raw } of claims) {
           if (rate !== undefined)
@@ -1307,6 +1423,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
         items.push(...claims.map(({ item }) => item));
         continue;
       }
+      if (period !== undefined) missingUltrafastRows.get(period)?.delete(rawId);
       if (table.section === "Finetuning") {
         items.push(
           ...claims.map(({ item }) => {
@@ -1349,6 +1466,18 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
         track(target.model_id, claim);
       }
     }
+  }
+  for (const [period, models] of missingUltrafastRows) {
+    if (models.size === 0) continue;
+    record({
+      disposition: "unsupported",
+      reason_code: "public_price_shape_unsupported",
+      sample:
+        `Ultrafast ${period} pricing data: missing priced rows for ${[...models].join(", ")}`.slice(
+          0,
+          256,
+        ),
+    });
   }
   if (input.source.extractor.kind !== "openai-pricing")
     throw new Error("Invalid OpenAI pricing extractor");
@@ -1512,6 +1641,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
             amount: rate.raw_price ?? rate.price,
             denomination: rate.currency,
             unit: rate.raw_unit ?? rate.unit,
+            ...(rate.raw_validity === undefined ? {} : { validity: rate.raw_validity }),
           },
         });
         markScope(modelId, tier, unresolved);

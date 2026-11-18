@@ -6,6 +6,7 @@ import type { SourceContractEvidence } from "./source-contract.ts";
 
 export interface SourceParseResult extends SourcePricingFacts {
   models: ProviderModel[];
+  azureRetailUnmatchedVersionMeters?: string[];
 }
 
 export interface SourceParseInput {
@@ -22,6 +23,7 @@ export interface SourceParseInput {
     | "model_id"
     | "name"
     | "release_date"
+    | "retired_at"
     | "routes"
     | "service_families"
     | "status"
@@ -30,6 +32,7 @@ export interface SourceParseInput {
     | "version"
   > &
     Partial<Pick<ProviderModel, "price_facts" | "pricing_state" | "modalities">>)[];
+  previousCatalogModels?: SourceParseInput["catalogModels"];
   // Scoped observations remain separate from public catalog admission.
   inventoryModels?: readonly Pick<
     ProviderModel,

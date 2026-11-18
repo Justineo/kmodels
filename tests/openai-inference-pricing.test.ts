@@ -31,22 +31,25 @@ const at = "2026-07-21T00:00:00.000Z";
 const fixture = (file: string) =>
   readFile(new URL(`./fixtures/openai/${file}`, import.meta.url), "utf8");
 type Bundle = ReturnType<typeof linkedBundleSchema.parse>;
+interface CollectionFixture {
+  catalog: Bundle;
+  pricing: string;
+  observedAt: string;
+  residency?: string;
+  changelog?: string;
+}
 async function collect(
-  change?: (input: {
-    catalog: Bundle;
-    pricing: string;
-    residency?: string;
-    changelog?: string;
-  }) => void,
+  change?: (input: CollectionFixture) => void,
   previous?: CatalogPairCandidate,
 ) {
   const manifest: ProviderManifest | undefined = manifests.find(
     ({ provider }) => provider.id === "openai",
   );
   if (!manifest) throw new Error("Missing OpenAI manifest");
-  const input: { catalog: Bundle; pricing: string; residency?: string; changelog?: string } = {
+  const input: CollectionFixture = {
     catalog: linkedBundleSchema.parse(JSON.parse(await fixture("catalog.json"))),
     pricing: (await fixture("pricing.md")) + "\n" + (await fixture("fixed-search.md")),
+    observedAt: at,
   };
   change?.(input);
   const catalogSource = manifest.sources.find(({ id }) => id === "openai-models");
@@ -78,12 +81,12 @@ async function collect(
     { ...manifest, sources: [catalogSource, ...additional, pricingSource] },
     previous?.catalog,
     { sources: {} },
-    at,
+    input.observedAt,
   );
   if (!result.pricing) throw new Error(JSON.stringify(result.attempt));
   const core: Catalog = {
     catalog_version: coreCatalogVersion([result.provider]),
-    generated_at: at,
+    generated_at: input.observedAt,
     providers: [result.provider],
     models: result.models,
     sources: result.sources,
@@ -266,6 +269,161 @@ it("publishes Sol Ultrafast EU prices while excluding Astra EU and Luna non-Stan
   expect(queryWebsiteInferencePrice(price, selected.selectors, at, selected.offer.id).status).toBe(
     "matched",
   );
+});
+
+it("exports both GPT-6.2 Ultrafast schedules at the Pacific cutover", async () => {
+  const modelIds = ["gpt-6.2-astra", "gpt-6.2-sol"];
+  const body = await fixture("ultrafast-dated-pricing.md");
+  const regional = await fixture("regional-modes.md");
+  const ultrafast = await fixture("ultrafast-regions.md");
+  const candidate = await collect((input) => {
+    input.observedAt = "2026-11-18T04:03:56.864Z";
+    for (const id of [...modelIds, "gpt-6.1-sol"])
+      input.catalog.index.body += `\n- [${id}](/api/docs/models/${id}.md): Reasoning model`;
+    input.changelog = [
+      "## September, 2026",
+      "### Sep 29",
+      "Feature · Model: gpt-6.1-sol",
+      "## November, 2026",
+      "### Nov 17",
+      ...modelIds.map((id) => `Feature · Model: ${id}`),
+    ].join("\n");
+    input.residency = regional.replace(
+      "`gpt-6-astra`,",
+      "`gpt-6.2-astra`, `gpt-6.2-sol`, `gpt-6-astra`,",
+    );
+    input.pricing = JSON.stringify({
+      index: {
+        url: "https://developers.openai.com/api/docs/pricing.md",
+        body: body + "\n" + input.pricing,
+      },
+      documents: [
+        {
+          url: "https://developers.openai.com/api/docs/guides/ultrafast-mode.md",
+          body:
+            ultrafast +
+            "\nUltrafast data residency for GPT-6.2 Astra and GPT-6.2 Sol is limited to the US.",
+        },
+      ],
+    });
+  });
+  const query = lookup(candidate);
+  const before = "2027-03-01T07:59:59.999999Z";
+  const after = "2027-03-01T08:00:00.000Z";
+  const categorical = (
+    dimension: "served_service_tier" | "deployment_scope" | "region",
+    value: string,
+  ): Selector => ({
+    kind: "categorical",
+    dimension: { namespace: "kmodels", value: dimension },
+    value: { namespace: "provider", provider_id: "openai", value },
+  });
+  const amount = (
+    dimension: "context_tokens" | "cache_ttl_seconds",
+    value: string,
+    unit: "token" | "second",
+  ): Selector => ({
+    kind: "decimal",
+    dimension: { namespace: "kmodels", value: dimension },
+    value,
+    unit: { factors: [{ unit: { namespace: "kmodels", value: unit }, power: 1 }] },
+  });
+  const request = (
+    modelId: string,
+    meter: "input_text" | "output_text" | "cache_read_text" | "cache_write_text",
+    evaluatedAt: string,
+    context = "272000",
+    tier = "ultrafast",
+    region?: string,
+    ttl?: string,
+  ) =>
+    query({
+      provider_id: "openai",
+      model_id: modelId,
+      evaluated_at: evaluatedAt,
+      meter: { namespace: "kmodels", value: meter },
+      selectors: [
+        mode("sync"),
+        categorical("served_service_tier", tier),
+        amount("context_tokens", context, "token"),
+        categorical(
+          "deployment_scope",
+          region === undefined ? "global_processing" : "regional_processing",
+        ),
+        ...(region === undefined ? [] : [categorical("region", region)]),
+        ...(ttl === undefined ? [] : [amount("cache_ttl_seconds", ttl, "second")]),
+      ],
+    });
+  function expectUsd(result: ReturnType<typeof query>, cents: number) {
+    expect(result.status, JSON.stringify(result)).toBe("matched");
+    const prices = result.candidates.flatMap(({ offer }) =>
+      offer.terms.flatMap((term) =>
+        term.kind === "rate" ? term.variants.map(({ price }) => price) : [],
+      ),
+    );
+    expect(prices).toHaveLength(1);
+    const price = prices[0];
+    if (price === undefined) throw new Error("Missing Ultrafast price");
+    expect(price.denomination).toEqual({ kind: "fiat", currency: "USD" });
+    expect(BigInt(price.value.numerator) * 100_000_000n).toBe(
+      BigInt(cents) * BigInt(price.value.denominator),
+    );
+  }
+  for (const [id, shortAmount, longOutput, cachedLong, cacheWrite, standard] of [
+    ["gpt-6.2-astra", 2400, 18000, 240, 3000, 800],
+    ["gpt-6.2-sol", 600, 4500, 60, 750, 200],
+  ] as const) {
+    expectUsd(request(id, "input_text", before), shortAmount);
+    expectUsd(request(id, "input_text", after), 2 * shortAmount);
+    expectUsd(request(id, "output_text", before, "272001"), longOutput);
+    expectUsd(request(id, "cache_read_text", after, "272001"), 2 * cachedLong);
+    expectUsd(
+      request(id, "cache_write_text", before, "272000", "ultrafast", undefined, "1800"),
+      cacheWrite,
+    );
+    expectUsd(
+      request(id, "cache_write_text", after, "272000", "ultrafast", undefined, "43200"),
+      4 * cacheWrite,
+    );
+    expectUsd(
+      request(id, "input_text", before, "272000", "ultrafast", "United States"),
+      (11 * shortAmount) / 10,
+    );
+    expectUsd(
+      request(id, "input_text", after, "272000", "ultrafast", "United States"),
+      (22 * shortAmount) / 10,
+    );
+    expect(
+      request(id, "input_text", after, "272000", "ultrafast", "Europe (EEA + Switzerland)").reason,
+    ).toBe("no_applicable_price");
+    expectUsd(request(id, "input_text", before, "272000", "standard"), standard);
+    expectUsd(request(id, "input_text", after, "272000", "standard"), standard);
+  }
+  expectUsd(request("gpt-6.1-sol", "input_text", before), 1200);
+  expectUsd(request("gpt-6.1-sol", "input_text", after), 1200);
+  expect(request("gpt-6.2-sol-latest", "input_text", after).reason).toBe("unreviewed_id");
+
+  const { ui } = await projectCatalogPair(candidate);
+  const detail = ui.manifest.assets
+    .filter(({ file_name }) => file_name.includes("details"))
+    .flatMap((asset) =>
+      websiteDetailChunkSchema
+        .parse(JSON.parse(gunzipSync(compressedAsset(ui.pack, asset)).toString()))
+        .details.map(restoreWebsiteInferenceDetail),
+    );
+  for (const id of modelIds) {
+    const price = detail
+      .find(({ model_ref }) => model_ref === `openai/${id}`)
+      ?.inference_prices?.find(({ model_id }) => model_id === id);
+    const offer = request(id, "input_text", before).candidates[0];
+    if (price === undefined || offer === undefined) throw new Error(`Missing ${id} website tariff`);
+    const chosen = [...offer.selectors, amount("cache_ttl_seconds", "1800", "second")];
+    const early = queryWebsiteInferencePrice(price, chosen, before, offer.offer.id);
+    const late = queryWebsiteInferencePrice(price, chosen, after, offer.offer.id);
+    expect(early.status).toBe("matched");
+    expect(late.status).toBe("matched");
+    expect(early.candidates[0]?.row_keys).not.toEqual(late.candidates[0]?.row_keys);
+  }
 });
 
 it.each(["#### Priority Plus", "#### Economy"])(

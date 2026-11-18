@@ -18,7 +18,7 @@ import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifi
 import { pricingAtomIdentity } from "./pricing-commercial-assembly.ts";
 import { unconditionalApplicability } from "./pricing-canonical.ts";
 import { rationalFromDecimal } from "./pricing-rational.ts";
-import { canonicalizeInstant, isPublishedTime } from "./pricing-time.ts";
+import { parsePublishedBoundary } from "./pricing-time.ts";
 import {
   canonicalizeSourceUnit,
   canonicalizeUnitPrice,
@@ -1437,32 +1437,14 @@ function contextTokenRange(
 function publishedValidity(
   conditions: SourcePriceFact["conditions"],
 ): PublishedValidity | undefined | false {
-  const from = timeBoundary(conditions.effective_from);
-  const until = timeBoundary(conditions.effective_until);
+  const from = parsePublishedBoundary(conditions.effective_from);
+  const until = parsePublishedBoundary(
+    conditions.effective_until,
+    conditions.effective_until_exclusive,
+  );
   if (from === false || until === false) return false;
   if (from === undefined) return until === undefined ? undefined : { until };
   return until === undefined ? { from } : { from, until };
-}
-
-function timeBoundary(value: string | undefined): PublishedValidity["from"] | undefined | false {
-  if (value === undefined) return undefined;
-  const precision = /^\d{4}$/.test(value)
-    ? "year"
-    : /^\d{4}-(?:0[1-9]|1[0-2])$/.test(value)
-      ? "month"
-      : /^\d{4}-(?:0[1-9]|1[0-2])-\d{2}$/.test(value)
-        ? "date"
-        : /^\d{4}-\d{2}-\d{2}T/.test(value)
-          ? "datetime"
-          : undefined;
-  if (precision === undefined) return false;
-  if (precision !== "datetime")
-    return isPublishedTime(value, precision) ? { value, precision } : false;
-  try {
-    return { value: canonicalizeInstant(value), precision };
-  } catch {
-    return false;
-  }
 }
 
 function providerCategorical(context: AdapterContext, dimension: PriceDimension, rawValue: string) {
@@ -1622,7 +1604,10 @@ function rawFact(rate: SourcePriceFact): RawPriceFact {
   const rawConditions = Object.entries(rate.conditions)
     .filter(
       ([key, value]) =>
-        value !== undefined && key !== "effective_from" && key !== "effective_until",
+        value !== undefined &&
+        key !== "effective_from" &&
+        key !== "effective_until" &&
+        key !== "effective_until_exclusive",
     )
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([dimension, value]) => ({ dimension, value: String(value) }));

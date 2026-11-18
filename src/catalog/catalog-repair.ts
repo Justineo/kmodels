@@ -85,6 +85,7 @@ const repairableReconciliationReasons = new Set([
   "public_price_shape_unsupported",
   "public_price_label_unsupported",
   "unsupported_pricing_cell_preserved",
+  "retail_meter_or_unit_unsupported",
   "optional_catalog_source_drifted",
   "pricing_input_contract_partial",
   "pricing_input_contract_drift",

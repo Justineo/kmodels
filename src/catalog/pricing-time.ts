@@ -91,6 +91,31 @@ export function isPublishedTime(value: string, precision: PublishedTimePrecision
   return dayText === undefined || isCalendarDate(year, month, Number(dayText));
 }
 
+export function parsePublishedBoundary(
+  value: string | undefined,
+  exclusive?: true,
+): PublishedTimeBoundaryLike | undefined | false {
+  if (value === undefined) return exclusive === true ? false : undefined;
+  const precision = /^\d{4}$/.test(value)
+    ? "year"
+    : /^\d{4}-(?:0[1-9]|1[0-2])$/.test(value)
+      ? "month"
+      : /^\d{4}-(?:0[1-9]|1[0-2])-\d{2}$/.test(value)
+        ? "date"
+        : /^\d{4}-\d{2}-\d{2}T/.test(value)
+          ? "datetime"
+          : undefined;
+  if (precision === undefined) return false;
+  const endpoint = exclusive === true ? { inclusive: false } : {};
+  if (precision !== "datetime")
+    return isPublishedTime(value, precision) ? { value, precision, ...endpoint } : false;
+  try {
+    return { value: canonicalizeInstant(value), precision, ...endpoint };
+  } catch {
+    return false;
+  }
+}
+
 export function publishedValidityIsCoherent(
   from: PublishedTimeBoundaryLike | undefined,
   until: PublishedTimeBoundaryLike | undefined,
@@ -178,7 +203,7 @@ function endsBefore(
   );
 }
 
-function comparePublishedTimes(
+export function comparePublishedTimes(
   from: PublishedTimeBoundaryLike,
   until: PublishedTimeBoundaryLike,
 ): number {

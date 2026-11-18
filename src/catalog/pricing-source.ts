@@ -114,6 +114,7 @@ const sourcePriceConditionsInputSchema = z.strictObject({
   video_input: z.boolean().optional(),
   effective_from: z.string().optional(),
   effective_until: z.string().optional(),
+  effective_until_exclusive: z.literal(true).optional(),
   promotion: z.boolean().optional(),
 });
 

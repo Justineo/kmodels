@@ -32,6 +32,7 @@ export const providerCollectionResultSchema = z.strictObject({
     })
     .optional(),
   pricingReplaySources: z.array(pricingReplaySourceSchema).optional(),
+  azureRetailUnmatchedVersionMeters: z.array(z.string().min(1)).max(50_000).optional(),
   inferencePriceSources: z.array(inferencePriceSourceSchema).optional(),
   pricingFailure: z.enum(pricingRefreshFailureCodes).optional(),
   quarantine: z

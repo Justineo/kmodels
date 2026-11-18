@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { readFile } from "node:fs/promises";
 import { parseSource } from "../src/catalog/adapters.ts";
+import { catalogRepairCandidates } from "../src/catalog/catalog-repair.ts";
 import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
@@ -69,21 +70,21 @@ function fixtureSource(id = "openai-pricing") {
     provider: { ...manifest.provider, source_ids: manifest.sources.map(({ id }) => id) },
   };
 }
-function parse(body: string) {
+function parse(body: string, at = observedAt) {
   const { provider, source } = fixtureSource();
   const items: PricingReconciliationItem[] = [];
   const result = parseSource({
     provider,
     source,
     body,
-    observedAt,
+    observedAt: at,
     catalogModels: [
       baseModel({
         providerId: "openai",
         id: "gpt-test",
         name: "Test",
         sourceId: "openai-models",
-        observedAt,
+        observedAt: at,
       }),
     ],
     onPricingReconciliation: (item) => items.push(item),
@@ -94,6 +95,47 @@ function parse(body: string) {
     source,
     report: sourcePricingReconciliation(result.models, items, true),
   };
+}
+function repairCandidates(parsed: ReturnType<typeof parse>) {
+  return catalogRepairCandidates({
+    schema_version: 2,
+    generated_at: observedAt,
+    providers: [
+      {
+        provider_id: "openai",
+        signals: [],
+        attempt: {
+          outcome: "accepted",
+          pricing: { outcome: "accepted" },
+          sources: [
+            {
+              source_id: parsed.source.id,
+              outcome: "unchanged",
+              pricing_reconciliation: parsed.report,
+            },
+          ],
+        },
+      },
+    ],
+  });
+}
+
+const readDatedPricing = () =>
+  readFile(new URL("./fixtures/openai/ultrafast-dated-pricing.md", import.meta.url), "utf8");
+
+function parseDatedPricing(body: string, at?: string) {
+  return parse(
+    JSON.stringify({
+      index: { url: "https://developers.openai.com/api/docs/pricing.md", body },
+      documents: [
+        {
+          url: "https://developers.openai.com/api/docs/guides/ultrafast-mode.md",
+          body: "Ultrafast supports US data residency and global processing only.",
+        },
+      ],
+    }),
+    at,
+  );
 }
 const tokenTable = (input: string, output: string) =>
   [
@@ -115,6 +157,115 @@ it("signals an unreadable owned price table without admitting an unreviewed new 
   });
   expect(result.models.map(({ model_id }) => model_id)).toEqual(["gpt-test"]);
   expect(result.models[0]?.price_facts).toHaveLength(2);
+});
+
+it("routes two unknown priced Ultrafast panels to one repair", () => {
+  const heading = "### Ultrafast Early access pricing data";
+  const header = "| Model | Short context input | Short context output |\n| --- | --- | --- |";
+  const pricing = [
+    tokenTable("$2", "$10"),
+    "Ultrafast",
+    heading,
+    header,
+    "| gpt-test | $6.00 | $30.00 |",
+    "### Ultrafast Dedicated pricing data",
+    header,
+    "| gpt-test | $12.00 | $60.00 |",
+  ].join("\n");
+  function candidates(body: string) {
+    const parsed = parse(body);
+    expect(parsed.models[0]?.price_facts).toHaveLength(2);
+    return repairCandidates(parsed);
+  }
+  const admitted = candidates(pricing);
+  expect(admitted).toHaveLength(1);
+  expect(admitted[0]?.trigger).toBe("source_pricing_structure");
+  expect(admitted[0]?.message).toContain("Ultrafast Early access pricing data: gpt-test | $6.00");
+  expect(admitted[0]?.message).toContain("Ultrafast Dedicated pricing data: gpt-test | $12.00");
+  expect(
+    candidates(
+      [tokenTable("$2", "$10"), "Ultrafast", heading, header, "| gpt-test | — | — |"].join("\n"),
+    ),
+  ).toEqual([]);
+});
+
+it("keeps dated quotes raw when the owned transition disagrees with the promotion end", async () => {
+  const body = await readDatedPricing();
+  const result = parseDatedPricing(body.replace("February 28, 2027", "February 27, 2027"));
+  const model = result.models.find(({ model_id }) => model_id === "gpt-6.2-sol");
+  expect(model?.price_facts.map(({ conditions }) => conditions.service_tier)).toEqual(
+    Array(10).fill("standard"),
+  );
+  expect(model?.raw_price_facts).toHaveLength(20);
+  expect(model?.raw_price_facts).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        conditions: expect.objectContaining({
+          service_tier: "ultrafast",
+          context_max_tokens: 272000,
+        }),
+        raw: expect.objectContaining({
+          amount: "$6.00",
+          denomination: "USD",
+          validity: expect.stringContaining("Ultrafast promotion pricing data"),
+        }),
+      }),
+      expect.objectContaining({
+        raw: expect.objectContaining({
+          amount: "$12.00",
+          denomination: "USD",
+          validity: expect.stringContaining("Ultrafast list pricing data"),
+        }),
+      }),
+    ]),
+  );
+  expect(repairCandidates(result)[0]?.message).toContain("Unresolved Ultrafast transition");
+  expect(
+    result.models.find(({ model_id }) => model_id === "gpt-6.1-sol")?.price_facts,
+  ).toHaveLength(10);
+});
+
+it("routes a missing active or upcoming Ultrafast panel or model row to one repair", async () => {
+  const body = await readDatedPricing();
+  const withoutPromotion = body.replace(
+    /### Ultrafast promotion pricing data\n\n(?:\|[^\n]+\n)+/,
+    "",
+  );
+  const withoutSolList = body.replace(/^\| gpt-6\.2-sol +\| \$12\.00 +\| \$60\.00[^\n]*\n/m, "");
+  const withoutPanels = withoutPromotion.replace(
+    /### Ultrafast list pricing data\n\n(?:\|[^\n]+\n)+/,
+    "",
+  );
+  for (const [pricing, samples, remainingSolRates] of [
+    [
+      withoutPromotion,
+      ["Ultrafast promotion pricing data: missing priced rows for gpt-6.2-astra, gpt-6.2-sol"],
+      20,
+    ],
+    [withoutSolList, ["Ultrafast list pricing data: missing priced rows for gpt-6.2-sol"], 20],
+    [withoutPanels, ["Ultrafast promotion pricing data", "Ultrafast list pricing data"], 10],
+    [
+      withoutPanels.replace("February 28, 2027", "February 27, 2027"),
+      ["Unresolved Ultrafast transition"],
+      10,
+    ],
+  ] as const) {
+    const result = parseDatedPricing(pricing);
+    expect(
+      result.models.find(({ model_id }) => model_id === "gpt-6.2-sol")?.price_facts,
+    ).toHaveLength(remainingSolRates);
+    const repairs = repairCandidates(result);
+    expect(repairs).toHaveLength(1);
+    expect(repairs[0]?.trigger).toBe("source_pricing_structure");
+    for (const sample of samples) expect(repairs[0]?.message).toContain(sample);
+  }
+  expect(repairCandidates(parseDatedPricing(body))).toEqual([]);
+  expect(repairCandidates(parseDatedPricing(withoutPromotion, "2027-03-01T08:00:00.000Z"))).toEqual(
+    [],
+  );
+  expect(
+    repairCandidates(parseDatedPricing(withoutSolList, "2027-03-01T08:00:00.000Z")),
+  ).toHaveLength(1);
 });
 
 it("retains both native write lifetimes and context bands as rate conditions", () => {

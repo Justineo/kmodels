@@ -9,6 +9,15 @@ import {
 
 export const maxDependencyFailures = 16;
 
+export const sourceRetryFailureSchema = z.object({
+  request: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9./-]{0,127}$/u),
+  attempts: z.number().int().min(1).max(3),
+  reason: z.enum(["attempt_limit", "retry_after_exceeds_budget", "backoff_exceeds_budget"]),
+  delay_ms: z.number().int().nonnegative().optional(),
+  remaining_budget_ms: z.number().int().nonnegative().optional(),
+});
+export type SourceRetryFailure = z.infer<typeof sourceRetryFailureSchema>;
+
 const sourceFailureSchema = z.object({
   outcome: z.enum(["fetch_failed", "parse_failed"]),
   message: z.string().max(1024),
@@ -23,6 +32,7 @@ export interface SourceFailure extends SourceContractFindings {
   outcome: z.infer<typeof sourceFailureSchema>["outcome"];
   message: string;
   http_status?: number;
+  retry_failure?: SourceRetryFailure;
 }
 
 export const dependencyFailureSchema = sourceFailureSchema.extend({
@@ -60,6 +70,14 @@ export class SourceFetchError extends Error {
   }
 }
 
+export class SourceRetryError extends SourceFetchError {
+  readonly retryFailure: SourceRetryFailure;
+  constructor(error: SourceFetchError, retryFailure: SourceRetryFailure) {
+    super(error.message, error.status);
+    this.retryFailure = retryFailure;
+  }
+}
+
 export function sourceErrorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
@@ -80,7 +98,9 @@ export function sourceFailure(
   const evidence = contractEvidence(error);
   let cause = error;
   let status: number | undefined;
+  let retryFailure: SourceRetryFailure | undefined;
   for (let depth = 0; depth < 8 && cause instanceof Error; depth += 1) {
+    if (cause instanceof SourceRetryError) retryFailure = cause.retryFailure;
     if (cause instanceof SourceFetchError && cause.status !== undefined) {
       status = cause.status;
       break;
@@ -91,6 +111,7 @@ export function sourceFailure(
     outcome: evidence === undefined ? fallback : "parse_failed",
     message: sourceErrorMessage(error),
     ...(status === undefined ? {} : { http_status: status }),
+    ...(retryFailure === undefined ? {} : { retry_failure: retryFailure }),
     ...(evidence === undefined ? {} : { contract_findings: [evidence] }),
   };
 }

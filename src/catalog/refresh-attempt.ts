@@ -2,7 +2,11 @@ import { z } from "zod";
 import { providerModelSchema } from "./schema.ts";
 import { providerValidationIssueSchema } from "./validation.ts";
 import { sourceContractEvidenceSchema, maxContractFindings } from "./source-contract.ts";
-import { dependencyFailureSchema, maxDependencyFailures } from "./source-failure.ts";
+import {
+  dependencyFailureSchema,
+  maxDependencyFailures,
+  sourceRetryFailureSchema,
+} from "./source-failure.ts";
 import {
   sourcePricingExtractionSchema,
   sourcePricingReconciliationSchema,
@@ -22,6 +26,7 @@ export const sourceRefreshAttemptSchema = z.object({
   extractor_changed: z.boolean().optional(),
   message: z.string().optional(),
   http_status: z.number().int().min(100).max(599).optional(),
+  retry_failure: sourceRetryFailureSchema.optional(),
   dependency_failures: z.array(dependencyFailureSchema).max(maxDependencyFailures).optional(),
   dependency_failures_omitted: z.number().int().positive().optional(),
   consecutive_failures: z.number().int().positive().optional(),
