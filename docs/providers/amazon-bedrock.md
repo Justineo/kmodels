@@ -653,13 +653,12 @@ outside Kmodels.
 
 ## Known limits
 
-The AWS Price List feeds publish roughly 23,000 price dimensions per refresh, and the normalized
-facts expand region and service-tier selectors into about 20,500 rate variants. The atomic
-pre-compaction projection for this provider is therefore larger than its compacted partition
-(about 143 MB against about 93 MB). The working bound that admits it is 256 MiB while the
-published partition budget stays 128 MiB. The complete catalog budget is 320 MiB to include scoped
-commercial selection evidence; each provider's compacted and uncompacted bytes remain bounded
-independently.
+Regional Price List quotes can repeat the same commercial selection binding across many AWS
+Regions. Within one offer, claims with identical bindings, validity, coverage and non-region
+predicates share a union of their original clauses when every observation names its own Region.
+Each source locator and raw quote remains attributable to its clause. Other claims remain
+separate. Rates, states, accounting and source contexts keep their independent evidence.
+The atomic working budget is 256 MiB and the published provider partition is limited to 128 MiB.
 
 Public rate coverage is not account-bill parity. Kmodels does not include negotiated discounts,
 capacity amortization, Marketplace private offers, taxes, credits, or free-tier balance. A model with

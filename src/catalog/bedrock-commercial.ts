@@ -15,6 +15,7 @@ import {
   unconditionalApplicability,
 } from "./pricing-canonical.ts";
 import { publishedValiditiesOverlap } from "./pricing-time.ts";
+import { pricingLimits } from "./pricing-constants.ts";
 import {
   addAtom,
   isStandardUnit,
@@ -33,6 +34,7 @@ import {
 } from "./pricing-input.ts";
 import type {
   ChargeBinding,
+  CommercialSelection,
   NormalizedPriceObservation,
   PriceApplicability,
   PriceCondition,
@@ -54,6 +56,60 @@ interface ModelUsage {
 
 const tokenUnit = standardUnit("token");
 const invocationResources = new Set(["guardrails", "prompt-routing", "reranking", "web-search"]);
+
+/** Each retained native quote identifies its own Region within the union. */
+export function compactBedrockRegionalSelections(
+  claims: CommercialSelection[],
+): CommercialSelection[] {
+  const groups = new Map<string, CommercialSelection[]>();
+  const result: CommercialSelection[] = [];
+  for (const claim of claims) {
+    const { applicability, observations, ...binding } = claim;
+    const [clause] = applicability.any_of;
+    const region = clause?.all_of.find(
+      (condition) =>
+        condition.dimension.namespace === "kmodels" && condition.dimension.value === "region",
+    );
+    const value =
+      region?.kind === "categorical" && region.values.length === 1 ? region.values[0] : undefined;
+    if (
+      !clause ||
+      applicability.any_of.length !== 1 ||
+      value?.namespace !== "provider" ||
+      value.provider_id !== "amazon-bedrock" ||
+      !observations.every(({ raw }) => {
+        const regions = raw.conditions?.filter(({ dimension }) => dimension === "region");
+        return regions?.length === 1 && regions[0]?.value === value.value;
+      })
+    ) {
+      result.push(claim);
+      continue;
+    }
+    const key = canonicalJson([binding, clause.all_of.filter((condition) => condition !== region)]);
+    const group = groups.get(key);
+    if (group) group.push(claim);
+    else groups.set(key, [claim]);
+  }
+  for (const group of groups.values()) {
+    const [first] = group;
+    if (!first || group.length === 1 || group.length > pricingLimits.applicabilityClauses) {
+      result.push(...group);
+      continue;
+    }
+    const applicability = canonicalizeApplicability({
+      any_of: group.flatMap((c) => c.applicability.any_of),
+    });
+    if (Buffer.byteLength(JSON.stringify(applicability)) > pricingLimits.applicabilityBytes)
+      result.push(...group);
+    else
+      result.push({
+        ...first,
+        applicability,
+        observations: uniqueCanonicalValues(group.flatMap((c) => c.observations)),
+      });
+  }
+  return uniqueCanonicalValues(result);
+}
 
 export function applyBedrockCommercialTopology(
   input: AtomicProviderPricing,

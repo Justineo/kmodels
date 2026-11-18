@@ -702,8 +702,40 @@ it("binds Nova Geo prices through the exact page token and native SKU", async ()
 
 it("retains Nova Pro optimized tariffs in all three evidenced source Regions through public lookup", async () => {
   const reviewed = bundleSchema.parse(JSON.parse(await fixture("bedrock/nova-pro-latency.json")));
-  const query = lookup(await collect((bundle) => overlayDocuments(bundle, reviewed.documents)));
+  const candidate = await collect((bundle) => overlayDocuments(bundle, reviewed.documents));
+  const query = lookup(candidate);
+  const speeds = candidate.pricing.data.books.flatMap((book) =>
+    book.offers.flatMap(
+      (offer) =>
+        offer.selection?.filter(
+          (claim) =>
+            claim.dimension === "speed" &&
+            claim.alternatives.some((alternative) => alternative.value.value === "optimized"),
+        ) ?? [],
+    ),
+  );
+  expect(
+    speeds.some(
+      (claim) =>
+        claim.applicability.any_of.length === 3 &&
+        new Set(
+          claim.observations.flatMap(
+            ({ raw }) =>
+              raw.conditions?.filter((c) => c.dimension === "region").map((c) => c.value) ?? [],
+          ),
+        ).size === 3,
+    ),
+  ).toBe(true);
   for (const region of ["us-east-1", "us-east-2", "us-west-2"]) {
+    expect(
+      query({
+        provider_id: "amazon-bedrock",
+        model_id: "us.amazon.nova-pro-v1:0",
+        meter: { namespace: "kmodels", value: "input_text" },
+        selectors: [select("region", region), select("service_tier", "standard")],
+        choices: [{ dimension: "speed", value: { namespace: "kmodels", value: "optimized" } }],
+      }).status,
+    ).toBe("matched");
     for (const [meter, denominator] of [
       ["input_text", "1000000"],
       ["output_text", "250000"],
