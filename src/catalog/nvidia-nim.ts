@@ -48,7 +48,7 @@ export function parseNvidiaNimModels(input: SourceParseInput) {
   );
 }
 
-function candidateSlugs(id: string): string[] {
+export function nvidiaNimCandidateSlugs(id: string): string[] {
   if (!cardPath.test(`/${id}`)) return [];
   const [publisher, model] = id.split("/");
   if (publisher === undefined || model === undefined) return [];
@@ -58,7 +58,7 @@ function candidateSlugs(id: string): string[] {
 
 export function nvidiaNimCardUrls(body: string): string[] {
   return hostedIds(body).flatMap((id) =>
-    candidateSlugs(id).map((slug) => `${buildOrigin}/${slug}`),
+    nvidiaNimCandidateSlugs(id).map((slug) => `${buildOrigin}/${slug}`),
   );
 }
 
@@ -334,6 +334,7 @@ function cardModel(
   const deprecated = deprecatedIdentity || Boolean(attributes.deprecationNotice?.trim());
   if (deprecated) model.status = "deprecated";
   if (!deprecated && attributes.showUnavailableBanner === false && routes.length > 0) {
+    model.status = "active";
     model.tasks = [...new Set(routes.map(({ task }) => task))];
     model.api_endpoints = routes.map(({ name, path }) => ({ name, path }));
   }
@@ -346,6 +347,7 @@ function apiCard(
   metadataBody: string,
   specBody: string,
   inventory: ReadonlySet<string>,
+  previousIds: ReadonlySet<string>,
 ): ParsedProviderModel | undefined {
   const { artifact } = nvidiaEndpointMetadataSchema.parse(
     parseSourceJson(metadataBody, "NVIDIA endpoint metadata"),
@@ -366,7 +368,7 @@ function apiCard(
         : parseSourceJson(raw.openAPISpec, "NVIDIA endpoint OpenAPI"),
   });
   const spec = openApi.safeParse(configuration.openAPISpec);
-  const ids = new Set([...inventory].filter((id) => candidateSlugs(id).includes(slug)));
+  const ids = new Set([...inventory].filter((id) => nvidiaNimCandidateSlugs(id).includes(slug)));
   if (spec.success)
     for (const endpoint of Object.values(spec.data.paths)) {
       const operation = operationSchema.safeParse(endpoint);
@@ -415,8 +417,10 @@ function apiCard(
     artifact.attributes.some(({ key, value }) => key === "DEPRECATED" && value === "true"),
     exactRoutes(configuration.openAPISpec, id),
   );
+  if (model.status === "deprecated")
+    return inventory.has(id) || previousIds.has(id) ? model : undefined;
   if (!inventory.has(id) && !artifact.labels.includes("nimType:endpoint:nim_type_preview")) return;
-  if (configuration.attributes.showUnavailableBanner !== false || model.status === "deprecated")
+  if (configuration.attributes.showUnavailableBanner !== false)
     return inventory.has(id) ? model : undefined;
   if (hosted.length > 0) return model;
   const endpoints: { name: string; path: string }[] = [];
@@ -461,6 +465,7 @@ function apiCard(
       });
   }
   if (endpoints.length === 0) return inventory.has(id) ? model : undefined;
+  model.status = "active";
   model.api_endpoints = endpoints;
   model.model_card = {
     publisher: artifact.publisher,
@@ -469,8 +474,14 @@ function apiCard(
   return model;
 }
 
+const nvidiaCardsBundleSchema = linkedBundleSchema.extend({
+  previousModelIds: z.array(modelIdSchema).max(180).optional(),
+});
+
 export function parseNvidiaNimCards(input: SourceParseInput): ParsedProviderModel[] {
-  const bundle = linkedBundleSchema.parse(parseSourceJson(input.body, "NVIDIA model card bundle"));
+  const bundle = nvidiaCardsBundleSchema.parse(
+    parseSourceJson(input.body, "NVIDIA model card bundle"),
+  );
   const documents = new Map(bundle.documents.map(({ url, body }) => [url, body]));
   const ids = new Set(hostedIds(bundle.index.body));
   const buildUrl = nvidiaBuildUrl();
@@ -478,19 +489,24 @@ export function parseNvidiaNimCards(input: SourceParseInput): ParsedProviderMode
     url.startsWith(buildUrl.origin + buildUrl.pathname),
   );
   const extraSlugs = buildPages.flatMap(({ body }, page) => nvidiaBuildPage(body, page).slugs);
+  const previousIds = new Set(bundle.previousModelIds);
   const native = new Map<string, ParsedProviderModel>();
-  for (const slug of new Set([...[...ids].flatMap(candidateSlugs), ...extraSlugs])) {
+  for (const slug of new Set([
+    ...[...ids].flatMap(nvidiaNimCandidateSlugs),
+    ...extraSlugs,
+    ...[...previousIds].flatMap(nvidiaNimCandidateSlugs),
+  ])) {
     const name = slug.split("/")[1];
     const url = nvidiaEndpointBase + name;
     const metadata = documents.get(url),
       spec = documents.get(url + "/spec");
     if (metadata === undefined || spec === undefined) continue;
-    const model = apiCard(input, slug, metadata, spec, ids);
+    const model = apiCard(input, slug, metadata, spec, ids, previousIds);
     if (model !== undefined) native.set(model.model_id, model);
   }
   const models = (input.catalogModels ?? []).flatMap(({ model_id }) => {
     if (!ids.has(model_id) || native.has(model_id)) return [];
-    for (const slug of candidateSlugs(model_id)) {
+    for (const slug of nvidiaNimCandidateSlugs(model_id)) {
       const body = documents.get(`${buildOrigin}/${slug}`);
       if (body === undefined) continue;
       const model = readCard(input, model_id, slug, body);
@@ -541,6 +557,8 @@ export function parseNvidiaNimRetrieval(input: SourceParseInput): ParsedProvider
         sourceId: input.source.id,
         observedAt: input.observedAt,
       });
+    if (routes.some(({ path }) => path.startsWith("https://ai.api.nvidia.com/")))
+      model.status = "active";
     model.api_endpoints ??= [];
     for (const { task, name, path, properties, description, passage } of routes) {
       if (model.api_endpoints.some((endpoint) => endpoint.path === path)) continue;

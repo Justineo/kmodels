@@ -426,6 +426,10 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
 - `/` focuses search.
 - Search uses a small in-memory index of lowercase IDs, names, and aliases with spaces and hyphens removed. Match literal substrings only; do not fuzzy-expand or relevance-rank.
 - Filters update immediately. Selecting an inline facet replaces only that category and preserves other state.
+- The default lifecycle selection is Active, Legacy, and Unknown. Legacy models remain available
+  with restrictions or supersession, and Unknown preserves models with unresolved lifecycle
+  evidence. Select Deprecated or Retired in the Lifecycle filter to include those models.
+  An empty lifecycle selection shows zero results.
 - Keep separators between multiple facet values presentational and outside interactive controls.
 - Sortable headings cycle default, ascending, descending, then default.
 - Model identity, its disclosure control, and an exact model's pricing status
@@ -449,7 +453,9 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   dismissal. Keep its title/actions outside its scroll viewport, and keep the toolbar trigger free
   of selection counts.
 - Do not use modal-dialog `closedby="any"` for light dismissal until it is baseline.
-- Filtering or sorting resets virtual scroll. Clearing filters does not move focus.
+- The toolbar and empty-state reset actions restore the default search, provider, task, lifecycle,
+  and release-stage filters. The popover reset applies only to its filters. Reset is disabled
+  when the corresponding filters are at their defaults. Filtering or sorting resets virtual scroll.
 - Keep the workspace header and table header fixed while results scroll.
 - Motion is short and removed under `prefers-reduced-motion`.
 
@@ -459,6 +465,8 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
 - Keys are `q` search, `p` provider, `o` task, `l` lifecycle, `r` release stage, `s` sort, and `m` selected model.
 - Keep historical key `o` for shared URL compatibility even though the field is now `tasks`.
 - Use stable one-character enum/sort codes and omit defaults.
+- An omitted `l` uses the default lifecycle selection. An explicit empty `l=` selects no
+  lifecycles. Nonempty lifecycle codes continue to identify their exact selections.
 - Replace the current history entry on state changes; `popstate` restores visited state.
 - Theme is local preference. Version-group expansion, popover visibility, and
   scroll positions are transient.

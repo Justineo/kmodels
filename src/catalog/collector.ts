@@ -807,6 +807,7 @@ function retainsPricingOnFailure(source: SourceManifest): boolean {
 
 async function fetchProviderSources(
   sources: readonly SourceManifest[],
+  previousModels: readonly ProviderModel[],
   onSourceFetch?: (sourceId: string, durationMs: number) => void,
 ): Promise<SourceFetch[]> {
   const discoveryCache: SagemakerDiscoveryCache = new Map();
@@ -819,7 +820,17 @@ async function fetchProviderSources(
     async (source) => {
       const started = performance.now();
       try {
-        return { sourceId: source.id, result: await fetchSource(source, discoveryCache) };
+        const result =
+          source.transport?.kind === "nvidia-nim-cards"
+            ? await fetchSource(
+                source,
+                discoveryCache,
+                previousModels
+                  .filter(({ status }) => status === "unknown" || status === "deprecated")
+                  .map(({ model_id }) => model_id),
+              )
+            : await fetchSource(source, discoveryCache);
+        return { sourceId: source.id, result };
       } catch (error) {
         return { sourceId: source.id, error };
       } finally {
@@ -1051,7 +1062,7 @@ export async function collectProvider(
 
   try {
     const sourceFetches = new Map(
-      (await fetchProviderSources(manifest.sources, onSourceFetch)).map((fetch) => [
+      (await fetchProviderSources(manifest.sources, oldModels, onSourceFetch)).map((fetch) => [
         fetch.sourceId,
         fetch,
       ]),

@@ -1,5 +1,5 @@
 <script setup lang="ts" vapor>
-import { computed, nextTick, useTemplateRef } from "vue";
+import { nextTick, useTemplateRef } from "vue";
 import { modelLifecycles, modelReleaseStages } from "../catalog/catalog-vocabulary.ts";
 import { formatModelTask } from "../catalog/presentation.ts";
 import { orderedTasks } from "../catalog/task.ts";
@@ -11,8 +11,8 @@ type ModelTask = WebsiteModel["tasks"][number];
 type ModelLifecycle = WebsiteModel["status"];
 type ModelReleaseStage = WebsiteModel["release_stage"];
 
-const props = defineProps<{ models: readonly WebsiteModel[] }>();
-const emit = defineEmits<{ clear: [] }>();
+const props = defineProps<{ models: readonly WebsiteModel[]; canReset: boolean }>();
+const emit = defineEmits<{ reset: [] }>();
 const selectedTasks = defineModel<ModelTask[]>("tasks", { required: true });
 const selectedLifecycles = defineModel<ModelLifecycle[]>("lifecycles", { required: true });
 const selectedReleaseStages = defineModel<ModelReleaseStage[]>("releaseStages", {
@@ -25,13 +25,6 @@ const updateScrollbars = useOverlayScrollbars(() => ({
   target: filterScrollHost.value,
   viewport: filterScrollViewport.value,
 }));
-const hasSelections = computed(
-  () =>
-    selectedTasks.value.length > 0 ||
-    selectedLifecycles.value.length > 0 ||
-    selectedReleaseStages.value.length > 0,
-);
-
 function handleToggle(event: ToggleEvent): void {
   if (event.newState === "open") void nextTick(updateScrollbars);
 }
@@ -51,7 +44,7 @@ function handleToggle(event: ToggleEvent): void {
         <p>Matches any selected value within each group.</p>
       </div>
       <div class="filter-popover-actions">
-        <button type="button" :disabled="!hasSelections" @click="emit('clear')">Clear</button>
+        <button type="button" :disabled="!canReset" @click="emit('reset')">Reset</button>
         <button
           class="filter-popover-close"
           type="button"

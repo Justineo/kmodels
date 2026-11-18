@@ -2342,12 +2342,24 @@ describe("OpenAI adapters", () => {
       { id: "gpt-realtime", shutdown_date: "2026-07-20" },
       { id: "gpt-6-luna", shutdown_date: null },
       { id: "gpt-invalid", shutdown_date: "2026-02-30" },
+      { id: "account-private" },
+      { id: "public-alias" },
     ].map((item) => ({ object: "model", created: 1772668800, owned_by: "openai", ...item }));
     const models = parseSource({
       provider: provider(value),
       source,
       observedAt,
       body: JSON.stringify({ data }),
+      catalogModels: ["gpt-6-luna", "gpt-invalid"].map((id) => ({
+        ...baseModel({
+          providerId: "openai",
+          id,
+          name: id,
+          sourceId: "openai-models",
+          observedAt,
+        }),
+        aliases: ["public-alias"],
+      })),
     }).models;
     expect(
       models.map(({ model_id, status, retired_at, release_date }) => ({
@@ -2369,9 +2381,21 @@ describe("OpenAI adapters", () => {
         retired_at: "2026-07-20",
         release_date: undefined,
       },
-      { model_id: "gpt-6-luna", status: "unknown", retired_at: undefined, release_date: undefined },
+      { model_id: "gpt-6-luna", status: "active", retired_at: undefined, release_date: undefined },
       {
         model_id: "gpt-invalid",
+        status: "unknown",
+        retired_at: undefined,
+        release_date: undefined,
+      },
+      {
+        model_id: "account-private",
+        status: "unknown",
+        retired_at: undefined,
+        release_date: undefined,
+      },
+      {
+        model_id: "public-alias",
         status: "unknown",
         retired_at: undefined,
         release_date: undefined,

@@ -11948,13 +11948,14 @@ describe("DashScope adapters", () => {
       markdownSources.every(({ format, url }) => format === "markdown" && url.endsWith(".md")),
     ).toBe(true);
     expect(source("dashscope-recommended")).toMatchObject({
-      extractorVersion: "dashscope-recommended-v9",
+      extractorVersion: "dashscope-recommended-v10",
+      fields: expect.arrayContaining(["status"]),
       retainOmittedFacts: true,
     });
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v34",
+      extractorVersion: "dashscope-pricing-v35",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "beijing-pricing", optional: true, claimLocal: true }),

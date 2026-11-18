@@ -525,6 +525,7 @@ export function parseDashscopeMarket(input: SourceParseInput, value: unknown) {
       model.price_facts = rates;
       model.raw_price_facts = raw;
       model.pricing_state = rates.length > 0 ? "numeric" : "unknown";
+      model.status = "active";
       model.scope = "regional_catalog";
       model.availability = [{ region: region.label, deployment_type: "model_api" }];
       if (rates.some(({ meter }) => meter.startsWith("cache_")))

@@ -1295,7 +1295,7 @@ export function parseDashscopeRecommended(input: ParseInput): SourceParseResult 
       extractor.minModels,
       extractor.maxModels,
       "DashScope recommended-model",
-    ),
+    ).map((model) => ({ ...model, status: "active" })),
   };
 }
 
@@ -2685,7 +2685,8 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
       if (row.length === 0 || (row.length > 1 && row.every((cell) => cell === row[0]))) continue;
       if (!regional) observedRows += 1;
       const idCell = row[idIndex];
-      const stripPreview = (value: string) => value.replace(/\s*\(Invitational preview\)\s*$/i, "");
+      const previewQualifier = /\s*\((?:Invitational preview|invite-only beta)\)\s*$/i;
+      const stripPreview = (value: string) => value.replace(previewQualifier, "");
       const rowIds = cellIds(
         idCell === undefined
           ? undefined
@@ -2783,7 +2784,12 @@ export function parseDashscopePricing(input: ParseInput): SourceParseResult {
             tasks,
             modalities: priceModalities(tasks, modelRates, table.headings),
             status: discontinued ? "retired" : "active",
-            release_stage: /preview/i.test(`${id} ${idCell?.text ?? ""}`) ? "preview" : "unknown",
+            release_stage:
+              /preview/i.test(`${id} ${idCell?.text ?? ""}`) ||
+              previewQualifier.test(idCell?.text ?? "") ||
+              idCell?.parts.some((part) => previewQualifier.test(part))
+                ? "preview"
+                : "unknown",
             pricing_state: discontinued
               ? "not_applicable"
               : modelRates.length > 0

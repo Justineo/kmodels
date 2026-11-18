@@ -4,7 +4,7 @@ import { setTimeout as wait } from "node:timers/promises";
 import { promisify } from "node:util";
 import { load } from "cheerio";
 import { fireworksConsoleTargets, fireworksModelPaths } from "./fireworks.ts";
-import { nvidiaNimCardUrls } from "./nvidia-nim.ts";
+import { nvidiaNimCandidateSlugs, nvidiaNimCardUrls } from "./nvidia-nim.ts";
 import { nvidiaBuildPage, nvidiaBuildUrl, nvidiaEndpointBase } from "./nvidia-build.ts";
 import { togetherCatalogIds, togetherMissingCacheIds } from "./together.ts";
 import { togetherLibraryPage, togetherNextLibraryPage } from "./together-metadata.ts";
@@ -1802,7 +1802,10 @@ async function fetchFireworksServerless(source: SourceManifest): Promise<FetchRe
   };
 }
 
-async function fetchNvidiaCards(source: SourceManifest): Promise<FetchResult> {
+async function fetchNvidiaCards(
+  source: SourceManifest,
+  previousModelIds: readonly string[],
+): Promise<FetchResult> {
   const index = await fetchPayload(
     requestSource(source, `${source.id}/index`, new URL(source.url), "json", 1024 * 1024),
   );
@@ -1838,6 +1841,11 @@ async function fetchNvidiaCards(source: SourceManifest): Promise<FetchResult> {
     dependencies.push(observation(`${source.id}/build/${page}`, payload));
   }
   assertItemCount("NVIDIA endpoint profiles", slugs.size, 1, 180);
+  const previous = previousModelIds.slice(0, 180);
+  for (const slug of previous.flatMap(nvidiaNimCandidateSlugs)) {
+    if (slugs.size === 180) break;
+    slugs.add(slug);
+  }
   // Endpoint names are unique within the public NGC namespace; publishers still qualify identity.
   const requests = new Map([...slugs].map((slug) => [slug.split("/")[1], slug]));
   const results = await mapConcurrent([...requests.values()], 8, async (slug) => {
@@ -1886,7 +1894,11 @@ async function fetchNvidiaCards(source: SourceManifest): Promise<FetchResult> {
       documents.push(...result.documents);
       dependencies.push(...result.dependencies);
     }
-  const body = JSON.stringify({ index: { url: source.url, body: index.body }, documents });
+  const body = JSON.stringify({
+    index: { url: source.url, body: index.body },
+    documents,
+    ...(previous.length === 0 ? {} : { previousModelIds: previous }),
+  });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("NVIDIA endpoint bundle exceeded aggregate byte limit");
   return {
@@ -2899,11 +2911,13 @@ async function fetchDashscopePricing(source: SourceManifest): Promise<FetchResul
 export async function fetchSource(
   source: SourceManifest,
   discoveryCache?: SagemakerDiscoveryCache,
+  previousModelIds: readonly string[] = [],
 ): Promise<FetchResult> {
   if (source.transport?.kind === "dashscope-pricing") return fetchDashscopePricing(source);
   if (source.transport?.kind === "together-serverless") return fetchTogetherServerless(source);
   if (source.transport?.kind === "fireworks-serverless") return fetchFireworksServerless(source);
-  if (source.transport?.kind === "nvidia-nim-cards") return fetchNvidiaCards(source);
+  if (source.transport?.kind === "nvidia-nim-cards")
+    return fetchNvidiaCards(source, previousModelIds);
   const readDiscovery = (input: SourceManifest) => sagemakerDiscoveryPayload(input, discoveryCache);
   if (source.transport?.kind === "sagemaker-marketplace-pricing")
     return fetchSagemakerMarketplaceApi(source, readDiscovery, (request, body, send) =>

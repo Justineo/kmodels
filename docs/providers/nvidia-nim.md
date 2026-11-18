@@ -17,7 +17,9 @@ shared endpoint, which can be collected without a key. The
 [NVIDIA API Catalog quickstart](https://docs.api.nvidia.com/nim/docs/api-quickstart)
 describes the hosted service and its invocation credentials.
 
-The inventory establishes exact shared-endpoint identifiers. An optional supplement prefers
+The inventory establishes exact shared-endpoint identifiers. Some listed IDs have deprecated cards
+or unavailable endpoint banners, so inventory membership alone leaves lifecycle unknown.
+An optional supplement prefers
 the public JSON APIs used by [NVIDIA Build](https://build.nvidia.com/models):
 
 - `https://api.ngc.nvidia.com/v2/search/catalog/resources/ENDPOINT` discovers the full
@@ -38,6 +40,10 @@ schema's literal model default, example or unique enum establishes the request I
 when it differs from the endpoint's page slug. For independently addressed REST products,
 retain the typed endpoint identity and its exact owned inference path. Exclude management
 operations. Known inventory IDs can join fixed routes only through an exact path boundary.
+When the shared inventory omits a previously observed Unknown or Deprecated ID, use the
+remaining profile budget to check its exact Build metadata and specification for an explicit
+deprecation. The historical ID permits this check and cannot by itself establish current
+deployment or retire the model. Current inventory and preview candidates have priority.
 
 Public preview entries can also establish hosted NVCF access through the matching
 `nvcfFunctionId` and inference path. The [NVCF invocation reference](https://docs.api.nvidia.com/cloud-functions/reference/invokefunctionstreaming_2)
@@ -49,7 +55,9 @@ unknown payloads and output types remain unknown. These records use typed endpoi
 gRPC function-header recipe. No global alias is inferred from a function UUID.
 
 The supplement reads names, descriptions, publisher, model-card update dates, context,
-modalities, capabilities and deprecation from those exact profiles. Specs can be several
+modalities, capabilities and lifecycle from those exact profiles. An available profile with an
+exact hosted request establishes Active. A deprecation flag or notice takes precedence.
+Specs can be several
 megabytes, so allow up to 4 MiB per specification or HTML fallback, with a 48 MiB aggregate
 bound, at most 180 endpoint profiles and eight concurrent profile fetches. An unavailable
 JSON profile falls back to its bounded [public model card](https://build.nvidia.com/models).
@@ -70,6 +78,10 @@ route. Record the separate retrieval host explicitly. Published request schemas 
 modalities, maximum input sizes and supported embedding dimension ranges. An ignored or
 deprecated API compatibility parameter supplies no dimension limit. Local-only specs and
 model page slugs alone do not establish a hosted request identifier.
+The registry's exact requests on its dedicated retrieval host fill Unknown as Active while
+preserving known lifecycle from the model profile. Registry operation pages for the shared
+inference host can outlast current deployment or deprecation, so those pages supply the
+operation without supplying Active lifecycle.
 
 The catalog scope remains non-exhaustive for partner services, downloadable artifacts and
 profiles whose identity or invocation cannot be qualified. Review the LLM, retrieval,

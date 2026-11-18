@@ -45,6 +45,15 @@ const lifecycleCodes = [
   ["u", "unknown"],
 ] as const satisfies readonly CodeEntry<ModelLifecycle>[];
 
+export const defaultLifecycles = ["active", "legacy", "unknown"] as const;
+
+export function hasDefaultLifecycles(values: readonly ModelLifecycle[]): boolean {
+  return (
+    values.length === defaultLifecycles.length &&
+    defaultLifecycles.every((lifecycle) => values.includes(lifecycle))
+  );
+}
+
 const releaseStageCodes = [
   ["s", "stable"],
   ["p", "preview"],
@@ -90,11 +99,14 @@ function formatSort(value: SortState | undefined): string | undefined {
 
 export function parseRouteSearch(search: string): RouteState {
   const params = new URLSearchParams(search);
+  const lifecycleParam = params.get("l");
+  const lifecycles = parseCodes(lifecycleParam, lifecycleCodes);
   return {
     query: params.get("q") ?? "",
     provider: params.get("p") ?? "",
     tasks: parseCodes(params.get("o"), taskCodes),
-    lifecycles: parseCodes(params.get("l"), lifecycleCodes),
+    lifecycles:
+      lifecycleParam === "" || lifecycles.length > 0 ? lifecycles : [...defaultLifecycles],
     releaseStages: parseCodes(params.get("r"), releaseStageCodes),
     sort: parseSort(params.get("s")),
     modelUid: params.get("m") || undefined,
@@ -107,11 +119,11 @@ export function formatRouteSearch(state: RouteState): string {
   if (state.provider !== "") params.set("p", state.provider);
 
   const tasks = formatCodes(state.tasks, taskCodes);
-  const lifecycles = formatCodes(state.lifecycles, lifecycleCodes);
   const releaseStages = formatCodes(state.releaseStages, releaseStageCodes);
   const sort = formatSort(state.sort);
   if (tasks !== "") params.set("o", tasks);
-  if (lifecycles !== "") params.set("l", lifecycles);
+  if (!hasDefaultLifecycles(state.lifecycles))
+    params.set("l", formatCodes(state.lifecycles, lifecycleCodes));
   if (releaseStages !== "") params.set("r", releaseStages);
   if (sort !== undefined) params.set("s", sort);
   if (state.modelUid !== undefined) params.set("m", state.modelUid);

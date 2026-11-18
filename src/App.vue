@@ -11,6 +11,7 @@ import {
   type Component,
 } from "vue";
 import { afterFirstPaint } from "./after-first-paint.ts";
+import { modelLifecycles } from "./catalog/catalog-vocabulary.ts";
 import { loadWebsiteModelDetail, preloadWebsiteSchemas } from "./catalog/website-loader.ts";
 import {
   groupModels,
@@ -27,7 +28,9 @@ import {
 } from "./catalog/presentation.ts";
 import type { WebsiteCatalog, WebsiteModel } from "./catalog/website-schema.ts";
 import {
+  defaultLifecycles,
   formatRouteSearch,
+  hasDefaultLifecycles,
   parseRouteSearch,
   type SortDirection,
   type SortKey,
@@ -113,7 +116,7 @@ const filteredModels = computed(() => {
   if (
     selectedProvider.value !== "" ||
     selectedTasks.value.length > 0 ||
-    selectedLifecycles.value.length > 0 ||
+    selectedLifecycles.value.length !== modelLifecycles.length ||
     selectedReleaseStages.value.length > 0
   )
     values = values.filter(
@@ -121,8 +124,7 @@ const filteredModels = computed(() => {
         (selectedProvider.value === "" || model.provider_id === selectedProvider.value) &&
         (selectedTasks.value.length === 0 ||
           model.tasks.some((task) => selectedTasks.value.includes(task))) &&
-        (selectedLifecycles.value.length === 0 ||
-          selectedLifecycles.value.includes(model.status)) &&
+        selectedLifecycles.value.includes(model.status) &&
         (selectedReleaseStages.value.length === 0 ||
           selectedReleaseStages.value.includes(model.release_stage)),
     );
@@ -150,13 +152,14 @@ const virtualRows = computed(() =>
   tableRows.value.slice(virtualRange.value.start, virtualRange.value.end),
 );
 const hasResults = computed(() => filteredModelGroups.value.length > 0);
-const hasFilters = computed(
+const hasAdvancedFilters = computed(
   () =>
-    query.value !== "" ||
-    selectedProvider.value !== "" ||
     selectedTasks.value.length > 0 ||
-    selectedLifecycles.value.length > 0 ||
+    !hasDefaultLifecycles(selectedLifecycles.value) ||
     selectedReleaseStages.value.length > 0,
+);
+const hasFilters = computed(
+  () => query.value !== "" || selectedProvider.value !== "" || hasAdvancedFilters.value,
 );
 const resultCountLabel = computed(() => {
   const count = filteredModelGroups.value.length;
@@ -267,12 +270,12 @@ function ariaSort(key: SortKey): "ascending" | "descending" | "none" {
 function resetFilters(): void {
   query.value = "";
   selectedProvider.value = "";
-  clearAdvancedFilters();
+  resetAdvancedFilters();
 }
 
-function clearAdvancedFilters(): void {
+function resetAdvancedFilters(): void {
   selectedTasks.value = [];
-  selectedLifecycles.value = [];
+  selectedLifecycles.value = [...defaultLifecycles];
   selectedReleaseStages.value = [];
 }
 
@@ -615,7 +618,7 @@ onUnmounted(() => {
           class="clear-button"
           type="button"
           :disabled="!hasFilters"
-          aria-label="Clear filters"
+          aria-label="Reset filters"
           @click="resetFilters"
         >
           <UiIcon name="x" />
@@ -634,7 +637,8 @@ onUnmounted(() => {
           v-model:lifecycles="selectedLifecycles"
           v-model:release-stages="selectedReleaseStages"
           :models="models"
-          @clear="clearAdvancedFilters"
+          :can-reset="hasAdvancedFilters"
+          @reset="resetAdvancedFilters"
         />
       </div>
 
@@ -647,7 +651,7 @@ onUnmounted(() => {
         >
           <div v-if="!hasResults" class="table-state">
             <p>No observed models match these filters.</p>
-            <button v-if="hasFilters" type="button" @click="resetFilters">Clear filters</button>
+            <button v-if="hasFilters" type="button" @click="resetFilters">Reset filters</button>
           </div>
           <table v-else class="model-table" :aria-rowcount="tableRows.length + 1">
             <caption class="visually-hidden">

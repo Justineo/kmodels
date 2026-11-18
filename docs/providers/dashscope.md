@@ -228,7 +228,9 @@ Production collection uses only Alibaba Cloud first-party sources:
 - the [model price book](https://www.alibabacloud.com/help/en/model-studio/model-pricing) owns
   current public invocation prices, including USD-prefixed Qwen3.8 Omni token and cache-hit rows
   scoped by the table's region and deployment column. The same price parser accepts explicit
-  `USD/million tokens` suffixes and currency-bearing headers for audio token rates;
+  `USD/million tokens` suffixes and currency-bearing headers for audio token rates. An exact
+  model ID's parenthetical `Invitational preview` or `invite-only beta` label establishes
+  Preview maturity and is separate from the request identifier;
 - the anonymous console `listFoundationModels` operation supplies the complete reviewed
   regional public inference inventory, exact cache tariffs, uncovered regional meters and
   API-specific built-in tool quotes described above;
@@ -309,7 +311,11 @@ If two rows in one source make contradictory capability claims for the same exac
 capability becomes `unknown` and the conflict is reported. The model and every non-conflicting field
 remain available.
 
-The recommendation page adds only exact region and endpoint evidence. Detailed cards provide exact
+The recommendation page fills unknown lifecycle as Active for exact regional listings. It
+preserves known lifecycle from other sources. The console inventory likewise establishes Active
+when the exact model appears in a reviewed region and scope with `supports.inference: true`.
+An independent price quote does not establish that console lifecycle observation.
+Detailed cards provide exact
 request routes and regions. Compact listings provide exact model IDs in console links and the
 console path's reviewed region, but no request route; repeated links are merged by exact ID.
 Listings may use either the original hash route or `/<region>/model/market/detail/<encoded-id>`.

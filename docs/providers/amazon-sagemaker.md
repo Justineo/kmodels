@@ -96,9 +96,11 @@ The configured enrichment Region is `us-west-2`. Routine collection uses `ListHu
 The API fills display names, descriptions, missing model-card facts, modalities and explicit
 fine-tuning support. A positive
 `(region, jumpstart-endpoint)` pair requires `Available`, `Supported`, and a nonempty supported
-inference-instance list in the same model response. This is regional route evidence, not a
-guarantee of account entitlement, subscription, quota, or capacity. Restricted/deprecated hub
-content does not create positive availability or overwrite the global model lifecycle.
+inference-instance list in the same model response. The same positive evidence can fill an
+unknown lifecycle as Active for the admitted model. It establishes deployability in the
+observed Region. Account entitlement, subscription, quota, and capacity remain separate.
+Restricted or deprecated hub content supplies no positive availability. The regional
+inventory fills missing lifecycle and preserves known public lifecycle.
 Absence from one Region does not delete a global model.
 
 Only a bounded metadata projection leaves the API transport. Account/resource ARNs, package

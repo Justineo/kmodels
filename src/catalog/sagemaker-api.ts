@@ -153,8 +153,10 @@ export function parseSagemakerInventory(input: SourceParseInput): SourceParseRes
       if (row.model_card !== undefined) model.model_card = row.model_card;
       model.modalities = { input: row.input, output: row.output };
       model.capabilities.fine_tuning = row.fineTuning ?? "unknown";
-      if (row.available)
+      if (row.available) {
+        model.status = "active";
         model.availability = [{ region: data.region, deployment_type: "jumpstart-endpoint" }];
+      }
       return model;
     }),
   };

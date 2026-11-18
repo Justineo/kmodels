@@ -161,6 +161,7 @@ it("collects native endpoint APIs beyond the shared inventory without inventing 
   expect(
     result.models.find(({ model_id }) => model_id === "moonshotai/kimi-k3.1-pro"),
   ).toMatchObject({
+    status: "active",
     limits: { context_tokens: 1048576 },
     tasks: ["text_generation"],
     capabilities: { tool_call: true, structured_output: true, reasoning: true },
@@ -169,6 +170,7 @@ it("collects native endpoint APIs beyond the shared inventory without inventing 
   });
   expect(result.models.some(({ model_id }) => model_id === "moonshotai/kimi-k3_1-pro")).toBe(false);
   expect(result.models.find(({ model_id }) => model_id === "nvidia/body-pose")).toMatchObject({
+    status: "active",
     api_endpoints: [{ name: "NVCF gRPC", path: "grpc.nvcf.nvidia.com:443" }],
     modalities: { input: ["video"], output: [] },
   });
@@ -301,7 +303,28 @@ it("enriches exact hosted IDs and uses the hosted request schema to confirm alte
   });
   const unknown = result.models.find(({ model_id }) => model_id === unknownId);
   expect(unknown).toBeDefined();
+  expect(unknown?.status).toBe("unknown");
   expect(unknown?.description).toBeUndefined();
+});
+
+it("preserves a previously observed ID's explicit deprecation outside the shared inventory", async () => {
+  const { bundle, rows } = await nativeBundle();
+  const row = rows[1];
+  if (row === undefined) throw new Error("Missing native endpoint fixture");
+  row.spec.attributes = JSON.stringify({ deprecationNotice: "Deprecated endpoint." });
+  const specification = bundle.documents.find(({ url }) => url.endsWith("/body-pose/spec"));
+  if (specification === undefined) throw new Error("Missing native endpoint specification");
+  specification.body = JSON.stringify(row.spec);
+  vi.mocked(fetchSource).mockImplementation(async ({ id }) => {
+    if (id === "nvidia-nim-models") return payload(inventory);
+    if (id === "nvidia-nim-cards")
+      return payload(JSON.stringify({ ...bundle, previousModelIds: ["nvidia/body-pose"] }));
+    throw new Error("No retrieval fixture");
+  });
+  const result = await collectProvider(manifest(), undefined, { sources: {} }, now);
+  expect(result.models.find(({ model_id }) => model_id === "nvidia/body-pose")).toMatchObject({
+    status: "deprecated",
+  });
 });
 
 it("keeps the hosted inventory when NVIDIA Build is unavailable", async () => {
@@ -398,6 +421,7 @@ it("admits a retrieval-only model from an exact hosted request and rejects local
   expect(result.coverage.status).toBe("fresh");
   expect(result.models).toHaveLength(7);
   expect(result.models.find(({ model_id }) => model_id === reranker)).toMatchObject({
+    status: "active",
     tasks: ["reranking"],
     modalities: { input: ["text", "image"], output: [] },
     limits: { max_input_tokens: 10240 },
@@ -409,6 +433,9 @@ it("admits a retrieval-only model from an exact hosted request and rejects local
     result.models.find(({ model_id }) => model_id === "nvidia/fixed-embed")?.limits
       .embedding_dimension_range,
   ).toBeUndefined();
+  expect(result.models.find(({ model_id }) => model_id === "nvidia/fixed-embed")?.status).toBe(
+    "unknown",
+  );
   expect(
     result.models.find(({ model_id }) => model_id === "nvidia/resize-embed")?.limits
       .embedding_dimension_range,

@@ -687,6 +687,37 @@ it("preserves an independently indexed snapshot's own catalog facts", async () =
   ).toBe(123456);
 });
 
+it.each([
+  { label: "Shut down", parent: "Shut down", status: "retired" },
+  { label: "", parent: "Current model", status: "active" },
+  { label: "", parent: "Deprecated", status: "unknown" },
+  { label: "Unrecognized", parent: "Current model", status: "unknown" },
+])(
+  "uses exact snapshot lifecycle evidence ($label, $parent)",
+  async ({ label, parent, status }) => {
+    const id = "gpt-4.1-2025-04-14";
+    const body = (await fixture("invocation-gpt-4.1.md")).replace(
+      `- \`${id}\` — Deprecated`,
+      `- \`${id}\`${label === "" ? "" : ` — ${label}`}`,
+    );
+    const candidate = await collect((input) => {
+      const { catalog } = input;
+      catalog.index.body += `\n- [GPT-4.1](/api/docs/models/gpt-4.1.md): ${parent}`;
+      catalog.documents.push({
+        url: "https://developers.openai.com/api/docs/models/gpt-4.1.md",
+        body,
+      });
+      if (status === "retired") input.pricing = input.pricing.replaceAll("gpt-5.4", id);
+    });
+    expect(candidate.catalog.models.find(({ model_id }) => model_id === id)?.status).toBe(status);
+    expect(lookup(candidate)({ provider_id: "openai", model_id: id }).reason).toBe("unreviewed_id");
+    if (status === "retired")
+      expect(
+        candidate.pricing.data.books.some(({ scope }) => scope.model_refs.includes(`openai/${id}`)),
+      ).toBe(false);
+  },
+);
+
 it("rebuilds from independent current card and exact price-row evidence instead of retaining removed IDs", async () => {
   const previous = await collect();
   const missingCard = (catalog: Bundle) => {
@@ -711,6 +742,27 @@ it("rebuilds from independent current card and exact price-row evidence instead 
   expect(
     lookup(withdrawn)({ provider_id: "openai", model_id: "controlled-price-model" }).status,
   ).toBe("candidates");
+});
+
+it("fills lifecycle from reviewed access-program listings and leaves other price-only IDs unknown", async () => {
+  const candidate = await collect((input) => {
+    input.pricing += `
+Specialized models
+
+Standard
+
+| Category | Model | Input | Output | Cached input | 30m write | 12h write |
+| --- | --- | --- | --- | --- | --- | --- |
+| Life Sciences — Trusted Access: [Rosalind](https://help.openai.com/en/articles/20001193-gpt-rosalind-for-life-sciences-research) | gpt-research-fixture (short context) | $1 | $2 | $0.5 | - | - |
+| Legal model configurations | gpt-6.2-astra-law (short context) | $1 | $2 | $0.5 | - | - |
+| Legal model configurations | gpt-6-astra-law (short context) | $1 | $2 | $0.5 | - | - |
+| Other | gpt-price-only-fixture (short context) | $1 | $2 | $0.5 | - | - |`;
+  });
+  const model = (id: string) => candidate.catalog.models.find(({ model_id }) => model_id === id);
+  expect(model("gpt-research-fixture")?.status).toBe("active");
+  expect(model("gpt-6.2-astra-law")?.status).toBe("active");
+  expect(model("gpt-6-astra-law")?.status).toBe("unknown");
+  expect(model("gpt-price-only-fixture")?.status).toBe("unknown");
 });
 
 it("projects the same ID, conditions and price selection to the website", async () => {

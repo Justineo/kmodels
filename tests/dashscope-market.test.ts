@@ -41,6 +41,7 @@ it("normalizes Batch Chat suffixes and speech character tariffs without borrowin
   );
   const result = parseDashscopeMarket(input, body);
   const chat = result.models.find(({ model_id }) => model_id === "qwen3.6-flash");
+  expect(chat?.status).toBe("active");
   expect(chat?.price_facts).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
@@ -82,6 +83,7 @@ it("normalizes Batch Chat suffixes and speech character tariffs without borrowin
   const voice = parseDashscopeMarket(input, unreviewed).models.find(
     ({ model_id }) => model_id === "cosyvoice-v3.5-flash",
   );
+  expect(voice?.status).toBe("active");
   expect(voice?.price_facts).toEqual([]);
   expect(voice?.raw_price_facts).toContainEqual(
     expect.objectContaining({
@@ -614,6 +616,23 @@ it("keeps Batch File, thinking, time bands and contradictory media labels separa
   ).not.toHaveProperty("resolution");
   expect(model.raw_price_facts.find(({ raw }) => raw.amount === "5")).toMatchObject({
     reason: "unknown_applicability",
+  });
+});
+
+it("keeps the exact model ID and preview status for invite-only price rows", async () => {
+  const bundle = (await dashscopeInferenceFixture()).get("dashscope-pricing");
+  if (!bundle) throw new Error("Missing pricing fixture");
+  bundle.index.body += `
+    <h2>Singapore</h2><table>
+      <tr><th>Model ID</th><th>Input price (USD/million tokens)</th></tr>
+      <tr><td><code>qwen-invitation-fixture</code>(invite-only beta)</td><td>0.50</td></tr>
+    </table>`;
+  const result = parseSource({ ...input, body: JSON.stringify(bundle) });
+  expect(
+    result.models.find(({ model_id }) => model_id === "qwen-invitation-fixture"),
+  ).toMatchObject({
+    status: "active",
+    release_stage: "preview",
   });
 });
 

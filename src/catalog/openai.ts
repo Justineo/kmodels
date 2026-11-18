@@ -1277,6 +1277,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
   const vocabulary: ProviderAtomRegistryEntry[] = [];
   const pricingAliases = openAiPricingAliases(input.body);
   const pricedIds = new Set<string>();
+  const currentProgramIds = new Set<string>();
   const toolsText = openAiToolPricingText(input.body);
   const containerBilling = [
     ...toolsText.matchAll(/Eligible container sessions will be billed[^.]*\./g),
@@ -1469,7 +1470,22 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
         continue;
       }
       target ??= createTarget(rawId);
-      if (target.model_id === rawId) pricedIds.add(rawId);
+      if (target.model_id === rawId) {
+        pricedIds.add(rawId);
+        const category = row[table.headers.indexOf("Category")]?.replace(
+          /^<a id="[a-z0-9-]+"><\/a>/,
+          "",
+        );
+        if (
+          target.status === "unknown" &&
+          (table.section === "Life sciences models" ||
+            (table.section === "Specialized models" &&
+              (category ===
+                "Life Sciences — Trusted Access: [Rosalind](https://help.openai.com/en/articles/20001193-gpt-rosalind-for-life-sciences-research)" ||
+                (category === "Legal model configurations" && rawId === "gpt-6.2-astra-law"))))
+        )
+          currentProgramIds.add(rawId);
+      }
       for (const claim of claims) {
         const fact = claim.rate;
         if (fact !== undefined) {
@@ -1728,6 +1744,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
           observedAt: input.observedAt,
         }),
         tasks: target.tasks,
+        status: currentProgramIds.has(modelId) ? "active" : "unknown",
         pricing_state: publishedRates.length === 0 ? "unknown" : fullyFree ? "free" : "numeric",
         price_facts: fullyFree ? [] : publishedRates,
         raw_price_facts: rawPriceFacts,
@@ -2203,6 +2220,11 @@ export function parseOpenAiModelPricing(input: ParseInput): ProviderModel[] {
 
 export function parseOpenAiApi(input: ParseInput): ProviderModel[] {
   const list = listSchema.parse(parseJson(input.body));
+  const catalogIds = new Set(
+    input.catalogModels
+      ?.filter(({ version }) => version === undefined)
+      .map(({ model_id }) => model_id),
+  );
   assertItemCount("OpenAI model API", list.data.length, 1, undefined, ["data"]);
   return recognizeItems({
     label: "OpenAI model",
@@ -2223,7 +2245,7 @@ export function parseOpenAiApi(input: ParseInput): ProviderModel[] {
         model.retired_at = date.data;
         model.status = date.data <= input.observedAt.slice(0, 10) ? "retired" : "deprecated";
       } else input.onContractFinding?.(contractExtensionEvidence(["/data/shutdown_date"]));
-    }
+    } else if (catalogIds.has(item.id)) model.status = "active";
     return model;
   });
 }

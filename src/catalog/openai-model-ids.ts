@@ -2,6 +2,7 @@ import { modelIdSchema } from "./identity.ts";
 import { markdownSection } from "./markdown.ts";
 import { baseModel } from "./model.ts";
 import type { ParsedProviderModel } from "./pricing-source.ts";
+import type { ModelLifecycle } from "./schema.ts";
 import type { SourceParseResult } from "./source-parse.ts";
 
 export interface OpenAiModelCard {
@@ -58,13 +59,20 @@ export function openAiSnapshotModels(input: {
       .split(/\r?\n/)
       .filter((line) => line === `- \`${id}\`` || line.startsWith(`- \`${id}\` — `));
     if (entries.length !== 1) return [];
-    return [{ card, id, deprecated: entries[0] === `- \`${id}\` — Deprecated` }];
+    const [entry] = entries;
+    let status: ModelLifecycle = "unknown";
+    if (entry === `- \`${id}\` — Shut down`) status = "retired";
+    else if (entry === `- \`${id}\` — Deprecated`) status = "deprecated";
+    else if (entry === `- \`${id}\`` && card.model.status === "active") status = "active";
+    return [{ card, id, status }];
   });
   const models = [...input.models];
   const cards = input.cards.map((card) => ({ ...card }));
   const byId = new Map(models.map((model) => [model.model_id, model]));
-  for (const { card, id, deprecated } of defaults) {
+  for (const { card, id, status } of defaults) {
     if (!byId.has(id)) {
+      const owners = defaults.filter((entry) => entry.id === id);
+      const lifecycle = owners.every((entry) => entry.status === status) ? status : "unknown";
       const snapshot: ParsedProviderModel = {
         ...baseModel({
           providerId: "openai",
@@ -73,11 +81,12 @@ export function openAiSnapshotModels(input: {
           sourceId: input.sourceId,
           observedAt: input.observedAt,
         }),
-        status: deprecated ? "deprecated" : "unknown",
+        status: lifecycle,
+        pricing_state: lifecycle === "retired" ? "not_applicable" : "unknown",
       };
       // Several cards may name one snapshot. Its independent identity survives, while rich
       // facts require one owning card or the snapshot's independently indexed card.
-      if (defaults.filter((entry) => entry.id === id).length === 1) {
+      if (owners.length === 1) {
         snapshot.tasks = card.model.tasks;
         snapshot.api_endpoints = card.model.api_endpoints;
         snapshot.modalities = card.model.modalities;

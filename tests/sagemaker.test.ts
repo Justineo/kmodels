@@ -796,12 +796,21 @@ describe("SageMaker public-hub projection", () => {
     expect(models[0]).toMatchObject({
       model_id: "fixture-speech",
       scope: "regional_catalog",
+      status: "active",
       modalities: { input: ["text"], output: ["audio"] },
       availability: [{ region: "us-west-2", deployment_type: "jumpstart-endpoint" }],
       account_availability: "unknown",
       description: "Published speech model",
       model_card: { publisher: "Publisher", license: "MIT", context_window: "<4K" },
     });
+    expect(
+      parseSource({
+        provider,
+        source: source("sagemaker-api-us-west-2"),
+        body: body.replace('"available":true', '"available":false'),
+        observedAt,
+      }).models[0],
+    ).toMatchObject({ status: "unknown" });
     expect(
       () =>
         parseSource({

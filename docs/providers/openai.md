@@ -112,9 +112,22 @@ is inferred from an API path, and no snapshot or alias borrows a price by name s
   and `Shut down` labels distinguish deprecated and retired models independently of the optional
   schedule. An explicit shutdown badge also establishes a no-offer disposition for that exact ID.
   The schedule can supply the exact shutdown date.
+- The API pricing catalog's dedicated Trusted Access listing can also establish Active for an
+  exact configuration in a currently available program. The specialized model table links
+  the [Rosalind availability policy](https://help.openai.com/en/articles/20001193-gpt-rosalind-for-life-sciences-research),
+  which documents current API availability for separately approved organizations. The legal
+  table supplies the exact identifiers, and the [6.2 program announcement](https://openai.com/index/astra-law-6-2/)
+  confirms API access for the current Astra for Law configuration. A tariff for another
+  configuration, including the older Astra for Law, leaves lifecycle unresolved without its
+  own current availability evidence. Program eligibility remains separate from lifecycle.
 - A card contributes rich facts only when its URL and single `Model ID` agree.
 - Display name, description, snapshots, routed aliases, modalities, limits, endpoint support,
   capabilities, and tool support are parsed independently where possible.
+- A model card can admit its explicitly declared default snapshot when the exact ID also occurs in
+  its snapshot list. The entry's `Shut down` and `Deprecated` labels apply to that exact ID. An
+  unqualified entry establishes Active when its owning card is current and active. Conflicting
+  card evidence and unrecognized labels remain Unknown. An independently indexed snapshot keeps
+  its own catalog authority. Snapshot lifecycle does not transfer the parent model's tariff.
 - Changelog `Feature` entries provide the earliest exact release date for catalog identities; later
   updates do not move that date and unknown changelog identities cannot create catalog rows.
   A family launch can identify its members in the opening release sentence. Each listed literal
@@ -170,6 +183,8 @@ is inferred from an API path, and no snapshot or alias borrows a price by name s
   [Live](https://developers.openai.com/api/docs/models/gpt-live-1) card labels observed on 2026-10-04.
 - The optional API inventory can add only positive account-visible evidence. Absence and private
   IDs never remove or widen the global catalog, and raw authenticated bodies are not retained.
+  A currently available entry without a shutdown date fills unknown lifecycle only for an exact
+  public catalog ID. An inventory alias cannot establish lifecycle for its canonical target.
   Its documented optional `shutdown_date` supplies a calendar date for exact admitted public IDs;
   null and omission do not clear independently published lifecycle evidence. `created` is not a
   public release date. Invalid shutdown cells are withheld locally without losing inventory.
