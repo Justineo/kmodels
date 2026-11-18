@@ -23,45 +23,7 @@ import { loadWebsiteCatalog, parseWebsiteCatalog } from "../src/catalog/website-
 import { WEBSITE_CORE_CHUNK_MAX_BYTES, websiteCoreAssets } from "../src/catalog/website-core.ts";
 import type { WebsiteModelDetail, WebsitePricingOffer } from "../src/catalog/website-schema.ts";
 import { generatedData } from "./generated-data-context.ts";
-
-const auditFields = new Set([
-  "atom_contract_hash",
-  "charge_binding",
-  "charge_bindings",
-  "relation_observations",
-  "core_catalog_version",
-  "core_data_sha256",
-  "core_generated_at",
-  "delivery_mode_evidence",
-  "derivation",
-  "fact_inventory_hash",
-  "locator",
-  "observations",
-  "pricing_version",
-  "raw",
-  "raw_type",
-  "scope_observations",
-  "source_refs",
-  "task_evidence",
-  "term_key",
-]);
-function foundAuditFields(value: unknown, fields = auditFields): string[] {
-  const found = new Set<string>();
-  const pending = [value];
-  while (pending.length > 0) {
-    const current = pending.pop();
-    if (Array.isArray(current)) {
-      pending.push(...current);
-      continue;
-    }
-    if (current === null || typeof current !== "object") continue;
-    for (const [field, item] of Object.entries(current)) {
-      if (fields.has(field)) found.add(field);
-      pending.push(item);
-    }
-  }
-  return [...found].sort();
-}
+import { foundAuditFields } from "./website-audit-fields.ts";
 
 let generatedPublication: ReturnType<typeof loadGeneratedPublication> | undefined;
 
@@ -203,7 +165,7 @@ describe("website data", () => {
     expect(amounts).not.toEqual(expect.arrayContaining([expect.stringMatching(/\d\/\d/)]));
   }, 90_000);
 
-  it("publishes audit-free details in bounded provider chunks", async () => {
+  it("publishes model evidence and audit-free prices in bounded provider chunks", async () => {
     const { catalog, pricing, publication } = await publicationData();
     const details = publication.details.flatMap((chunk) => chunk.details);
     expect(details).toHaveLength(catalog.models.length);
@@ -255,7 +217,8 @@ describe("website data", () => {
         ),
       );
     }
-    expect(foundAuditFields([details, publication.offers])).toEqual([]);
+    expect(foundAuditFields(details, "model-details")).toEqual([]);
+    expect(foundAuditFields(publication.offers)).toEqual([]);
     const hydratedDetails = publishedModelDetails(publication);
     const offers = hydratedDetails.flatMap(({ pricing }) => pricing?.offers ?? []);
     for (const offer of offers) {

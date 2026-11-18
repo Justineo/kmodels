@@ -575,10 +575,12 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   remain build concerns. Keep post-paint chunks out of the HTML module-preload
   graph. Mount the inspector into a second Vapor root and share only the small
   reactive detail state.
-- All UI projections exclude source records, observations, locators, undigested
-  source fragments, derivations, evidence arrays, and canonical audit-envelope
-  metadata. Raw commercial facts may retain only display-safe structured
-  parameters such as amount, denomination, unit, meter, validity, formula, and
+- UI projections exclude audit source records, observations, locators, undigested source
+  fragments, derivations, evidence arrays, and canonical audit-envelope metadata. Versioned
+  model detail chunks carry bounded document evidence for scoped limit and capability claims,
+  including each document locator under its claim's `evidence`. Raw commercial facts may
+  retain only display-safe structured parameters such as amount, denomination, unit, meter,
+  validity, formula, and
   conditions. They retain displayed commercial semantics—including reviewed usage-signal
   definitions, aggregation boundaries, resolution phases, and provider-snapshot freshness copy.
   Compact official source links, verification status and explanatory copy are permitted for

@@ -21,6 +21,7 @@ import { catalogSchema } from "../src/catalog/schema.ts";
 import { websitePublication } from "../src/catalog/website-data.ts";
 import { loadWebsiteModelDetail } from "../src/catalog/website-loader.ts";
 import { websiteDetailChunkSchema, type WebsiteModel } from "../src/catalog/website-schema.ts";
+import { foundAuditFields } from "./website-audit-fields.ts";
 
 const at = "2026-11-17T00:00:00.000Z";
 const group: LimitDetailGroup = {
@@ -153,6 +154,8 @@ describe("versioned scoped limit website details", () => {
       websiteDetailChunkSchema.parse(JSON.parse(packedChunk(provider))),
     );
     expect(versions.map(({ schema_version }) => schema_version)).toEqual([9, 8, 7]);
+    const details = versions.flatMap((chunk) => chunk.details);
+    expect(foundAuditFields(details, "model-details")).toEqual([]);
     expect(() => websiteDetailChunkSchema.parse({ ...versions[0], schema_version: 8 })).toThrow();
     vi.stubGlobal(
       "fetch",
@@ -184,6 +187,20 @@ describe("versioned scoped limit website details", () => {
     expect(websiteDataVersionForCatalog(withdrawn, pricing.pricing_data_version)).toBe(
       websiteDataVersion(core.catalog_version, pricing.pricing_data_version, undefined, true),
     );
+  });
+  it("flags pricing locators and raw fields alongside allowed model-claim locators", () => {
+    const claims = { limit_details: [group] };
+    expect(foundAuditFields([claims])).toEqual(["locator"]);
+    expect(foundAuditFields([{ ...claims, pricing: claims }], "model-details")).toEqual([
+      "locator",
+    ]);
+    const groupWithRawEvidence = {
+      ...group,
+      evidence: group.evidence.map((revision) => ({ ...revision, raw: "source fragment" })),
+    };
+    expect(foundAuditFields([{ limit_details: [groupWithRawEvidence] }], "model-details")).toEqual([
+      "raw",
+    ]);
   });
   it("projects real statement-bearing assets under the conditional v8 cache identity", async () => {
     const coreInput: unknown = JSON.parse(stableJson(catalog([group])));
