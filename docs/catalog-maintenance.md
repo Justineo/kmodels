@@ -60,23 +60,15 @@ Configure repository secrets `CATALOG_REPAIR_DEEPSEEK_API_KEY` and
 OpenAI is reserved for independent verification and concrete-error takeover, both using
 `gpt-6.2-sol` high with Codex CLI. Optional GPT assistance during DeepSeek investigation is disabled.
 
-| Stage                                                    | Total run reservation                    |
-| -------------------------------------------------------- | ---------------------------------------- |
-| Preparation and DeepSeek investigation                   | USD 0                                    |
-| Routine or semantic verification                         | Up to USD 1                              |
-| Complex verification (architecture or repeated attempts) | Up to USD 2                              |
-| Verified concrete error requiring takeover               | Incrementally increased to at most USD 4 |
+Preparation and DeepSeek investigation reserve USD 0 of OpenAI spend. After admission, a
+serialized budget job reserves up to USD 10 for the entire run attempt, subject to the remaining
+monthly allowance. Initial verification at every difficulty can use that reservation. New
+reservations stop at USD 110 per UTC month, leaving USD 10 of the USD 120 allocation as headroom.
+Trusted settlement releases unused funds. The inference job has no ledger write token.
 
-These amounts are spending ceilings, not expected costs. New reservations stop at USD 110 per UTC
-month, leaving USD 10 of the USD 120 allocation as headroom. Unused reservations are released on
-trusted settlement. A dedicated serialized budget job reads the immutable admission after the
-DeepSeek investigation to reserve the initial amount. The inference job has no ledger write token.
-
-Initial verification finishes before any takeover reservation. Only its hash-bound concrete-error
-checkpoint can authorize a separate budget job to extend the same lease to USD 4, subject to the
-remaining monthly allowance. This is a total run ceiling, not an additional USD 4. At least USD 2
-must remain before takeover starts: repair may spend at most USD 1, preserving at least USD 1 for
-fresh investigation/verification. Remaining run allowance can fund that final verification.
+A hash-bound concrete-error checkpoint authorizes takeover on the same lease. Takeover requires
+at least USD 2 remaining and leaves USD 1 available for fresh final verification. Final verification
+can use the entire remaining balance. Charges from earlier sessions count toward the USD 10 total.
 Unchanged evidence fingerprints cannot repeatedly trigger takeover. A separate publication-validation
 continuation still requires all ordinary gates.
 

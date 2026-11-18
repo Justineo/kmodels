@@ -21,7 +21,7 @@ Status: implemented
 - Production build validation checks that the already-validated pair can be consumed and
   materialized. It is not a substitute for unit or adapter behavior tests.
 - Maintenance tests verify reservation/settlement failure boundaries, task invalidation and
-  incremental USD 1/2/4 reservations, concrete-error checkpoint binding and monthly exhaustion,
+  shared USD 10 run reservations, concrete-error checkpoint binding and monthly exhaustion,
   scheduling, model routing with mocked Responses HTTP, public-only captures, mailbox path
   isolation, full-source evidence, complete independent verdict coverage and adoption prerequisites.
   Workflow checks preserve private accounting, unprivileged Codex isolation, final-patch threat

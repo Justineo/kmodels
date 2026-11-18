@@ -240,10 +240,11 @@ export async function startCodexGateway(options: {
   });
   await chmod(options.socket, 0o600);
   return {
-    startPhase: (allowance: number) => {
+    startPhase: (allowance = options.lease.reserved_microusd - charged) => {
       phaseLimit = Math.min(options.lease.reserved_microusd, charged + allowance);
     },
     charged: () => charged,
+    remaining: () => phaseLimit - charged,
     close: () =>
       new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),

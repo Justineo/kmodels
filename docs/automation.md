@@ -188,8 +188,8 @@ Status: implemented
   `CATALOG_REPAIR_DEEPSEEK_API_KEY`, not Copilot's included inference allowance. The key is passed only to the
   API proxy, excluded from the agent container, and sent only to `https://api.deepseek.com`.
 - [Catalog maintenance](catalog-maintenance.md) defines the trusted work ledger, fair scheduling,
-  difficulty routing and the USD 120 monthly allocation. Ordinary verification reserves up to USD 1,
-  complex verification USD 2, and a verified concrete error may extend the whole run to USD 4.
+  difficulty routing and the USD 120 monthly allocation. Independent verification, authorized
+  takeover and final verification draw from one OpenAI reservation of up to USD 10 per run attempt.
   Optional GPT assistance during DeepSeek investigation is disabled. GPT independently
   verifies every repaired and no-defect conclusion in fresh Codex sessions. Specific evidenced
   errors permit one Sol high Codex takeover and fresh verification; insufficient evidence cannot

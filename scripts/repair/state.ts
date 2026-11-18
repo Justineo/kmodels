@@ -74,16 +74,8 @@ export const emptyState = (): MaintenanceState => ({
 // All reservations, including interrupted calls, count against the UTC calendar month's limit.
 export const monthlyLimit = 120_000_000;
 export const reserveLimit = 110_000_000;
-export const runAllowance = 1_000_000;
-export const takeoverAllowance = 4_000_000;
-export const verificationAllowance = (level: "routine" | "semantic" | "complex") =>
-  level === "complex" ? 2_000_000 : runAllowance;
-export function reserveBudget(
-  state: MaintenanceState,
-  id: string,
-  now: Date,
-  enabled: boolean,
-): BudgetLease {
+export const runAllowance = 10_000_000;
+export function prepareBudgetLease(state: MaintenanceState, id: string, now: Date): BudgetLease {
   const existing = state.leases.find((lease) => lease.id === id);
   if (existing) return existing;
   const month = now.toISOString().slice(0, 7);
@@ -92,16 +84,10 @@ export function reserveBudget(
     .toISOString()
     .slice(0, 7);
   state.leases = state.leases.filter((lease) => lease.month >= cutoff);
-  const used = state.leases
-    .filter((lease) => lease.month === month)
-    .reduce(
-      (sum, lease) => sum + (lease.settled ? lease.charged_microusd : lease.reserved_microusd),
-      0,
-    );
   const lease: BudgetLease = {
     id,
     month,
-    reserved_microusd: enabled ? Math.max(0, Math.min(runAllowance, reserveLimit - used)) : 0,
+    reserved_microusd: 0,
     charged_microusd: 0,
     settled: false,
   };
@@ -119,20 +105,10 @@ export function settleBudget(state: MaintenanceState, id: string, charged: numbe
 }
 
 /** Called only by a serialized trusted budget job, never by a model or inference host. */
-export function extendBudget(
-  state: MaintenanceState,
-  id: string,
-  target: number,
-  now: Date,
-): BudgetLease {
+export function reserveRunBudget(state: MaintenanceState, id: string, now: Date): BudgetLease {
   const lease = state.leases.find((item) => item.id === id);
-  if (
-    !lease ||
-    lease.settled ||
-    lease.month !== now.toISOString().slice(0, 7) ||
-    ![runAllowance, 2_000_000, takeoverAllowance].includes(target)
-  )
-    throw new Error("Invalid budget extension");
+  if (!lease || lease.settled || lease.month !== now.toISOString().slice(0, 7))
+    throw new Error("Invalid budget reservation");
   const used = state.leases
     .filter((item) => item.month === lease.month)
     .reduce(
@@ -141,7 +117,7 @@ export function extendBudget(
     );
   lease.reserved_microusd += Math.max(
     0,
-    Math.min(target - lease.reserved_microusd, reserveLimit - used),
+    Math.min(runAllowance - lease.reserved_microusd, reserveLimit - used),
   );
   return lease;
 }

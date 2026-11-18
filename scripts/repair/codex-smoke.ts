@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { startRelay } from "./codex-relay.ts";
 import { startCodexGateway, codexRequest } from "./codex-gateway.ts";
 import { codexArguments, codexModelCatalog, containerArguments } from "./codex-runner.ts";
+import { runAllowance } from "./state.ts";
 
 // Protocol/isolation smoke with deterministic local Responses data, never paid inference.
 const local = process.argv.includes("--local");
@@ -33,7 +34,7 @@ const gateway = await startCodexGateway({
   lease: {
     id: "1-1",
     month: new Date().toISOString().slice(0, 7),
-    reserved_microusd: 1_000_000,
+    reserved_microusd: runAllowance,
     charged_microusd: 0,
     settled: false,
   },
@@ -116,7 +117,7 @@ const gateway = await startCodexGateway({
     });
   },
 });
-gateway.startPhase(1_000_000);
+gateway.startPhase();
 const relay = local ? startRelay(join(directory, "api.sock"), 0) : undefined;
 try {
   if (relay && !relay.listening)
@@ -181,7 +182,7 @@ try {
   )
     throw new Error("Codex protocol smoke did not complete with exact mocked usage");
   // Exercise ambiguous transport failure and contention against the same real Unix gateway.
-  const requestInput = { model: "gpt-6.2-sol", input: [] };
+  const requestInput = { model: "gpt-6.2-sol", input: [], instructions: "x".repeat(90_000) };
   const post = () =>
     new Promise<number>((resolve, reject) => {
       const req = request(
@@ -194,8 +195,13 @@ try {
       req.on("error", reject);
       req.end(JSON.stringify(requestInput));
     });
-  failNext = true;
   gateway.startPhase(1_000_000);
+  assert(codexRequest(requestInput).reservation > gateway.remaining());
+  assert.equal(await post(), 400);
+  assert.equal(calls, 2);
+  gateway.startPhase();
+  assert.equal(gateway.remaining(), runAllowance - 800);
+  failNext = true;
   const pending = post();
   await started;
   const reserved = 800 + codexRequest(requestInput).reservation;

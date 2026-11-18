@@ -17,10 +17,8 @@ import {
   leaseSchema,
   observeCandidates,
   recordOutcome,
-  reserveBudget,
-  extendBudget,
-  verificationAllowance,
-  takeoverAllowance,
+  prepareBudgetLease,
+  reserveRunBudget,
   settleBudget,
   type MaintenanceState,
 } from "./state.ts";
@@ -147,11 +145,10 @@ async function main(): Promise<void> {
   const now = new Date();
   if (command === "prepare") {
     await observe(state);
-    const lease = reserveBudget(
+    const lease = prepareBudgetLease(
       state,
       `${env("GITHUB_RUN_ID")}-${env("GITHUB_RUN_ATTEMPT")}`,
       now,
-      false,
     );
     writeState(repo, state, sha);
     const directory = env("MAINTENANCE_OUTPUT");
@@ -201,14 +198,7 @@ async function main(): Promise<void> {
     if (!lease || charged > lease.reserved_microusd)
       throw new Error("Missing or invalid prior budget");
     if (process.env.MAINTENANCE_OPENAI_AVAILABLE === "true" && admission.candidates.length)
-      extendBudget(
-        state,
-        id,
-        command === "reserve-takeover"
-          ? takeoverAllowance
-          : verificationAllowance(admission.difficulty),
-        now,
-      );
+      reserveRunBudget(state, id, now);
     writeState(repo, state, sha);
     await mkdir(output, { recursive: true });
     await writeFile(join(output, "lease.json"), JSON.stringify(lease));

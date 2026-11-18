@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { assertRepairChanges, parseRepairOutcome } from "../catalog-repair-publication.ts";
 import { validateRepairReview } from "../catalog-repair-review.ts";
-import { digest, leaseSchema, stateSchema, verificationAllowance } from "./state.ts";
+import { digest, leaseSchema, stateSchema } from "./state.ts";
 import { readSharedFile, writePrivateJson } from "./files.ts";
 import { startCodexGateway } from "./codex-gateway.ts";
 import { catalogRepairModel } from "./openai.ts";
@@ -394,7 +394,7 @@ async function main(): Promise<void> {
       await writeFile(
         join(directory, "prompt.txt"),
         instructions +
-          `This stage has at most USD ${((lease.reserved_microusd - gateway.charged()) / 1_000_000).toFixed(2)} remaining across sessions. Investigate the admitted claims with narrow reads and focused checks. Reuse acquired source receipts; do not dump full files or rerun unchanged checks. Preserve evidence limits honestly.\n` +
+          `This stage has at most USD ${(gateway.remaining() / 1_000_000).toFixed(2)} remaining across sessions. Investigate the admitted claims with narrow reads and focused checks. Reuse acquired source receipts; do not dump full files or rerun unchanged checks. Preserve evidence limits honestly.\n` +
           prompt,
       );
       for (const [name, text] of Object.entries(files))
@@ -477,10 +477,11 @@ async function main(): Promise<void> {
       return report;
     };
     try {
-      gateway.startPhase(verificationAllowance(admission.difficulty));
       let report: Verification;
-      if (stage === "initial") report = await verify("initial");
-      else {
+      if (stage === "initial") {
+        gateway.startPhase();
+        report = await verify("initial");
+      } else {
         const prior = join(input, "initial");
         await checkEvidenceTree(join(prior, "effective-evidence"));
         await cp(join(prior, "effective-evidence"), evidence, { recursive: true });
@@ -516,11 +517,12 @@ async function main(): Promise<void> {
             await appendFile(process.env.GITHUB_OUTPUT, "outcome=needs_takeover\n");
           return;
         }
-        if (lease.reserved_microusd - gateway.charged() < 2_000_000)
+        const remaining = lease.reserved_microusd - gateway.charged();
+        if (remaining < 2_000_000)
           throw new Error("Insufficient reserved budget for takeover and fresh verification");
         takeoverAttempted = true;
         await saveDecision("concrete_error");
-        gateway.startPhase(1_000_000);
+        gateway.startPhase(remaining - 1_000_000);
         const work = await freshWork("takeover", patch);
         // Existing review receipts remain available at their original paths for bounded revision.
         await cp(originalEvidence, evidence, { recursive: true, force: false });
@@ -556,7 +558,7 @@ async function main(): Promise<void> {
             patchHash: digest(patch),
           },
         );
-        gateway.startPhase(lease.reserved_microusd - gateway.charged());
+        gateway.startPhase();
         report = await verify("revised");
       }
       await cp(effectiveProofRoot, evidence, { recursive: true, force: false });
