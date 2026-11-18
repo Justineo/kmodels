@@ -86,32 +86,38 @@ async function collect(
   );
 }
 let baseline: CatalogPairCandidate;
+let baselineLookup: ReturnType<typeof createInferencePriceLookup>;
 beforeAll(async () => {
-  baseline = await collect();
-}, 20000);
-function lookup(candidate = baseline) {
-  return createInferencePriceLookup(
-    priceDataExport(candidate.catalog, candidate.pricing),
-    candidate.inference?.mapping,
-  );
-}
-
-it("preserves exact hosted Gemma identities through the redirected documentation layout", async () => {
-  const api = await readFile(
-    new URL("./fixtures/gemini/gemma-redirect.html", import.meta.url),
-    "utf8",
-  );
-  const card = await readFile(
-    new URL("./fixtures/gemini/gemma-card-redirect.html", import.meta.url),
-    "utf8",
-  );
-  const candidate = await collect(undefined, undefined, (bundle) => {
-    for (const document of bundle.documents) {
-      if (document.url.endsWith("/gemma_on_gemini_api")) document.body = api;
-      if (document.url.endsWith("/model_card_4")) document.body = card;
+  const [api, card] = await Promise.all([
+    readFile(new URL("./fixtures/gemini/gemma-redirect.html", import.meta.url), "utf8"),
+    readFile(new URL("./fixtures/gemini/gemma-card-redirect.html", import.meta.url), "utf8"),
+  ]);
+  baseline = await collect(undefined, undefined, (bundle) => {
+    for (const [path, body] of [
+      ["gemma_on_gemini_api", api],
+      ["model_card_4", card],
+    ] as const) {
+      const document = bundle.documents.find(
+        ({ url }) => url === `https://ai.google.dev/gemma/docs/core/${path}`,
+      );
+      if (!document) throw new Error(`Missing Gemma fixture: ${path}`);
+      document.body = body;
     }
   });
-  const hosted = candidate.catalog.models.filter(({ model_id }) => model_id.startsWith("gemma-4-"));
+  baselineLookup = lookup(baseline);
+}, 20000);
+function lookup(candidate?: CatalogPairCandidate) {
+  return candidate === undefined
+    ? baselineLookup
+    : createInferencePriceLookup(
+        priceDataExport(candidate.catalog, candidate.pricing),
+        candidate.inference?.mapping,
+      );
+}
+
+it("preserves exact hosted Gemma identities through the redirected documentation layout", () => {
+  const hosted = baseline.catalog.models.filter(({ model_id }) => model_id.startsWith("gemma-4-"));
+  const query = lookup();
   expect(hosted.map(({ model_id }) => model_id).sort()).toEqual([
     "gemma-4-26b-a4b-it",
     "gemma-4-31b-it",
@@ -119,9 +125,7 @@ it("preserves exact hosted Gemma identities through the redirected documentation
   for (const model of hosted) {
     expect(model.limits.context_tokens).toBe(256000);
     expect(model.modalities).toEqual({ input: ["text", "image"], output: ["text"] });
-    expect(lookup(candidate)({ provider_id: "gemini", model_id: model.model_id }).status).toBe(
-      "candidates",
-    );
+    expect(query({ provider_id: "gemini", model_id: model.model_id }).status).toBe("candidates");
   }
 });
 
