@@ -35,12 +35,15 @@ waiting for investigation or inference. An unavailable or invalid ledger stops p
 
 Tasks retain candidate identity, source/implementation fingerprint, attempts, evidence run, coverage,
 reason and next action. A changed fingerprint reopens the question and invalidates saved coverage.
+Finishing a run cannot overwrite a newer attempt or results for a changed fingerprint.
 Incident selection respects severity, cooldown and waiting time; seven-day-old work cannot be
 starved by new high-severity work. New failures absent from the accepted snapshot still qualify.
 Blocked work backs off up to 72 hours; a checked no-defect conclusion lasts seven days unless the
 fingerprint changes. The daily provider/global rotation remains independent. Idle incident slots
-resume unfinished periodic reviews, and admitted tasks can load up to two prior investigation
-artifacts, including available semantic-review and publication-validation feedback. An unpublished
+resume unfinished periodic reviews even when other incidents are cooling down. Admitted tasks
+can load the investigations from up to two prior runs, including the initial verifier, takeover
+and publication-validation feedback. Candidate check results and interruption notes are leads
+for the next investigation. An unpublished
 proposal explicitly directs the next run to address those findings. Prior evidence is a lead: freshness, implementation applicability and proof must be
 rechecked. The investigation checker copies referenced historical proof into the current artifact
 after validating the review, preserving each receipt's contents, hash and original timestamps.
@@ -142,9 +145,12 @@ not a guarantee of semantic completeness.
 
 Only concrete errors trigger Sol high takeover. It starts from the proposed tree, may edit only
 the existing repair allowlist and must regenerate the ordinary review/regression proof for its
-exact final patch. Even a rejected no-defect conclusion can become a repair. Two fresh verification
-sessions then reassess the revised result. Their initial investigation cannot see the takeover's
-explanation. Failed, exhausted or unsupported verification produces no publishable artifact.
+exact final patch. The takeover allowance applies to the candidates with concrete errors.
+A fresh comparison checks the revised patch. Within the same run it can reuse the blinded
+assessment and its frozen evidence files when the original admission (including base revision)
+and the entire set of candidates under review match. Different scope requires a fresh blinded
+investigation. A comparison may checkpoint candidate-specific next actions and receipt paths
+before returning its full report. Partial notes never authorize publication.
 
 Each Codex session runs in a disposable container with networking disabled, no capabilities,
 non-root identity, read-only container filesystem, read-only Git metadata, dependencies and trusted
@@ -168,6 +174,7 @@ access outside the investigation.
 The final job forwards a supported initial proposal without a second inference run, or resumes
 the concrete-error checkpoint with the extended lease. A failed or missing final-stage usage
 receipt retains the full reservation; initial spending can settle when the final job was skipped.
+The latest applicable verifier receipt settles independently of the zero-spend proposer receipt.
 
 The final independently verified artifact is the only input to threat detection and publication.
 Threat detection waits for this artifact and checks its exact hash; it still uses the existing
@@ -195,7 +202,9 @@ becomes `adopted`. A successful deployment receipt must match that exact snapsho
 `deployed_run`. Push and dispatched deployments pass the uploaded receipt's artifact ID to a
 separate job in the same workflow. That job shares the maintenance ledger queue and records the
 deploying run and attempt idempotently, including when only the ledger job is retried.
-Out-of-order refresh and deployment delivery is reconciled by snapshot identity. These facts
+Out-of-order refresh and deployment delivery is reconciled by snapshot identity. Once deployment
+is confirmed, subsequent refreshes and redeployments preserve the matched snapshot and run for
+that task fingerprint. These facts
 prove operational adoption, not that all provider semantics are complete. A retained old snapshot,
 passing parser alone or deployment of another snapshot cannot close adoption.
 

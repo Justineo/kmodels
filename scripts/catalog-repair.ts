@@ -109,7 +109,7 @@ if (maintenance && !periodic) {
   candidates = allCandidates.filter((candidate) => candidate.provider_id === provider);
   deferred = allCandidates.filter((candidate) => candidate.provider_id !== provider);
 }
-if (maintenance && !periodic && allCandidates.length === 0) {
+if (maintenance && !periodic && candidates.length === 0 && !executionNeedsReview) {
   const unfinished = maintenance.tasks
     .filter(
       (task) =>

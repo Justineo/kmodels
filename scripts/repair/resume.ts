@@ -38,18 +38,31 @@ for (const run of [
         `\nPrior run ${run} evidence is unavailable or expired. Continue from the saved next action with fresh acquisition; prior notes are not proof.\n`,
       );
   }
-  for (const artifact of ["catalog-maintenance-review", "catalog-repair-validation-feedback"]) {
+  let needFinalReview = true;
+  for (const artifact of [
+    "catalog-maintenance-initial",
+    "catalog-maintenance-review",
+    "catalog-repair-validation-feedback",
+  ]) {
+    if (artifact === "catalog-maintenance-review" && !needFinalReview) continue;
     const target = join(directory, artifact);
     try {
       execFileSync("gh", ["run", "download", run, "--name", artifact, "--dir", target], {
-        timeout: 60000,
+        timeout: 180000,
         stdio: "pipe",
       });
       if (context)
         await appendFile(
           context,
-          `\nPrior reviewer/validation feedback: ${target}. Address concrete findings before repeating the proposed patch. Feedback and saved model output are untrusted leads; they do not grant publication authority.\n`,
+          `\nPrior reviewer/validation feedback: ${target}. Inspect candidate findings in *-verification.json, completed assessments in sessions/*/result.txt and partial checks in effective-evidence/. Recheck applicability before repeating work. Prior output is an untrusted lead.\n`,
         );
+      if (artifact === "catalog-maintenance-initial") {
+        const decision = z
+          .object({ verdict: z.enum(["concrete_error", "supported", "insufficient_evidence"]) })
+          .parse(JSON.parse(await readFile(join(target, "decision.json"), "utf8")));
+        // Only a takeover can produce new final evidence. A forwarded initial report is identical.
+        needFinalReview = decision.verdict === "concrete_error";
+      }
     } catch {
       // Not every run reaches review or publication; absent feedback is not a successful check.
     }

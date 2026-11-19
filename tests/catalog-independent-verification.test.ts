@@ -1,13 +1,14 @@
 import { expect, it, vi } from "vite-plus/test";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   checkVerification,
   checkTakeoverCheckpoint,
   closedCandidates,
+  reusableBaseline,
   verificationVerdict,
 } from "../scripts/repair/verification.ts";
 import { codexRequest, boundedBody, serialRoute } from "../scripts/repair/codex-gateway.ts";
@@ -16,8 +17,11 @@ import {
   checkEvidenceTree,
   codexArguments,
   containerArguments,
+  saveBlindedBaseline,
+  restoreBlindedBaseline,
 } from "../scripts/repair/codex-runner.ts";
 import { digest } from "../scripts/repair/state.ts";
+import { verificationFeedback } from "../scripts/repair/verification-feedback.ts";
 
 function report(verdict: "supported" | "concrete_error" | "insufficient_evidence" = "supported") {
   const files = new Map<string, string>([
@@ -55,6 +59,78 @@ function report(verdict: "supported" | "concrete_error" | "insufficient_evidence
     files,
   };
 }
+it("reuses only a blinded baseline from the same admission and complete candidate set", () => {
+  const checkpoint = {
+    admission_sha256: digest("base and admission"),
+    candidate_ids: ["a", "b"],
+    assessment: "Independent baseline",
+    has_files: false,
+  };
+  expect(reusableBaseline(checkpoint, "base and admission", ["b", "a"])).toEqual(checkpoint);
+  expect(reusableBaseline(checkpoint, "new base", ["a", "b"])).toBeUndefined();
+  expect(reusableBaseline(checkpoint, "base and admission", ["a"])).toBeUndefined();
+  expect(reusableBaseline(undefined, "base and admission", ["a", "b"])).toBeUndefined();
+});
+
+it("restores only evidence frozen before the proposal was visible", async () => {
+  const root = await mkdtemp(join(tmpdir(), "repair-baseline-"));
+  try {
+    const evidence = join(root, "evidence"),
+      prior = join(root, "prior"),
+      restored = join(root, "restored");
+    await mkdir(join(evidence, "independent-sources"), { recursive: true });
+    await mkdir(prior);
+    await writeFile(join(evidence, "independent-sources", "original.json"), "gateway-owned");
+    await writeFile(join(evidence, "consumer.txt"), "blinded evidence");
+    await saveBlindedBaseline(
+      prior,
+      evidence,
+      "same base and admission",
+      ["model"],
+      "original finding",
+    );
+    await writeFile(join(evidence, "consumer.txt"), "proposer edit");
+    await writeFile(join(evidence, "proposer.txt"), "late evidence");
+    expect(
+      await restoreBlindedBaseline(prior, restored, "same base and admission", ["model"]),
+    ).toBe("original finding");
+    expect(await readFile(join(restored, "consumer.txt"), "utf8")).toBe("blinded evidence");
+    expect(await readdir(restored)).toEqual(["consumer.txt"]);
+    await rm(join(prior, "baseline-files"), { recursive: true });
+    expect(
+      await restoreBlindedBaseline(prior, restored, "same base and admission", ["model"]),
+    ).toBeUndefined();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("keeps the initial contradiction and partial revised work available after an interruption", async () => {
+  const root = await mkdtemp(join(tmpdir(), "repair-feedback-"));
+  try {
+    const initial = join(root, "catalog-maintenance-initial");
+    const revised = join(root, "catalog-maintenance-review");
+    await mkdir(initial);
+    const { input, row } = report("concrete_error");
+    await writeFile(join(initial, "initial-verification.json"), JSON.stringify(input));
+    expect((await verificationFeedback(root)).nextAction(row.id)).toContain(row.actual);
+    await mkdir(revised);
+    await writeFile(
+      join(revised, "progress.json"),
+      JSON.stringify({ candidates: [{ id: row.id, next_action: "Replay the August control." }] }),
+    );
+    await writeFile(join(revised, "interruption.json"), JSON.stringify({ session: "verify" }));
+    const feedback = await verificationFeedback(root);
+    expect(feedback.nextAction(row.id)).toContain(row.expected);
+    expect(feedback.nextAction(row.id)).toContain("Replay the August control.");
+    expect(feedback.nextAction(row.id)).toContain("interrupted");
+    expect(feedback.nextAction("other")).not.toContain(row.expected);
+    expect([...feedback.initialErrors]).toEqual([row.id]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 it("independently checks repaired and no-defect conclusions, including mixed outcomes", () => {
   expect(
     closedCandidates({

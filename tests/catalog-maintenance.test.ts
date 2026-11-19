@@ -15,6 +15,7 @@ import { afterEach, expect, it, vi } from "vite-plus/test";
 import {
   adoptionReady,
   candidateKey,
+  canRecordAttempt,
   chooseProvider,
   difficulty,
   digest,
@@ -71,6 +72,19 @@ function taskState() {
   return { state, task, item };
 }
 
+it("accepts a finish only once for the prepared fingerprint and in run order", () => {
+  const { state, task } = taskState();
+  const prepared = structuredClone(state);
+  expect(canRecordAttempt(task, prepared, "10", 1)).toBe(true);
+  task.run_id = "10";
+  task.run_attempt = 1;
+  expect(canRecordAttempt(task, prepared, "10", 1)).toBe(false);
+  expect(canRecordAttempt(task, prepared, "9", 2)).toBe(false);
+  expect(canRecordAttempt(task, prepared, "10", 2)).toBe(true);
+  task.fingerprint = digest("changed while verification was running");
+  expect(canRecordAttempt(task, prepared, "11", 1)).toBe(false);
+});
+
 it("records a deployed attempt once and only links adoption of its exact snapshot", () => {
   const { state, task } = taskState();
   task.status = "adopted";
@@ -84,6 +98,8 @@ it("records a deployed attempt once and only links adoption of its exact snapsho
   expect(recordDeployment(state, "17", { ...current, run_attempt: 2 })).toBe(true);
   expect(task.deployed_run).toBe("17");
   expect(state.deployments).toHaveLength(2);
+  expect(recordDeployment(state, "18", current)).toBe(true);
+  expect(task.deployed_run).toBe("17");
 });
 
 it("reserves across runs, retains unknown spend and only refunds trusted settlements", () => {
@@ -179,6 +195,11 @@ it("requires publication, fresh accepted versions and consumer proof before adop
   expect(
     adoptionReady(task, { ...observation, accepted_sources: new Map([["openai-pricing", "v1"]]) }),
   ).toBe(false);
+  task.status = "adopted";
+  expect(adoptionReady(task, observation)).toBe(true);
+  task.deployed_run = "17";
+  expect(adoptionReady(task, observation)).toBe(false);
+  delete task.deployed_run;
   task.source_versions = {};
   expect(adoptionReady(task, observation)).toBe(false);
 });

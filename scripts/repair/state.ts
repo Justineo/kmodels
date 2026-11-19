@@ -22,6 +22,7 @@ export const taskSchema = z.object({
   reason: z.string().max(8000),
   next_action: z.string().max(8000),
   run_id: z.string().regex(/^\d+$/).optional(),
+  run_attempt: z.number().int().positive().optional(),
   evidence_run: z.string().regex(/^\d+$/).optional(),
   code_revision: z
     .string()
@@ -64,6 +65,18 @@ export const stateSchema = z.object({
     .default([]),
 });
 export type MaintenanceState = z.infer<typeof stateSchema>;
+export function canRecordAttempt(
+  task: MaintenanceTask,
+  prepared: MaintenanceState,
+  run: string,
+  attempt: number,
+): boolean {
+  const original = prepared.tasks.find((item) => item.id === task.id);
+  if (task.fingerprint !== (original?.fingerprint ?? digest(task.id))) return false;
+  if (!task.run_id) return true;
+  if (task.run_id === run) return (task.run_attempt ?? 0) < attempt;
+  return BigInt(task.run_id) < BigInt(run);
+}
 export function recordDeployment(state: MaintenanceState, run: string, input: unknown): boolean {
   const receipt = z
     .object({
@@ -94,7 +107,11 @@ export function recordDeployment(state: MaintenanceState, run: string, input: un
     state.deployments = state.deployments.slice(-100);
   }
   for (const task of state.tasks)
-    if (task.status === "adopted" && task.adopted_snapshot === receipt.snapshot_sha256) {
+    if (
+      task.status === "adopted" &&
+      !task.deployed_run &&
+      task.adopted_snapshot === receipt.snapshot_sha256
+    ) {
       task.deployed_run = run;
       task.next_action = "Repair is adopted in the deployed catalog.";
     }
@@ -322,7 +339,7 @@ export function adoptionReady(
   },
 ): boolean {
   return (
-    ["code_published", "adopted"].includes(task.status) &&
+    (task.status === "code_published" || (task.status === "adopted" && !task.deployed_run)) &&
     observation.contains_revision &&
     observation.fresh &&
     observation.consumer_passed &&

@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,9 +10,11 @@ import { readReviewEvidence, validateRepairReview } from "../catalog-repair-revi
 import { githubApi, readState, repository, writeState } from "./store.ts";
 import { recordDiscovery } from "./discovery.ts";
 import { checkTakeoverCheckpoint } from "./verification.ts";
+import { verificationFeedback } from "./verification-feedback.ts";
 import {
   adoptionReady,
   candidateKey,
+  canRecordAttempt,
   digest,
   leaseSchema,
   observeCandidates,
@@ -21,6 +23,7 @@ import {
   prepareBudgetLease,
   reserveRunBudget,
   settleBudget,
+  stateSchema,
   type MaintenanceState,
 } from "./state.ts";
 
@@ -215,33 +218,25 @@ async function main(): Promise<void> {
     const leasePath = join(directory, "catalog-maintenance-preparation/lease.json");
     const usagePath = join(directory, "catalog-maintenance-usage/usage.json");
     const exists = (path: string) =>
-      readFile(path, "utf8").then(
+      access(path).then(
         () => true,
         () => false,
       );
-    if (await exists(usagePath)) {
+    const reviewedUsagePath = join(directory, "catalog-maintenance-review/review-usage.json");
+    const initialUsagePath = join(directory, "catalog-maintenance-initial/review-usage.json");
+    let settlementPath: string | undefined;
+    if (await exists(reviewedUsagePath)) settlementPath = reviewedUsagePath;
+    else if (process.env.MAINTENANCE_REVIEW_RESULT === "skipped") {
+      if (await exists(initialUsagePath)) settlementPath = initialUsagePath;
+      else if (process.env.MAINTENANCE_INITIAL_RESULT === "skipped" && (await exists(usagePath)))
+        settlementPath = usagePath;
+    }
+    if (settlementPath) {
       const lease = leaseSchema.parse(JSON.parse(await readFile(leasePath, "utf8")));
-      const reviewedUsagePath = join(directory, "catalog-maintenance-review/review-usage.json");
-      const reviewed = await exists(reviewedUsagePath);
-      const initialUsagePath = join(directory, "catalog-maintenance-initial/review-usage.json");
-      const initial = await exists(initialUsagePath);
       const usage = z
         .object({ lease_id: z.literal(lease.id), charged_microusd: z.number().int().nonnegative() })
-        .parse(
-          JSON.parse(
-            await readFile(
-              reviewed ? reviewedUsagePath : initial ? initialUsagePath : usagePath,
-              "utf8",
-            ),
-          ),
-        );
-      // A missing reviewer receipt may hide a paid call interrupted after reservation.
-      if (
-        reviewed ||
-        (process.env.MAINTENANCE_REVIEW_RESULT === "skipped" &&
-          (initial || process.env.MAINTENANCE_INITIAL_RESULT === "skipped"))
-      )
-        settleBudget(state, lease.id, usage.charged_microusd);
+        .parse(JSON.parse(await readFile(settlementPath, "utf8")));
+      settleBudget(state, lease.id, usage.charged_microusd);
     }
     const independentDirectory = join(directory, "catalog-maintenance-review");
     const decisionPath = join(independentDirectory, "decision.json");
@@ -254,6 +249,7 @@ async function main(): Promise<void> {
             verdict: z.enum(["supported", "concrete_error", "insufficient_evidence"]),
             verified_candidate_ids: z.array(z.string()),
             takeover_attempted: z.boolean(),
+            takeover_candidate_ids: z.array(z.string()).optional(),
           })
           .parse(JSON.parse(await readFile(decisionPath, "utf8")))
       : undefined;
@@ -277,6 +273,14 @@ async function main(): Promise<void> {
           .parse(JSON.parse(await readFile(publicationPath, "utf8")))
       : undefined;
     if ((await exists(admissionPath)) && (await exists(reviewPath))) {
+      const feedback = await verificationFeedback(directory);
+      const prepared = stateSchema.parse(
+        JSON.parse(
+          await readFile(join(directory, "catalog-maintenance-preparation/state.json"), "utf8"),
+        ),
+      );
+      const run = env("GITHUB_RUN_ID");
+      const attempt = z.coerce.number().int().positive().parse(env("GITHUB_RUN_ATTEMPT"));
       const admissionText = await readFile(admissionPath, "utf8");
       const admission = z
         .object({
@@ -336,6 +340,7 @@ async function main(): Promise<void> {
         )
           continue;
         let task = state.tasks.find((task) => task.id === admitted.id);
+        if (task && !canRecordAttempt(task, prepared, run, attempt)) continue;
         if (!task) {
           task = {
             id: admitted.id,
@@ -355,9 +360,15 @@ async function main(): Promise<void> {
         }
         task.attempts += 1;
         task.last_attempt = now.toISOString();
-        task.run_id = env("GITHUB_RUN_ID");
+        task.run_id = run;
+        task.run_attempt = attempt;
         task.evidence_run = task.run_id;
-        if (decision?.takeover_attempted) task.takeover_fingerprint = task.fingerprint;
+        if (
+          decision?.takeover_attempted &&
+          (decision.takeover_candidate_ids?.includes(task.id) ??
+            feedback.initialErrors.has(task.id))
+        )
+          task.takeover_fingerprint = task.fingerprint;
         const row = review.candidates.find((row) => row.id === task.id);
         if (row) {
           const supported =
@@ -382,7 +393,8 @@ async function main(): Promise<void> {
               reason: row.reason,
               next_action:
                 closed && !supported
-                  ? "Independent verification has not supported this conclusion. Inspect its findings or evidence/budget limit; do not repeat a successful claim without new proof."
+                  ? feedback.nextAction(task.id) ||
+                    "Independent verification did not support this conclusion. Inspect the initial and final verifier artifacts for evidence or resource limits."
                   : row.status === "repaired" && !publication
                     ? "The proposed patch was not published. Inspect the prior semantic-review and publication-validation feedback, revise the failed claim, and rerun its focused proof before resubmitting."
                     : (row.blocker?.next_action ??

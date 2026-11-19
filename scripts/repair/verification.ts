@@ -38,6 +38,29 @@ export const verificationSchema = z.object({
     .max(100),
 });
 export type Verification = z.infer<typeof verificationSchema>;
+// Operational leads only. Partial rows cannot be supplied to the publication decision.
+export const progressSchema = z.object({
+  candidates: z.array(z.object({ id: z.string().max(300), next_action: explanation })).max(100),
+});
+export function reusableBaseline(input: unknown, admission: string, ids: readonly string[]) {
+  const checkpoint = z
+    .object({
+      admission_sha256: z.literal(digest(admission)),
+      candidate_ids: z.array(z.string()),
+      assessment: z
+        .string()
+        .min(1)
+        .max(128 * 1024),
+      has_files: z.boolean(),
+    })
+    .safeParse(input);
+  if (
+    checkpoint.success &&
+    JSON.stringify(checkpoint.data.candidate_ids.toSorted()) === JSON.stringify(ids.toSorted())
+  )
+    return checkpoint.data;
+  return undefined;
+}
 export function closedCandidates(review: unknown): string[] {
   return proposalReviewSchema
     .parse(review)
