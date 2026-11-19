@@ -400,8 +400,13 @@ Status: implemented
 - Vite+ (`vp`) is the project command entry point. The pinned pnpm version and
   `pnpm-lock.yaml` remain authoritative underneath it, and CI installs the
   lockfile frozen.
-  The refresh pipeline's five job definitions share `.github/actions/setup-catalog-toolchain`
-  for pnpm setup, the pinned Vite+ runtime and frozen dependency installation.
+  Refresh, ordinary CI and deployment use the same Vite+ action with one explicit frozen
+  install. Vite+ provisions the pinned package manager. A clean install on hosted Linux
+  runners avoids transferring and unpacking the project's gigabyte-scale pnpm store.
+  The maintenance observer and repair preparation fetch full commit and tree history for
+  adoption checks with `filter: blob:none`. Budget reservation and settlement use a shallow
+  checkout and read their evidence from artifacts. Only repair stages that consume generated
+  data hydrate the snapshot. Forwarding an existing verification result needs no toolchain.
 - Only native dependencies allowlisted in `pnpm-workspace.yaml` may run install scripts.
 - The pnpm 12 toolchain declares `node-gyp` as a development dependency so clean installs can
   compile the allowlisted `better-sqlite3` dependency without relying on a package-manager-bundled
@@ -443,16 +448,17 @@ Status: implemented
   cannot become partial publication. Raw HTTP bodies and authenticated documents never enter
   shard artifacts. Only this runner loads the full accepted price graph and stages the candidate.
   Assembly stages one immutable candidate archive and uploads it as a one-day Actions artifact.
-  A matrix checks generated data and the production build on two parallel runners, using the
+  A matrix runs three Vitest generated-data shards and the production build in parallel, using the
   plan's exact commit and candidate artifact ID. Each verifies the archive's pointer/hash before
   restoration and checks the generated-input fingerprint after validation. Publication waits for
-  both checks and uploads those same staged archive bytes, without repacking or collecting again.
+  all four checks and uploads those same staged archive bytes, without repacking or collecting again.
   The build runner also runs the pinned Chromium pricing interaction gate on that candidate.
   Performance reports and assertion screenshots are retained for seven days; a budget or browser
   failure blocks publication. Ordinary CI and trusted repair validation select the same gate for
   affected dependencies and snapshot changes. The repair bootstrap installs its browser runtime.
   Reports remain in the seven-day refresh evidence artifact; generated verification uploads its
-  own attempt-specific evidence artifact. Repair reads both when diagnosing verification timeouts.
+  own attempt- and shard-specific timeout evidence. Repair requires a marker from every failed
+  generated shard before classifying its failures as timeout-only.
   After a refresh commits and
   pushes changed data, it explicitly dispatches the dedicated deployment
   workflow because a push authenticated with the workflow `GITHUB_TOKEN` does
@@ -519,8 +525,8 @@ Status: implemented
   pricing browser performance gate, on parallel runners. It does not rerun code-only unit and fixture tests when the checkout is
   unchanged. Push and pull-request CI runs those tests once. Generated-data
   assertions follow the boundary and volatility rules in [Testing](testing.md).
-- One non-isolated, single-worker generated-data test project shares one parsed
-  catalog/pricing context. Pricing runs one whole-catalog topology and limit
+- Each generated-data runner shares one parsed catalog/pricing context across its assigned
+  files in a non-isolated, single-worker project. Pricing runs one whole-catalog topology and limit
   pass, then validates provider partitions through three largest-first,
   work-conserving worker threads. Canonical pricing replay likewise assembles
   independent provider partitions through a four-worker pool before one parallel

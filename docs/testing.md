@@ -201,6 +201,8 @@ and restoring its alternatives preserves an explicit input without storing an in
 An explicit Priority-only Region regression switches to Standard and requires Region to reset
 before any rates appear. This deterministic graph complements the fixed performance
 workload; uniform regional tariffs alone cannot detect availability regressions.
+The two untimed transition audits run concurrently in independent browser contexts. Both finish
+and close before the next timing sample.
 
 Browser budgets are 750 ms for cold mount, 150 ms for first selection, and 50 ms median / 100 ms
 P95 for each interaction separately. Timing covers event dispatch, matching, Vue updates and forced
@@ -325,6 +327,14 @@ remain by design and the concrete evidence required to reopen them.
 Use `vp node scripts/validate-changes.ts BASE_SHA` (or `HEAD` for uncommitted work). `--plan`
 prints the paths and selected commands. Ordinary CI compares against the push's previous commit
 or the PR base. Trusted repair publication uses the same planner against latest main.
+CI completes source-only plans on the planning runner. For broader changes it runs source
+checks, two full-suite unit shards, three generated-data shards, builds and browser timing
+on separate runners as selected. Related unit tests stay together on the source runner.
+Package generation and its packed consumer checks share a checkout. Only generated-data,
+site-build and browser jobs hydrate the checked-out pointer, and only browser jobs install
+the Chromium headless shell. The required `verify` check waits for every selected group
+and the repair toolchain smoke check when applicable. A newer PR revision cancels its
+superseded CI run.
 
 - Code changes run formatting/lint/type checks and Vitest's related unit tests. The test-boundary
   guard is included; workflow changes also select the harness workflow checks.
@@ -338,7 +348,7 @@ or the PR base. Trusted repair publication uses the same planner against latest 
 - Filesystem-loaded fixtures cannot be fully traced by Vitest's import graph. Their change uses
   the unit-project fallback, rather than pretending that an incomplete graph proves a narrower
   scope. Focused tests remain preferable during editing when the actual readers are known.
-- Shared configuration, runtime, lockfile and test-setup changes select one complete test run,
+- Shared configuration, runtime, lockfile and test-setup changes select the complete test suite,
   the production build and package gates. An unavailable/initial comparison also selects this
   complete gate. `collect:fixtures` is a convenience subset, never a second gate after full tests.
 - Package generation must preserve the prepared package source tree. Compare content and modes
@@ -352,7 +362,7 @@ The scheduled refresh checks the generated project and production build on paral
 against the exact staged candidate archive and collection commit, because code-only behavior
 was already verified in CI. The build runner also checks pricing interaction performance before
 publication, including data-only changes that do not trigger push CI. Each runner checks that validation preserved its candidate's input
-fingerprint; publication reuses that same archive only after both checks pass.
+fingerprint; publication reuses that same archive only after every generated shard and the build pass.
 Fixture replay compares ordinary collection with compressed shard round trips through the
 normal provider collector. Fresh and retained-price cases must preserve provider results, fetch
 history, replay/inference inputs, accepted pair identity and portable price exports without

@@ -109,6 +109,7 @@ jobs:
         with:
           name: catalog-public-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}-${{ matrix.shard }}
           path: ${{ runner.temp }}/repair-public-evidence/
+          compression-level: 0
           if-no-files-found: ignore
           retention-days: 14
 
@@ -195,7 +196,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [generated, build]
+        include:
+          - { check: generated, shard: 1 }
+          - { check: generated, shard: 2 }
+          - { check: generated, shard: 3 }
+          - { check: build }
     steps:
       - name: Checkout the collection revision
         uses: actions/checkout@v7
@@ -219,19 +224,21 @@ jobs:
       - name: Record candidate fingerprint
         run: vp node scripts/catalog-snapshot.ts fingerprint > "$RUNNER_TEMP/candidate-fingerprint"
 
-      - name: Verify generated catalog
+      - name: Verify generated catalog shard ${{ matrix.shard }}
+        id: generated
         if: matrix.check == 'generated'
         env:
           KMODELS_GENERATED_VERIFICATION_PATH: ${{ runner.temp }}/generated-verification.txt
-        run: vp node scripts/validate-tests.ts --run --project generated --reporter=minimal --reporter=github-actions --silent=passed-only
+          SHARD: ${{ matrix.shard }}
+        run: vp node scripts/validate-tests.ts --run --project generated --shard="$SHARD/3" --reporter=minimal --reporter=github-actions --silent=passed-only
 
       - name: Upload verification evidence
-        if: always() && matrix.check == 'generated'
+        if: failure() && steps.generated.outcome == 'failure'
         uses: actions/upload-artifact@v7
         with:
-          name: catalog-verification-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          name: catalog-verification-${{ github.run_id }}-attempt-${{ github.run_attempt }}-shard-${{ matrix.shard }}
           path: ${{ runner.temp }}/generated-verification.txt
-          if-no-files-found: warn
+          if-no-files-found: ignore
           retention-days: 7
 
       - name: Build generated catalog
@@ -240,7 +247,7 @@ jobs:
 
       - name: Install the pinned performance browser
         if: matrix.check == 'build'
-        run: vp exec playwright install --with-deps chromium
+        run: vp exec playwright install --with-deps chromium --only-shell
 
       - name: Check pricing interaction performance
         if: matrix.check == 'build'
@@ -332,12 +339,8 @@ jobs:
         with:
           ref: main
           persist-credentials: false
-      - name: Set up Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: .node-version
-      - name: Install dependencies
-        run: vp install --frozen-lockfile
+      - name: Set up catalog toolchain
+        uses: ./.github/actions/setup-catalog-toolchain
       - name: Prune expired catalog snapshots
         run: vp node scripts/catalog-snapshot.ts prune
         env:

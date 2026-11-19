@@ -128,7 +128,62 @@ export async function packageSourceHash(root = resolve(".")): Promise<string> {
   return createHash("sha256").update(JSON.stringify(entries)).digest("hex");
 }
 
-export async function validateChanges(base: string | undefined, planOnly = false): Promise<void> {
+export function ciValidationGroups(commands: readonly string[][]): Map<string, string[][]> {
+  const groups = new Map<string, string[][]>();
+  function add(group: string, command: string[]) {
+    const existing = groups.get(group);
+    if (existing) existing.push(command);
+    else groups.set(group, [command]);
+  }
+  for (const args of commands) {
+    if (args[0] === "test" && args[1] === "--run") {
+      const scoped = args.includes("--project");
+      for (const [project, count] of [
+        ["unit", 2],
+        ["generated", 3],
+      ] as const) {
+        if (scoped && !args.includes(project)) continue;
+        const projectArgs = scoped ? args : [...args, "--project", project];
+        for (let shard = 1; shard <= count; shard++)
+          add(`${project}-${shard}`, [...projectArgs, `--shard=${shard}/${count}`]);
+      }
+    } else if (args[0] === "run") {
+      add(args[1] === "test:pricing-performance" ? "browser" : "build", args);
+    } else add("source", args);
+  }
+  return groups;
+}
+
+export function ciPrerequisites(commands: readonly string[][]): string[][] {
+  const browser = commands.some(
+    ([task, script]) => task === "run" && script === "test:pricing-performance",
+  );
+  const snapshot =
+    browser ||
+    commands.some(
+      (args) =>
+        (args[0] === "run" && args[1] === "build") ||
+        (args[0] === "test" && (!args.includes("--project") || args.includes("generated"))),
+    );
+  const prerequisites: string[][] = [];
+  if (snapshot) prerequisites.push(["node", "scripts/catalog-snapshot.ts", "hydrate"]);
+  if (browser)
+    prerequisites.push([
+      "exec",
+      "playwright",
+      "install",
+      "--with-deps",
+      "chromium",
+      "--only-shell",
+    ]);
+  return prerequisites;
+}
+
+export async function validateChanges(
+  base: string | undefined,
+  planOnly = false,
+  ciGroup?: string,
+): Promise<void> {
   if (base === "") base = undefined;
   if (base !== undefined && base !== "HEAD" && !/^[a-f0-9]{40}$/.test(base))
     throw new Error("Validation base must be HEAD or a complete commit SHA");
@@ -152,11 +207,28 @@ export async function validateChanges(base: string | undefined, planOnly = false
     ]),
     performance: await dependencyClosure(["scripts/check-pricing-performance.ts"]),
   });
-  const commands = selected.map((args) =>
+  let checks = selected;
+  if (ciGroup !== undefined) {
+    const groups = ciValidationGroups(selected);
+    if (ciGroup === "plan") {
+      // Complete small source-only changes on the planning runner.
+      const parallel = groups.size === 1 && groups.has("source") ? [] : [...groups.keys()];
+      if (parallel.length) console.log(`Selected CI groups: ${parallel.join(", ")}`);
+      if (process.env.GITHUB_OUTPUT !== undefined)
+        await appendFile(process.env.GITHUB_OUTPUT, `groups=${JSON.stringify(parallel)}\n`);
+      checks = parallel.length ? [] : selected;
+    } else {
+      const group = groups.get(ciGroup);
+      if (!group) throw new Error(`No selected CI checks in group ${ciGroup}`);
+      checks = group;
+    }
+  }
+  const commands = checks.map((args) =>
     inActions && args[0] === "test"
       ? [...args, "--reporter=minimal", "--reporter=github-actions", "--silent=passed-only"]
       : args,
   );
+  if (ciGroup !== undefined) commands.unshift(...ciPrerequisites(checks));
   if (planOnly || !inActions)
     console.log(JSON.stringify({ base: base ?? null, paths, commands }, null, 2));
   else
@@ -189,11 +261,15 @@ export async function validateChanges(base: string | undefined, planOnly = false
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
-  const bases = args.filter((arg) => arg !== "--plan");
-  if (bases.length > 1) throw new Error("Expected [BASE_SHA | HEAD] [--plan]");
+  const bases = args.filter((arg) => arg !== "--plan" && !arg.startsWith("--ci="));
+  if (bases.length > 1) throw new Error("Expected [BASE_SHA | HEAD] [--plan] [--ci=GROUP]");
   const base = bases[0];
   try {
-    await validateChanges(base, args.includes("--plan"));
+    await validateChanges(
+      base,
+      args.includes("--plan"),
+      args.find((arg) => arg.startsWith("--ci="))?.slice(5),
+    );
   } catch (error) {
     if (!(error instanceof ValidationTestTimeout)) throw error;
     console.error(error.message);

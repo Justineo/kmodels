@@ -221,7 +221,10 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+          filter: blob:none
       - uses: ./.github/actions/setup-repair-toolchain
+        with:
+          browser: "false"
       - name: Load task state without reserving inference budget
         env:
           GH_TOKEN: ${{ github.token }}
@@ -248,6 +251,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-repair-toolchain
+        with:
+          hydrate: "false"
+          browser: "false"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: catalog-repair-investigation
@@ -324,6 +330,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-repair-toolchain
+        with:
+          hydrate: "false"
+          browser: "false"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: catalog-repair-investigation
@@ -360,9 +369,11 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.initial_verification.outputs.outcome == 'needs_takeover'
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-repair-toolchain
+        if: needs.initial_verification.outputs.outcome == 'needs_takeover'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: catalog-maintenance-initial
@@ -434,8 +445,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0
       - uses: ./.github/actions/setup-repair-toolchain
+        with:
+          hydrate: "false"
+          browser: "false"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: catalog-maintenance-*

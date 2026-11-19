@@ -112,6 +112,12 @@ export async function loadRefreshExecution(
     );
   if (run === undefined) return undefined;
   const runId = String(run.databaseId);
+  function download(name: string, target: string, timeout?: number) {
+    return gh(
+      ["run", "download", runId, "--repo", repository, "--name", name, "--dir", target],
+      timeout,
+    );
+  }
   const view = ["run", "view", runId, "--repo", repository, "--attempt", String(run.attempt)];
   const { jobs } = jobsSchema.parse(JSON.parse(await gh([...view, "--json", "jobs"])));
   const failedSteps = jobs.flatMap(({ steps }) =>
@@ -126,53 +132,47 @@ export async function loadRefreshExecution(
   );
   const reportArtifact = `catalog-refresh-${runId}-attempt-${run.attempt}`;
   const available = new Set(artifacts.filter(({ expired }) => !expired).map(({ name }) => name));
-  const verificationArtifact = `catalog-verification-${runId}-attempt-${run.attempt}`;
+  const legacyVerification = `catalog-verification-${runId}-attempt-${run.attempt}`;
+  const failedVerificationArtifacts = failedSteps.flatMap((step) => {
+    const match = /^Verify generated catalog(?: shard ([1-9]\d*))?$/.exec(step);
+    if (!match) return [];
+    const suffix = match[1] === undefined ? "" : `-shard-${match[1]}`;
+    return [legacyVerification + suffix];
+  });
   let verificationFailure: "test_timeout" | undefined;
   let reportPath: string | undefined;
   if (available.has(reportArtifact)) {
     const reportDirectory = join(directory, reportArtifact);
-    await gh([
-      "run",
-      "download",
-      runId,
-      "--repo",
-      repository,
-      "--name",
-      reportArtifact,
-      "--dir",
-      reportDirectory,
-    ]);
+    await download(reportArtifact, reportDirectory);
     reportPath = join(reportDirectory, "refresh-report.json");
-    if (run.conclusion === "failure" && failedSteps.includes("Verify generated catalog")) {
-      if (available.has(verificationArtifact))
-        await gh([
-          "run",
-          "download",
-          runId,
-          "--repo",
-          repository,
-          "--name",
-          verificationArtifact,
-          "--dir",
-          reportDirectory,
-        ]);
-      const result = await readFile(
-        join(reportDirectory, "generated-verification.txt"),
-        "utf8",
-      ).catch((error: unknown) => {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT") return "";
-        throw error;
-      });
-      if (result === "test_timeout\n") verificationFailure = "test_timeout";
+    if (run.conclusion === "failure" && failedVerificationArtifacts.length > 0) {
+      const timeouts = await Promise.all(
+        failedVerificationArtifacts.map(async (artifact) => {
+          let target = reportDirectory;
+          if (available.has(artifact)) {
+            target = join(directory, artifact);
+            await download(artifact, target);
+          } else if (artifact !== legacyVerification) return false;
+          const result = await readFile(join(target, "generated-verification.txt"), "utf8").catch(
+            (error: unknown) => {
+              if (error instanceof Error && "code" in error && error.code === "ENOENT") return "";
+              throw error;
+            },
+          );
+          return result === "test_timeout\n";
+        }),
+      );
+      if (timeouts.every(Boolean)) verificationFailure = "test_timeout";
     }
   }
-  const repairRequired = failedSteps.some(
-    (name) =>
-      name === "Collect official sources" ||
-      name === "Assemble collected providers" ||
-      name === "Build generated catalog" ||
-      (name === "Verify generated catalog" && verificationFailure === undefined),
-  );
+  const repairRequired =
+    failedSteps.some(
+      (name) =>
+        name === "Collect official sources" ||
+        name === "Assemble collected providers" ||
+        name === "Build generated catalog",
+    ) ||
+    (failedVerificationArtifacts.length > 0 && verificationFailure === undefined);
   let logPath: string | undefined;
   if (run.conclusion === "failure") {
     const log = await gh([...view, "--log-failed"]);
@@ -187,56 +187,21 @@ export async function loadRefreshExecution(
   );
   const planName = `catalog-plan-${runId}-attempt-${run.attempt}`;
   if (failedSteps.includes("Assemble collected providers") && available.has(planName)) {
-    await gh([
-      "run",
-      "download",
-      runId,
-      "--repo",
-      repository,
-      "--name",
-      planName,
-      "--dir",
-      join(reproductionDirectory, "plan"),
-    ]);
+    await download(planName, join(reproductionDirectory, "plan"));
     const planText = await readFile(join(reproductionDirectory, "plan", "plan.json"), "utf8");
     const { parseCollectionPlan, collectionPlanId } =
       await import("../src/catalog/collection-shards.ts");
     const plan = parseCollectionPlan(JSON.parse(planText));
     if (plan.revision !== run.headSha)
       throw new Error("Refresh reproduction plan has another revision");
-    for (const name of [...available].filter((name) =>
-      name.startsWith(`catalog-shard-${runId}-${collectionPlanId(plan)}-`),
-    ))
-      await gh(
-        [
-          "run",
-          "download",
-          runId,
-          "--repo",
-          repository,
-          "--name",
-          name,
-          "--dir",
-          join(reproductionDirectory, "shards"),
-        ],
-        180_000,
-      );
+    const shardPrefix = `catalog-shard-${runId}-${collectionPlanId(plan)}-`;
+    for (const name of available) {
+      if (name.startsWith(shardPrefix))
+        await download(name, join(reproductionDirectory, "shards"), 180_000);
+    }
   }
   for (const name of evidenceNames)
-    await gh(
-      [
-        "run",
-        "download",
-        runId,
-        "--repo",
-        repository,
-        "--name",
-        name,
-        "--dir",
-        join(reproductionDirectory, "public", name),
-      ],
-      180_000,
-    );
+    await download(name, join(reproductionDirectory, "public", name), 180_000);
   return {
     run,
     failed_steps: failedSteps,

@@ -27,9 +27,12 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+          filter: blob:none
           persist-credentials: false
       - name: Install the trusted toolchain and hydrate the current snapshot
         uses: ./.github/actions/setup-repair-toolchain
+        with:
+          browser: "false"
       - name: Observe accepted data and discovery leads
         env:
           GH_TOKEN: ${{ github.token }}

@@ -3,13 +3,11 @@ description: Install the pinned runtime, package manager and frozen dependencies
 runs:
   using: composite
   steps:
-    - name: Set up pnpm
-      uses: pnpm/action-setup@v6
     - name: Set up Vite+
       uses: voidzero-dev/setup-vp@v1
       with:
         node-version-file: .node-version
-        cache: true
+        run-install: false
     - name: Install dependencies
       shell: bash
       run: vp install --frozen-lockfile

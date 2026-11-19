@@ -8,10 +8,18 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  VALIDATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+  VITEST_MAX_WORKERS: "2"
+
 jobs:
   repair-toolchain:
-    needs: verify
-    if: needs.verify.outputs.repair_toolchain == 'true'
+    needs: plan
+    if: needs.plan.outputs.repair_toolchain == 'true'
     runs-on: ubuntu-latest
     env:
       VP_HOME: /tmp/kmodels-vite-plus
@@ -47,10 +55,11 @@ jobs:
             exit 1
           fi
 
-  verify:
+  plan:
     runs-on: ubuntu-latest
     outputs:
       repair_toolchain: ${{ steps.validate.outputs.repair_toolchain }}
+      groups: ${{ steps.validate.outputs.groups }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -58,37 +67,55 @@ jobs:
           fetch-depth: 0
           filter: blob:none
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
+      - name: Set up catalog toolchain
+        uses: ./.github/actions/setup-catalog-toolchain
 
-      - name: Set up Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version: 24.22.2
-          cache: true
-
-      - name: Install dependencies
-        run: vp install --frozen-lockfile
-
-      - name: Install the pinned performance browser
-        run: vp exec playwright install --with-deps chromium
-
-      - name: Hydrate the checked-out catalog
-        run: vp node scripts/catalog-snapshot.ts hydrate
-
-      - name: Validate affected contracts
+      - name: Select affected contracts and run source-only changes
         id: validate
+        run: vp node scripts/validate-changes.ts "$VALIDATION_BASE" --ci=plan
+
+  contracts:
+    needs: plan
+    if: needs.plan.outputs.groups != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group: ${{ fromJSON(needs.plan.outputs.groups) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          filter: blob:none
+      - uses: ./.github/actions/setup-catalog-toolchain
+      - name: Validate affected contracts
         env:
-          VALIDATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          VITEST_MAX_WORKERS: "2"
+          GROUP: ${{ matrix.group }}
           PRICING_PERFORMANCE_REPORT: ${{ runner.temp }}/pricing-performance/report.json
-        run: vp node scripts/validate-changes.ts "$VALIDATION_BASE"
+        run: vp node scripts/validate-changes.ts "$VALIDATION_BASE" --ci="$GROUP"
 
       - name: Upload pricing performance evidence
-        if: always()
+        if: always() && matrix.group == 'browser'
         uses: actions/upload-artifact@v7
         with:
           name: pricing-performance-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pricing-performance/
           if-no-files-found: ignore
           retention-days: 7
+
+  verify:
+    if: always()
+    needs: [plan, contracts, repair-toolchain]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every selected job to pass
+        env:
+          PLAN: ${{ needs.plan.result }}
+          GROUPS_JSON: ${{ needs.plan.outputs.groups }}
+          CONTRACTS: ${{ needs.contracts.result }}
+          REPAIR: ${{ needs.repair-toolchain.result }}
+          NEED_REPAIR: ${{ needs.plan.outputs.repair_toolchain }}
+        run: |
+          test "$PLAN" = success
+          if [[ "$GROUPS_JSON" = '[]' ]]; then test "$CONTRACTS" = skipped; else test "$CONTRACTS" = success; fi
+          if [[ "$NEED_REPAIR" = true ]]; then test "$REPAIR" = success; else test "$REPAIR" = skipped; fi

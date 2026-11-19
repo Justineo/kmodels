@@ -234,6 +234,28 @@ async function measure(
   );
 }
 
+async function auditTransitions(browser: Browser, origin: string, mode: "inference" | "offer") {
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  try {
+    await page.goto(`${origin}/tests/performance/index.html`);
+    const transitions = await page.evaluate(
+      ({ subject, mode }) => window.pricingBenchmark.audit(subject, mode),
+      { subject: pricingPerformanceFixture(4, true), mode },
+    );
+    assert.deepEqual(errors, [], "Browser errors invalidate transition results");
+    const result = { name: `regional-transitions/${mode}`, ...transitions };
+    console.log(JSON.stringify(result));
+    return result;
+  } catch (error) {
+    await page.screenshot({ path: join(dirname(reportPath), `failure-transitions-${mode}.png`) });
+    throw error;
+  } finally {
+    await page.close();
+  }
+}
+
 try {
   await mkdir(dirname(reportPath), { recursive: true });
   await build({
@@ -259,25 +281,15 @@ try {
   browser = await chromium.launch({ headless: true });
   for (const mode of ["inference", "offer"] as const)
     await measure(pricingPerformanceFixture(), mode, true, origin);
-  const page = await browser.newPage();
-  const transitionErrors: string[] = [];
-  page.on("pageerror", (error) => transitionErrors.push(error.message));
-  await page.goto(`${origin}/tests/performance/index.html`);
-  for (const mode of ["inference", "offer"] as const) {
-    try {
-      const transitions = await page.evaluate(
-        ({ subject, mode }) => window.pricingBenchmark.audit(subject, mode),
-        { subject: pricingPerformanceFixture(4, true), mode },
-      );
-      assert.deepEqual(transitionErrors, [], "Browser errors invalidate transition results");
-      reports.push({ name: `regional-transitions/${mode}`, ...transitions });
-      console.log(JSON.stringify({ name: `regional-transitions/${mode}`, ...transitions }));
-    } catch (error) {
-      await page.screenshot({ path: join(dirname(reportPath), `failure-transitions-${mode}.png`) });
-      throw error;
-    }
+  // Only the untimed DOM traversals overlap. Close both pages before sampling real models.
+  const audits = await Promise.allSettled([
+    auditTransitions(browser, origin, "inference"),
+    auditTransitions(browser, origin, "offer"),
+  ]);
+  for (const result of audits) {
+    if (result.status === "fulfilled") reports.push(result.value);
+    else failures.push(String(result.reason));
   }
-  await page.close();
   if (!process.argv.includes("--fixture-only")) {
     const catalog = await catalogCases();
     reports.push({

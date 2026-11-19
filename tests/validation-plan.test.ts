@@ -1,6 +1,11 @@
 import { expect, it } from "vite-plus/test";
 import { moduleDependencies } from "../scripts/module-dependencies.ts";
-import { validationPlan, type ValidationInputs } from "../scripts/validate-changes.ts";
+import {
+  ciPrerequisites,
+  ciValidationGroups,
+  validationPlan,
+  type ValidationInputs,
+} from "../scripts/validate-changes.ts";
 
 const inputs: ValidationInputs = {
   full: false,
@@ -9,6 +14,46 @@ const inputs: ValidationInputs = {
   package: new Set(["src/catalog/pricing-schema.ts", "tests/fixtures/pricing/"]),
   performance: new Set(["src/catalog/pricing-schema.ts", "src/components/InferencePrices.vue"]),
 };
+
+it("partitions the complete CI gate and keeps package generation with its consumer", () => {
+  const full = validationPlan([], { ...inputs, full: true });
+  expect(Object.fromEntries(ciValidationGroups(full))).toEqual({
+    source: [["check"]],
+    "unit-1": [["test", "--run", "--project", "unit", "--shard=1/2"]],
+    "unit-2": [["test", "--run", "--project", "unit", "--shard=2/2"]],
+    "generated-1": [["test", "--run", "--project", "generated", "--shard=1/3"]],
+    "generated-2": [["test", "--run", "--project", "generated", "--shard=2/3"]],
+    "generated-3": [["test", "--run", "--project", "generated", "--shard=3/3"]],
+    build: [
+      ["run", "build"],
+      ["run", "package:build"],
+      ["run", "package:check"],
+    ],
+    browser: [["run", "test:pricing-performance"]],
+  });
+  const related = validationPlan(["src/catalog/xai.ts"], inputs);
+  expect(Object.fromEntries(ciValidationGroups(related))).toEqual({ source: related });
+  expect([...ciValidationGroups([])]).toEqual([]);
+});
+
+it("prepares only the runtime inputs consumed by the selected CI checks", () => {
+  const hydrate = ["node", "scripts/catalog-snapshot.ts", "hydrate"];
+  const browser = ["exec", "playwright", "install", "--with-deps", "chromium", "--only-shell"];
+  for (const path of ["README.md", "src/catalog/xai.ts", "tests/fixtures/pricing/case.json"])
+    expect(ciPrerequisites(validationPlan([path], inputs))).toEqual([]);
+  for (const commands of [
+    [["test", "--run"]],
+    [["test", "--run", "--project", "generated"]],
+    [["run", "build"]],
+  ])
+    expect(ciPrerequisites(commands)).toEqual([hydrate]);
+  for (const path of [
+    "pnpm-lock.yaml",
+    "data/catalog-snapshot.json",
+    "tests/performance/index.html",
+  ])
+    expect(ciPrerequisites(validationPlan([path], inputs))).toEqual([hydrate, browser]);
+});
 
 it("limits documentation and collector changes to their affected checks", () => {
   expect(validationPlan([], inputs)).toEqual([]);

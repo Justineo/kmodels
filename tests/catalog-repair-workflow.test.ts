@@ -242,7 +242,8 @@ it("keeps trusted publication validation without a redundant post-execution test
   );
   const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
   expect(ci).toContain('vp node scripts/validate-changes.ts "$VALIDATION_BASE"');
-  expect(ci).toContain("needs.verify.outputs.repair_toolchain == 'true'");
+  expect(ci).toContain("needs.plan.outputs.repair_toolchain == 'true'");
+  expect(job(ci, "verify")).toContain("needs: [plan, contracts, repair-toolchain]");
   expect(ci).not.toContain("collect:fixtures");
 });
 
@@ -427,7 +428,11 @@ it("checks one immutable refresh candidate on parallel runners before publishing
   expect(assemble).toContain("needs: [prepare, collect]");
   expect(assemble).toContain("steps.candidate.outputs.artifact-id");
   expect(assemble).toContain("scripts/collect-shards.ts merge");
-  expect(checks).toContain("check: [generated, build]");
+  expect(checks).toContain("{ check: generated, shard: 1 }");
+  expect(checks).toContain("{ check: generated, shard: 2 }");
+  expect(checks).toContain("{ check: generated, shard: 3 }");
+  expect(checks).toContain("{ check: build }");
+  expect(checks).toContain('--shard="$SHARD/3"');
   expect(checks).toContain("fail-fast: false");
   expect(checks).toContain("KMODELS_GENERATED_VERIFICATION_PATH");
   expect(checks).toContain(

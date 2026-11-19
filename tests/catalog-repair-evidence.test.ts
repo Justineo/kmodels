@@ -105,6 +105,37 @@ describe("repair execution evidence", () => {
     );
     expect(evidence).toMatchObject({ repair_required: true, evidence_incomplete: true });
   });
+  it.each([true, false])(
+    "requires timeout evidence from every failed generated shard (second marker available: %s)",
+    async (both) => {
+      const base = mockGitHub("Verify generated catalog shard 1", true, "test_timeout\n");
+      const evidence = await loadRefreshExecution(
+        "example/catalog",
+        await directory(),
+        async (args) => {
+          if (args.includes("jobs"))
+            return JSON.stringify({
+              jobs: [1, 2].map((shard) => ({
+                steps: [{ name: `Verify generated catalog shard ${shard}`, conclusion: "failure" }],
+              })),
+            });
+          if (args[0] === "api")
+            return JSON.stringify({
+              artifacts: [
+                "catalog-refresh-123-attempt-2",
+                "catalog-verification-123-attempt-2-shard-1",
+                both
+                  ? "catalog-verification-123-attempt-2-shard-2"
+                  : "catalog-verification-123-attempt-1-shard-2",
+              ].map((name) => ({ name, expired: false })),
+            });
+          return base(args);
+        },
+      );
+      expect(evidence?.verification_failure).toBe(both ? "test_timeout" : undefined);
+      expect(evidence?.repair_required).toBe(!both);
+    },
+  );
   it.each([1, 2])(
     "uses separate verification evidence only from the selected attempt: %s",
     async (attempt) => {
