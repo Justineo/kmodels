@@ -241,14 +241,19 @@ export function replayProbes(paths: CheckoutPaths) {
       ...checkoutArguments(paths, "replay"),
       "kmodels-repair-codex:local",
       "-c",
-      'source "$VP_HOME/env" || exit 126; timeout -k 5s 180s vp test --configLoader runner --config /trusted/scripts/repair/probe.config.ts --run > /tmp/probes.log 2>&1; rc=$?; tail -c 12000 /tmp/probes.log; exit "$rc"',
+      'set -eu; source "$VP_HOME/env"; rc=0; vp test --configLoader runner --config /trusted/scripts/repair/probe.config.ts --run > /tmp/probes.log 2>&1 || rc=$?; tail -c 12000 /tmp/probes.log; exit "$rc"',
     ],
-    { env: childEnv(), encoding: "utf8", timeout: 210000 },
+    { env: childEnv(), encoding: "utf8", timeout: 180000 },
   );
   if (result.error || result.status === null || [125, 126, 127].includes(result.status)) {
     spawnSync("docker", ["rm", "--force", paths.name], { env: childEnv(), timeout: 10000 });
+    if (result.error && "code" in result.error && result.error.code === "ETIMEDOUT")
+      return { exit_code: 124, output: "Independent probe execution exceeded three minutes." };
     throw (
-      result.error ?? new Error(`Could not run independent probes: ${result.stderr.slice(-2000)}`)
+      result.error ??
+      new Error(
+        `Could not run independent probes (${result.status}): ${result.stderr.slice(-2000)} ${result.stdout.slice(-2000)}`,
+      )
     );
   }
   return { exit_code: result.status, output: result.stdout };

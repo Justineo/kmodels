@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { request } from "node:http";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { z } from "zod";
-import { copyFile, mkdir, mkdtemp, readFile, rm, rmdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startRelay } from "./codex-relay.ts";
@@ -165,10 +165,9 @@ const relay = local ? startRelay(join(directory, "api.sock"), 0) : undefined;
 try {
   if (!local) {
     const work = join(directory, "baseline");
-    for (const dir of [".git", "node_modules", "repair-probes", "tests", "src/catalog", "data"])
+    execFileSync("git", ["clone", "--quiet", "--local", process.cwd(), work]);
+    for (const dir of ["node_modules", "repair-probes"])
       await mkdir(join(work, dir), { recursive: true });
-    for (const file of ["package.json", "tests/setup.ts", "src/catalog/canonical-value.ts"])
-      await copyFile(file, join(work, file));
     await writeFile(join(work, "data/catalog-snapshot.json"), JSON.stringify({ version: 0 }));
     const replay = (tree: string) =>
       replayProbes({
