@@ -7,6 +7,13 @@ import {
 } from "./source-model-details.ts";
 import type { SourceParseInput } from "./source-parse.ts";
 
+const responseEffort = { interface: "OpenAI Responses API", parameter: "reasoning.effort" };
+const chatEffort = { interface: "OpenAI Chat Completions API", parameter: "reasoning_effort" };
+
+function effortScope({ interface: api, parameter }: typeof responseEffort): string {
+  return `${api} (${parameter})`;
+}
+
 /** The dotted Responses parameter and the underscored Chat parameter have separate API scopes. */
 export function addOpenAiEffort(
   input: SourceParseInput,
@@ -21,17 +28,18 @@ export function addOpenAiEffort(
   const unsupported = rejections.flatMap((match) => match[1] ?? []);
   if (unsupported.length) {
     const statements = (model.api_endpoints ?? []).flatMap(({ path }) => {
-      const scope =
+      const applicability =
         path === "v1/responses"
-          ? "OpenAI Responses API (reasoning.effort)"
+          ? responseEffort
           : path === "v1/chat/completions"
-            ? "OpenAI Chat Completions API (reasoning_effort)"
+            ? chatEffort
             : undefined;
-      return scope
+      return applicability
         ? [
             {
               kind: "reasoning_effort" as const,
-              scope,
+              scope: effortScope(applicability),
+              applicability,
               unsupported_values: unsupported,
             },
           ]
@@ -78,7 +86,8 @@ export function addOpenAiEffort(
     statements: [
       {
         kind: "reasoning_effort",
-        scope: "OpenAI Responses API (reasoning.effort)",
+        scope: effortScope(responseEffort),
+        applicability: responseEffort,
         supported_values: supported,
         ...(defaults[0] === undefined ? {} : { default_value: defaults[0] }),
       },

@@ -202,6 +202,59 @@ describe("versioned scoped limit website details", () => {
       "raw",
     ]);
   });
+  it("carries reviewed applicability through v10 without replacing the cached v9 model", async () => {
+    const statement = {
+      kind: "reasoning_effort",
+      scope: "Interactions API, beta enabled (config.level).",
+      default_value: "deep",
+    } as const;
+    const capability: CapabilityDetailGroup = {
+      source_ref: group.source_ref,
+      claim: "interactions_effort",
+      evidence: group.evidence,
+      statements: [statement],
+    };
+    const structured: CapabilityDetailGroup = {
+      ...capability,
+      statements: [
+        {
+          ...statement,
+          applicability: {
+            interface: "Interactions API",
+            parameter: "config.level",
+            condition: "Beta enabled",
+          },
+        },
+      ],
+    };
+    const legacy = catalog([group], [capability]);
+    const current = catalog([group], [structured, { ...capability, claim: "legacy" }]);
+    const pricing = emptyPricingCatalog();
+    const legacyVersion = websiteDataVersionForCatalog(legacy, "b".repeat(64));
+    const version = websiteDataVersionForCatalog(current, "b".repeat(64));
+    expect(version).not.toBe(legacyVersion);
+    const [legacyChunk] = websitePublication(legacy, pricing, legacyVersion).details;
+    const [currentChunk] = websitePublication(current, pricing, version).details;
+    expect(legacyChunk?.schema_version).toBe(9);
+    expect(currentChunk?.schema_version).toBe(10);
+    expect(() => websiteDetailChunkSchema.parse({ ...currentChunk, schema_version: 9 })).toThrow();
+    const fetcher = vi.fn(
+      async (input: string) =>
+        new Response(stableJson(input.includes(legacyVersion) ? legacyChunk : currentChunk)),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    expect((await loadWebsiteModelDetail(legacyVersion, model)).capability_details).toEqual([
+      capability,
+    ]);
+    expect((await loadWebsiteModelDetail(version, model)).capability_details).toEqual([
+      structured,
+      { ...capability, claim: "legacy" },
+    ]);
+    expect((await loadWebsiteModelDetail(legacyVersion, model)).capability_details).toEqual([
+      capability,
+    ]);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
   it("projects real statement-bearing assets under the conditional v8 cache identity", async () => {
     const coreInput: unknown = JSON.parse(stableJson(catalog([group])));
     const core = catalogSchema.parse(coreInput);
@@ -260,7 +313,7 @@ describe("versioned scoped limit website details", () => {
     const current = chunk([group], "c".repeat(64));
     expect(websiteDetailChunkSchema.parse(current)).toEqual(current);
     expect(() => websiteDetailChunkSchema.parse({ ...current, schema_version: 7 })).toThrow();
-    expect(() => websiteDetailChunkSchema.parse({ ...current, schema_version: 10 })).toThrow();
+    expect(() => websiteDetailChunkSchema.parse({ ...current, schema_version: 11 })).toThrow();
     expect(() => websiteDetailChunkSchema.parse({ ...current, extra: true })).toThrow();
     expect(() =>
       websiteDetailChunkSchema.parse({
@@ -307,7 +360,7 @@ describe("versioned scoped limit website details", () => {
               ? "other"
               : field === "chunk"
                 ? 1
-                : 10,
+                : 11,
       };
       const fetcher = vi
         .fn()

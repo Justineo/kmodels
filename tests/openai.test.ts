@@ -176,9 +176,14 @@ describe("OpenAI adapters", () => {
     const groups = models.find((m) => m.model_id === "gpt-5.4")?.capability_details;
     expect(groups?.[0]?.statements).toEqual(
       [
-        "OpenAI Chat Completions API (reasoning_effort)",
-        "OpenAI Responses API (reasoning.effort)",
-      ].map((scope) => ({ kind: "reasoning_effort", scope, unsupported_values: ["brief"] })),
+        { interface: "OpenAI Chat Completions API", parameter: "reasoning_effort" },
+        { interface: "OpenAI Responses API", parameter: "reasoning.effort" },
+      ].map((applicability) => ({
+        kind: "reasoning_effort",
+        scope: `${applicability.interface} (${applicability.parameter})`,
+        applicability,
+        unsupported_values: ["brief"],
+      })),
     );
   });
   it("joins cache mode semantics only to the exact documented Responses example", async () => {
@@ -197,14 +202,31 @@ describe("OpenAI adapters", () => {
         (model.capability_details ?? []).flatMap((group) =>
           group.statements.flatMap((statement) =>
             statement.kind === "prompt_cache"
-              ? [[model.model_id, statement.mode, statement.supported]]
+              ? [[model.model_id, statement.mode, statement.supported, statement.applicability]]
               : [],
           ),
         ),
       );
     expect(modes(await parse(guide))).toEqual([
-      ["gpt-5.4", "implicit", true],
-      ["gpt-5.4", "explicit", true],
+      [
+        "gpt-5.4",
+        "implicit",
+        true,
+        {
+          interface: "OpenAI Responses API",
+          condition: "Provider-selected eligible prefix breakpoints",
+        },
+      ],
+      [
+        "gpt-5.4",
+        "explicit",
+        true,
+        {
+          interface: "OpenAI Responses API",
+          parameter: "prompt_cache_options.mode",
+          condition: "Caller-selected prefix breakpoints",
+        },
+      ],
     ]);
     for (const invalid of [
       guide.replace("Responses API request", "Chat Completions request"),
@@ -236,6 +258,7 @@ describe("OpenAI adapters", () => {
       {
         kind: "reasoning_effort",
         scope: "OpenAI Responses API (reasoning.effort)",
+        applicability: { interface: "OpenAI Responses API", parameter: "reasoning.effort" },
         supported_values: ["brief", "balanced", "deep"],
         default_value: "balanced",
       },

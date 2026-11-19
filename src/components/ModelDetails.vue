@@ -49,23 +49,6 @@ const updateScrollbars = useOverlayScrollbars(() => ({
   target: scrollHost.value,
   viewport: scrollViewport.value,
 }));
-const positiveCapabilities = computed(() => {
-  const detail = props.detail;
-  if (detail === undefined) return [];
-  const labels: ReadonlyArray<[keyof WebsiteModelDetail["capabilities"], string]> = [
-    ["reasoning", "Reasoning"],
-    ["tool_call", "Tool calling"],
-    ["structured_output", "Structured output"],
-    ["prompt_cache", "Prompt cache"],
-    ["fine_tuning", "Fine-tuning"],
-    ["citations", "Citations"],
-    ["code_execution", "Code execution"],
-    ["context_management", "Context management"],
-    ["effort_control", "Effort control"],
-    ["computer_use", "Computer use"],
-  ];
-  return labels.filter(([key]) => detail.capabilities[key] === true).map(([, label]) => label);
-});
 const deliveryModes = computed(
   () => props.detail?.delivery_modes?.map(formatSnakeCase).join(", ") || "Not published",
 );
@@ -339,21 +322,20 @@ onUnmounted(() => {
             <section v-if="detail" class="detail-section" aria-labelledby="modalities-heading">
               <h3 id="modalities-heading">Modalities & capabilities</h3>
               <div class="modality-flow">
-                <span>{{ detail.modalities.input.join(", ") || "Unknown input" }}</span>
-                <UiIcon name="arrow-right" />
-                <span>{{ detail.modalities.output.join(", ") || "Unknown output" }}</span>
+                <div>
+                  <small>Input</small>
+                  {{ detail.modalities.input.join(", ") || "Unknown" }}
+                </div>
+                <UiIcon name="arrow-right" aria-hidden="true" />
+                <div>
+                  <small>Output</small>
+                  {{ detail.modalities.output.join(", ") || "Unknown" }}
+                </div>
               </div>
-              <ul v-if="positiveCapabilities.length > 0" class="capability-list">
-                <li v-for="capability in positiveCapabilities" :key="capability">
-                  {{ capability }}
-                </li>
-              </ul>
-              <p v-else-if="!detail.capability_details?.length" class="unknown-note">
-                No supported capabilities published.
-              </p>
               <ModelCapabilityDetails
-                v-if="detail.capability_details?.length"
-                :groups="detail.capability_details"
+                :key="detail.model_ref"
+                :capabilities="detail.capabilities"
+                :groups="detail.capability_details ?? []"
               />
             </section>
 

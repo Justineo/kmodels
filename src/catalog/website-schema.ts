@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { limitDetailsSchema } from "./model-limit-details.ts";
-import { capabilityDetailsSchema } from "./model-capability-details.ts";
+import {
+  capabilityDetailsSchema,
+  hasStructuredCapabilityDetails,
+} from "./model-capability-details.ts";
 import { selectorSchema } from "../pricing/schema.ts";
 import { inferencePriceReasonSchema } from "../pricing/inference-schema.ts";
 import { inferenceMatchDataSchema } from "../pricing/inference-matching-schema.ts";
@@ -654,6 +657,15 @@ export const websiteDetailChunkSchema = z.discriminatedUnion("schema_version", [
   }),
   websiteDetailChunkSchemaV7.extend({
     schema_version: z.literal(9),
+    details: z.array(
+      websiteStoredModelDetailSchema.refine(
+        ({ capability_details }) => !hasStructuredCapabilityDetails(capability_details),
+        "Structured capability applicability requires schema 10",
+      ),
+    ),
+  }),
+  websiteDetailChunkSchemaV7.extend({
+    schema_version: z.literal(10),
     details: z.array(websiteStoredModelDetailSchema),
   }),
 ]);

@@ -1,11 +1,15 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { linkedBundleSchema } from "../src/catalog/bundle.ts";
 import { collectProvider } from "../src/catalog/collector.ts";
 import { fetchSource } from "../src/catalog/fetch.ts";
 import { sha256 } from "../src/catalog/io.ts";
 import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
 import { modelPricingView } from "../src/catalog/pricing-presentation.ts";
+import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
+import { catalogSchema } from "../src/catalog/schema.ts";
+import { websiteModelDetail } from "../src/catalog/website-data.ts";
 
 vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/catalog/fetch.ts")>()),
@@ -17,6 +21,88 @@ const fixture = (name: string) =>
   readFile(new URL("./fixtures/openai/" + name, import.meta.url), "utf8");
 const accounting =
   "components:\n  schemas:\n    Response:\n      properties:\n        usage:\n          properties:\n            input_tokens:\n              type: integer";
+
+it("projects reviewed API bindings and retains legacy cache scope when its guide is unavailable", async () => {
+  const manifest: ProviderManifest | undefined = manifests.find(
+    ({ provider }) => provider.id === "openai",
+  );
+  const source = manifest?.sources.find(({ id }) => id === "openai-models");
+  if (manifest === undefined || manifest.notConfiguredReason !== undefined || source === undefined)
+    throw new Error("Missing OpenAI model source");
+  const selected: ProviderManifest = { ...manifest, sources: [source] };
+  const bundle = linkedBundleSchema.parse(JSON.parse(await fixture("catalog.json")));
+  const guide = {
+    url: "https://developers.openai.com/api/docs/guides/prompt-caching.md",
+    body: await fixture("cache-modes.md"),
+  };
+  const body = JSON.stringify({ ...bundle, documents: [...bundle.documents, guide] });
+  const fetched = { dependencies: [], etag: undefined, lastModified: undefined };
+  vi.mocked(fetchSource).mockResolvedValueOnce({ ...fetched, body, contentHash: sha256(body) });
+  const prior = await collectProvider(selected, undefined, { sources: {} }, observedAt);
+  const model = prior.models.find(({ model_id }) => model_id === "gpt-5.4");
+  const cache = model?.capability_details?.find(
+    ({ claim }) => claim === "responses_cache_breakpoints",
+  );
+  if (model === undefined || cache === undefined)
+    throw new Error("Missing exact model cache claim");
+  const projected = websiteModelDetail(emptyPricingCatalog(), model);
+  expect(projected.capability_details).toContainEqual(cache);
+  expect(cache.statements).toContainEqual(
+    expect.objectContaining({
+      mode: "explicit",
+      applicability: {
+        interface: "OpenAI Responses API",
+        parameter: "prompt_cache_options.mode",
+        condition: "Caller-selected prefix breakpoints",
+      },
+    }),
+  );
+  const legacyCache = {
+    ...cache,
+    statements: cache.statements.map(({ applicability: _structured, ...statement }) => statement),
+  };
+  const previous = catalogSchema.parse({
+    catalog_version: "a".repeat(64),
+    generated_at: observedAt,
+    providers: [prior.provider],
+    models: prior.models.map((entry) =>
+      entry.uid === model.uid ? { ...entry, capability_details: [legacyCache] } : entry,
+    ),
+    sources: prior.sources,
+    coverage: [prior.coverage],
+    warnings: [],
+  });
+  const withoutGuide = JSON.stringify(bundle);
+  vi.mocked(fetchSource).mockResolvedValueOnce({
+    ...fetched,
+    body: withoutGuide,
+    contentHash: sha256(withoutGuide),
+    dependencyFailures: [
+      {
+        dependency_id: "openai-models/prompt-cache-modes",
+        impact: "claim",
+        outcome: "fetch_failed",
+        message: "HTTP 503",
+      },
+    ],
+  });
+  const next = await collectProvider(
+    selected,
+    previous,
+    { sources: {} },
+    "2026-07-22T00:00:00.000Z",
+  );
+  const refreshed = next.models.find(({ uid }) => uid === model.uid);
+  if (refreshed === undefined) throw new Error("Missing refreshed exact model");
+  const retained = websiteModelDetail(emptyPricingCatalog(), refreshed).capability_details;
+  expect(retained).toContainEqual(legacyCache);
+  expect(retained?.find(({ claim }) => claim === "responses_effort")?.statements).toContainEqual(
+    expect.objectContaining({
+      applicability: { interface: "OpenAI Responses API", parameter: "reasoning.effort" },
+    }),
+  );
+  expect(next.coverage.status).toBe("fresh");
+});
 
 it("keeps retired cards out of current inference and tool price books", async () => {
   const manifest: ProviderManifest | undefined = manifests.find(

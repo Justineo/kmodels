@@ -17,10 +17,22 @@ const nativeValues = z
   .max(16)
   .refine((values) => new Set(values).size === values.length, "Duplicate native effort value");
 
+const applicability = z
+  .strictObject({
+    interface: scope.max(128),
+    parameter: scope
+      .max(128)
+      .refine((value) => value.trim() === value)
+      .optional(),
+    condition: scope.optional(),
+  })
+  .optional();
+
 const reasoningEffortSchema = z
   .strictObject({
     kind: z.literal("reasoning_effort"),
     scope,
+    applicability,
     supported_values: nativeValues.optional(),
     unsupported_values: nativeValues.optional(),
     default_value: nativeValue.optional(),
@@ -47,6 +59,7 @@ export const capabilityStatementSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("prompt_cache"),
     scope,
+    applicability,
     mode: z.enum(["implicit", "explicit"]),
     supported: z.boolean(),
   }),
@@ -58,6 +71,19 @@ export const capabilityDetailsSchema = modelClaimGroupsSchema(capabilityDetailGr
 
 export type CapabilityStatement = z.infer<typeof capabilityStatementSchema>;
 export type CapabilityDetailGroup = z.infer<typeof capabilityDetailGroupSchema>;
+
+export const capabilityByStatement = {
+  reasoning_effort: "reasoning",
+  prompt_cache: "prompt_cache",
+} satisfies Record<CapabilityStatement["kind"], string>;
+
+export function hasStructuredCapabilityDetails(
+  groups: readonly CapabilityDetailGroup[] | undefined,
+): boolean {
+  return (
+    groups?.some(({ statements }) => statements.some((s) => s.applicability !== undefined)) ?? false
+  );
+}
 
 export function capabilityStatementsConflict(
   left: CapabilityStatement,

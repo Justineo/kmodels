@@ -9,6 +9,7 @@ import { inferencePricingPath, type InferencePricingPublication } from "./infere
 import { websiteInferencePrices } from "./website-inference-pricing.ts";
 import { withPricingCanonicalCache } from "./pricing-canonical.ts";
 import { hasClaimStatements } from "./model-claim-details.ts";
+import { hasStructuredCapabilityDetails } from "./model-capability-details.ts";
 
 export interface ProjectionInput {
   pairId: string;
@@ -34,12 +35,14 @@ export function websiteDataVersion(
   inferenceSource?: string,
   scopedLimitDetails = false,
   scopedCapabilityDetails = false,
+  structuredCapabilityDetails = false,
 ): string {
   const identity = ["website-core-v7", catalogVersion, pricingDataVersion];
   if (inferenceSource !== undefined)
     identity.push("inference-matching-v3", sha256(inferenceSource));
   if (scopedLimitDetails) identity.push("model-limit-details-v8");
-  if (scopedCapabilityDetails) identity.push("model-capability-details-v9");
+  if (structuredCapabilityDetails) identity.push("model-capability-applicability-v10");
+  else if (scopedCapabilityDetails) identity.push("model-capability-details-v9");
   return sha256(identity.join("\0"));
 }
 
@@ -54,6 +57,9 @@ export function websiteDataVersionForCatalog(
     inferenceSource,
     hasScopedLimitDetails(catalog),
     catalog.models.some(({ capability_details }) => hasClaimStatements(capability_details)),
+    catalog.models.some(({ capability_details }) =>
+      hasStructuredCapabilityDetails(capability_details),
+    ),
   );
 }
 

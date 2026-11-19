@@ -3,6 +3,7 @@ import { storeInferencePrices } from "./website-inference-storage.ts";
 import { canonicalJsonKey, compareUtf8, uniqueCanonicalValues } from "./canonical-value.ts";
 import { modelLifecycles, modelReleaseStages, modelTasks } from "./catalog-vocabulary.ts";
 import { manifests, type ProviderManifest } from "./manifests.ts";
+import { hasStructuredCapabilityDetails } from "./model-capability-details.ts";
 import { hasClaimStatements } from "./model-claim-details.ts";
 import { formatDecimal, formatSentenceCase } from "./presentation.ts";
 import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
@@ -362,12 +363,14 @@ function websiteDeferredAssets(
         (values, chunk) =>
           websiteDetailChunkSchema.parse({
             schema_version: values.some(({ capability_details }) =>
-              hasClaimStatements(capability_details),
+              hasStructuredCapabilityDetails(capability_details),
             )
-              ? 9
-              : values.some(({ limit_details }) => hasClaimStatements(limit_details))
-                ? 8
-                : 7,
+              ? 10
+              : values.some(({ capability_details }) => hasClaimStatements(capability_details))
+                ? 9
+                : values.some(({ limit_details }) => hasClaimStatements(limit_details))
+                  ? 8
+                  : 7,
             data_version: dataVersion,
             provider_id: provider.id,
             chunk,

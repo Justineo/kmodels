@@ -78,7 +78,10 @@ function clearPointerDown(): void {
 
 function handleFocusIn(): void {
   focused.value = true;
-  request(true);
+  // Keyboard focus may scroll the trigger into view before this frame is painted.
+  requestAnimationFrame(() => {
+    if (focused.value && trigger.value?.contains(document.activeElement)) request(true);
+  });
 }
 
 function handleFocusOut(event: FocusEvent): void {

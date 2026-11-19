@@ -155,8 +155,15 @@ snapshot is merged atomically to avoid combining different package versions.
   reasoning-effort values for an exact model and API. A documented implicit cache and an explicit
   cache exclusion can coexist in one scope. Effort options retain native spelling and display
   separately from a documented default or explicit exclusions. Omitted values remain unknown.
-  A scoped fact does not redefine a model-wide chip, select a request parameter, or determine a
-  cache hit or a tariff.
+  A scoped fact leaves the independently collected model-wide flag intact. Effort control is a
+  separate flag within the reasoning capability. Neither a reasoning flag nor one scoped
+  rejection establishes an effort control, option list or default. A cache mode supplies no
+  cache-hit or tariff evidence.
+  Each statement keeps its complete `scope`. Producers can also record bounded `applicability`
+  with an evidenced interface identity, optional native parameter and optional residual condition.
+  This is presentation metadata. Existing conflict detection compares the original scope.
+  Where an interface, parameter or residual condition cannot be bound from source evidence, the
+  complete scope text remains the presentation contract.
 - `status` describes availability/support: `active`, `legacy`, `deprecated`, `retired`, or `unknown`.
 - `release_stage` independently describes maturity: `stable`, `preview`, `experimental`, or `unknown`.
 - `legacy` means callable but superseded or restricted. `deprecated` means migration is announced while some use remains. `retired` requires evidence that requests or deployments are unavailable.

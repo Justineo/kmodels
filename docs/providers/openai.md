@@ -551,15 +551,22 @@ which models can use Web Search, File Search, or containers, so those books like
 - No price is inherited across a family, successor, provider, deployment channel, or private ID.
 - Every admitted normalized or raw fact retains its exact source reference and observation time.
 
-## Scoped reasoning effort
+## Scoped reasoning effort and prompt caching
 
 An indexed model card can declare native `reasoning.effort` options in its introductory prose.
 The collector requires the exact card ID and a supported Responses route on the same card.
 It records a default only when the declaration labels one. Synthesized snapshot IDs and other
 endpoints require their own evidence. The [reasoning guide](https://developers.openai.com/api/docs/guides/reasoning)
-distinguishes this dotted parameter from the Chat Completions parameter.
+distinguishes this dotted parameter from the Chat Completions parameter. An unconditional
+rejection in the exact card's introduction is bound separately to each supported text route on
+that card. Each binding carries the interface and its native effort parameter alongside the
+original scope. An exclusion supplies no positive option list or default.
 
 The optional prompt-caching guide can establish caller-selected and provider-selected prefix
 breakpoints for Responses. The same named cohort must agree across the guide's mode explanation,
 comparison table, and a concrete Responses example that names an indexed model with that route.
-This records supported placement mechanisms. The pricing source owns their charges.
+This records supported placement mechanisms and retains each mode's breakpoint qualification.
+Only the explicit mode carries the request field `prompt_cache_options.mode` from the example.
+The structured fields describe the same claims as the original scope. Retained observations
+can still carry scope text alone when the optional guide is unavailable.
+The pricing source owns their charges.

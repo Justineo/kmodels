@@ -57,6 +57,10 @@ Prompt-cache observations give the implicit or explicit mode and an evidenced su
 one API scope. Reasoning-effort observations preserve documented native option spellings,
 explicit exclusions and an independently evidenced default. A documented default can establish
 its own support when a partial option list omits it. Each statement states its API scope.
+Optional `applicability` retains an interface label and, where documented, a native parameter
+and residual condition. The interface and parameter are bounded to 128 characters each and the
+condition to 768. The original scope remains required. The website version-selects structured
+detail chunks independently of the private catalog envelope and the legacy public profiles.
 
 Collection, retention, ownership validation and full snapshot binding use the same claim rules
 as qualified limits. Both detail fields remain optional and independently populated. Bad

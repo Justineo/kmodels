@@ -103,6 +103,10 @@ describe("scoped model capability details", () => {
     { default_value: "high", unsupported_values: ["high"] },
     { supported_values: [] },
     { supported_values: ["high"], parameter_path: "reasoning.effort" },
+    { default_value: "high", applicability: { interface: " ", parameter: "effort" } },
+    { default_value: "high", applicability: { interface: "API", parameter: " effort " } },
+    { default_value: "high", applicability: { interface: "API", condition: "x".repeat(769) } },
+    { default_value: "high", applicability: { interface: "API", url: "https://example.com/" } },
   ])("rejects malformed, empty or contradictory effort observations %j", (input) => {
     expect(
       capabilityStatementSchema.safeParse({ kind: "reasoning_effort", scope, ...input }).success,
