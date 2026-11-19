@@ -2226,9 +2226,14 @@ function retailPriceFact(
   sourceRef: string,
   defaultMeter?: SourcePriceFact["meter"],
 ): SourcePriceFact | undefined {
-  const unit = retailUnit(price.unitOfMeasure, label);
+  const session =
+    price.productName === "Azure OpenAI Media" &&
+    /^Live 1 (?:Gl|DZ)$/.test(price.skuName) &&
+    price.meterName === price.skuName + " Unit" &&
+    price.unitOfMeasure === "1 Hour";
+  const unit = session ? "hour" : retailUnit(price.unitOfMeasure, label);
   if (unit === undefined) return;
-  const meter = retailMeter(label, unit) ?? defaultMeter;
+  const meter = session ? "session_runtime" : (retailMeter(label, unit) ?? defaultMeter);
   if (meter === undefined) return;
   const rawValidity = retailValidity(price);
   return {

@@ -192,20 +192,16 @@
             </p>
           </div>
           <hr />
-          <h2 class="anchor anchorWithStickyNavbar_YAqC" id="联网搜索与抓取价格">
-            联网搜索与抓取价格<a
-              href="#联网搜索与抓取价格"
+          <h2 class="anchor anchorWithStickyNavbar_YAqC" id="web-tools-pricing">
+            Search 与 Fetch API 价格<a
+              href="#web-tools-pricing"
               class="hash-link"
-              aria-label="联网搜索与抓取价格的直接链接"
-              title="联网搜索与抓取价格的直接链接"
+              aria-label="Search 与 Fetch API 价格的直接链接"
+              title="Search 与 Fetch API 价格的直接链接"
               >​</a
             >
           </h2>
-          <p>
-            搜索（文字、图片）和网页抓取按次计费。无论是直接调用
-            <a href="/zh-cn/guides/search">Search 与 Fetch API</a>，还是模型通过
-            <a href="/zh-cn/guides/web_tools">联网工具</a> 等工具使用，都按此价格计费。
-          </p>
+          <p><a href="/zh-cn/guides/search">Search 与 Fetch API</a> 按次计费。</p>
           <table>
             <thead>
               <tr>
@@ -216,21 +212,26 @@
             </thead>
             <tbody>
               <tr>
-                <td>搜索（文字、图片）</td>
-                <td>每 1,000 次</td>
+                <td>Search API（文字）</td>
+                <td>每 1,000 次成功请求</td>
                 <td>5元</td>
               </tr>
               <tr>
-                <td>网页抓取</td>
-                <td>每 1,000 次</td>
+                <td>Fetch API</td>
+                <td>每 1,000 次成功请求</td>
                 <td>5元</td>
               </tr>
             </tbody>
           </table>
+          <p>计费规则见 <a href="/zh-cn/guides/search">网页搜索与抓取</a>。</p>
           <p>
-            计费规则见<a href="/zh-cn/guides/search">网页搜索与抓取</a> 与<a
-              href="/zh-cn/guides/web_tools#billing"
-              >联网工具</a
+            自北京时间 2026 年 11 月 18 日 12:00
+            起，调用模型时触发的服务端搜索、网页抓取不再计费，仅按模型 Token
+            用量计费。使用以下接口时会触发服务端搜索：<a href="/zh-cn/guides/web_tools">联网工具</a
+            >、<a href="/zh-cn/guides/anthropic_api#server-tool-usage"
+              >Anthropic API 的 <code>web_search</code> 工具</a
+            >、<a href="/zh-cn/guides/responses_api#tools"
+              >Responses API 的 <code>web_search</code> 工具</a
             >。
           </p>
           <hr />

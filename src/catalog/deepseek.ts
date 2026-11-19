@@ -1283,7 +1283,7 @@ export function parseDeepseekCatalog(input: Input): SourceParseResult {
     input.onContractFinding,
   );
   const services = deepseekServicePricing(input, bundle);
-  const tools = deepseekToolServices(input, bundle, services, pricingInputs);
+  const tools = deepseekToolServices(input, bundle, pricingInputs);
   return {
     models: bounded(input, models),
     inference_prices: models.map((model) => ({

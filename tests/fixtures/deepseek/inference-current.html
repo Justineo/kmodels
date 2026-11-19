@@ -136,12 +136,8 @@
       (3) For more details on concurrency limits, please refer to
       <a href="/quick_start/rate_limit">Rate Limit &amp; Isolation</a>.
     </p>
-    <h2>Web Search &amp; Fetch Pricing<a href="#web-search--fetch-pricing">​</a></h2>
-    <p>
-      Search (text, image) and web fetch are billed per use, whether you call the
-      <a href="/guides/search">Search and Fetch APIs</a> directly or the model uses them through
-      tools such as the <a href="/guides/web_tools">web tools</a>.
-    </p>
+    <h2 id="web-tools-pricing">Search &amp; Fetch API Pricing<a href="#web-tools-pricing">​</a></h2>
+    <p>The <a href="/guides/search">Search and Fetch APIs</a> are billed per use.</p>
     <table>
       <thead>
         <tr>
@@ -152,20 +148,28 @@
       </thead>
       <tbody>
         <tr>
-          <td>Search (text, image)</td>
-          <td>Per 1,000 searches</td>
+          <td>Search API (text)</td>
+          <td>Per 1,000 successful requests</td>
           <td>$0.75</td>
         </tr>
         <tr>
-          <td>Web fetch</td>
-          <td>Per 1,000 fetches</td>
+          <td>Fetch API</td>
+          <td>Per 1,000 successful requests</td>
           <td>$0.75</td>
         </tr>
       </tbody>
     </table>
+    <p>For the billing rules, see <a href="/guides/search">Search &amp; Fetch</a>.</p>
     <p>
-      For the billing rules, see <a href="/guides/search">Search &amp; Fetch</a> and
-      <a href="/guides/web_tools#billing">Web Tools</a>.
+      Starting 12:00 on November 18, 2026 (Beijing Time, UTC+8), server-side search and web fetch
+      triggered when calling the model are no longer billed; only model token usage is billed.
+      Server-side search is triggered when you use the <a href="/guides/web_tools">web tools</a>,
+      the
+      <a href="/guides/anthropic_api#server-tool-usage"
+        ><code>web_search</code> tool in the Anthropic API</a
+      >
+      or the
+      <a href="/guides/responses_api#tools"><code>web_search</code> tool in the Responses API</a>.
     </p>
     <h2>Deduction Rules<a href="#deduction-rules">​</a></h2>
     <p>

@@ -149,28 +149,47 @@ describe("DeepSeek native Search and Fetch charges", () => {
       assembleParsedProviderPricing("deepseek", observedAt, [{ source, ...captured }], []),
     ).toEqual(detached);
   });
-  it("accepts the current tool-triggered client scope, including Codex Alpha Search", async () => {
+  it("publishes the dated server-side exemption and keeps direct client searches billed", async () => {
     const { result, diagnostics, failures } = await parsed();
     expect(failures).toEqual([]);
     expect(result.commercial_facts).toHaveLength(4);
     expect(
       diagnostics.find((item) => item.reason_code === "service_server_tool_rule_verified")?.sample,
     ).toBe(
-      "Search and Fetch calls triggered by tools when using the DeepSeek API through DeepSeek Harness, Claude Code, or Codex, including Codex Alpha Search, are also billed per successful request.",
+      "Searches performed by the model through server-side tools are not billed (text search, image search and page fetch). Only model token usage is billed. From 2026-11-18T04:00:00.000Z",
     );
     const serverOffers = (result.commercial_facts ?? []).filter(
       (fact) => fact.offer_key === "server_tools",
     );
     expect(serverOffers).toHaveLength(2);
-    expect(serverOffers.every((fact) => fact.price_facts.length === 2)).toBe(true);
+    expect(serverOffers.every((fact) => fact.price_facts.length === 0)).toBe(true);
+    expect(
+      serverOffers.every(
+        (fact) =>
+          fact.state_facts?.length === 1 &&
+          fact.state_facts[0]?.state === "free" &&
+          fact.state_facts[0]?.conditions.effective_from === "2026-11-18T04:00:00.000Z" &&
+          fact.state_facts[0]?.raw.fragment?.includes("no longer billed") === true,
+      ),
+    ).toBe(true);
+    const standalone = (result.commercial_facts ?? []).filter(
+      (fact) => fact.offer_key === "standalone",
+    );
+    expect(
+      standalone.every(
+        (fact) =>
+          fact.price_facts.length === 2 &&
+          fact.price_facts.every((rate) => rate.conditions.effective_until === undefined),
+      ),
+    ).toBe(true);
   });
   it("rejects a different client scope instead of guessing the server-tool tariff", async () => {
     const { result, diagnostics, failures } = await parsed((bundle) => {
       const doc = bundle.documents.find(({ url }) => url.includes("/guides/search/"));
       if (doc === undefined) throw new Error("Missing search guide");
       doc.body = doc.body.replace(
-        "triggered by tools when using",
-        "triggered by server-side tools when using",
+        "call the Search and Fetch APIs directly from the client",
+        "call the Search and Fetch APIs directly from a server",
       );
     });
     expect(failures).toEqual(["https://api-docs.deepseek.com/guides/search/"]);
@@ -183,7 +202,7 @@ describe("DeepSeek native Search and Fetch charges", () => {
       ),
     ).toBe(true);
   });
-  it("presents both service offers at their current request tariff through the shared website timeline", async () => {
+  it("presents the metered request tariff and the dated server-side exemption through the shared website timeline", async () => {
     const { core, pricing } = await compiled();
     const website = websitePublication(core, pricing, "b".repeat(64));
     expect(website.catalog.providers[0]?.pricing_coverage.standalone_resources).toBe(2);
@@ -202,9 +221,20 @@ describe("DeepSeek native Search and Fetch charges", () => {
             )?.offers[ref[1]];
       if (detail === undefined) throw new Error("Missing deferred service offer");
       const timeline = projectWebsitePricingTimeline(detail, observedAt);
-      expect(timeline.current.rates).toHaveLength(4);
-      expect(timeline.next_change_at).toBeUndefined();
-      expect(timeline.upcoming).toBeUndefined();
+      expect(timeline.current.rates).toHaveLength(2);
+      expect(timeline.current.states.map((state) => state.state)).not.toContain("free");
+      expect(timeline.next_change_at).toBe("2026-11-18T04:00:00.000Z");
+      expect(timeline.upcoming?.effective_at).toBe("2026-11-18T04:00:00.000Z");
+      expect(timeline.upcoming?.offer.rates).toHaveLength(2);
+      expect(timeline.upcoming?.offer.states.map((state) => state.state)).toEqual([
+        "free",
+        "numeric",
+      ]);
+      const granted = projectWebsitePricingTimeline(detail, "2026-11-18T04:00:00.000Z");
+      expect(granted.current.rates).toHaveLength(2);
+      expect(granted.current.states.map((state) => state.state)).toEqual(["free", "numeric"]);
+      expect(granted.next_change_at).toBeUndefined();
+      expect(granted.upcoming).toBeUndefined();
     }
   });
   it("uses the price pages for amounts while keeping guide quotes explicitly excluded", async () => {
@@ -233,8 +263,8 @@ describe("DeepSeek native Search and Fetch charges", () => {
         if (doc === undefined) throw new Error("Missing native companion");
         if (failure === "policy")
           doc.body = doc.body.replace(
-            /are also billed per\s+successful request/,
-            "are currently free of charge",
+            "server-side tools are not billed",
+            "server-side tools are currently free of charge",
           );
         else if (failure === "predicate") doc.body = doc.body.replace("non-empty", "empty");
         else doc.body = "<blockquote>" + doc.body + "</blockquote>";
@@ -277,17 +307,17 @@ describe("DeepSeek native Search and Fetch charges", () => {
       const { result, failures } = await parsed((bundle) => {
         const $ = load(bundle.index.body);
         const owned = $("h2")
-          .filter((_, node) => $(node).text().includes("Web Search & Fetch Pricing"))
+          .filter((_, node) => $(node).text().includes("Search & Fetch API Pricing"))
           .first();
         const table = owned.nextAll("table").first();
-        if (drift === "heading") owned.text("Search & Fetch Pricing");
+        if (drift === "heading") owned.text("Web Search & Fetch Pricing");
         else if (drift === "header") table.find("th").first().text("API");
         else
           table
             .find("td")
-            .filter((_, node) => $(node).text() === "Search (text, image)")
+            .filter((_, node) => $(node).text() === "Search API (text)")
             .first()
-            .text("Search");
+            .text("Search (text, image)");
         bundle.index.body = $.html();
       });
       expect(failures).toEqual([source.url]);
@@ -295,6 +325,22 @@ describe("DeepSeek native Search and Fetch charges", () => {
       expect(result.commercial_facts ?? []).toEqual([]);
     },
   );
+  it("rejects a currency page that publishes a different exemption instant", async () => {
+    const { result, diagnostics, failures } = await parsed((bundle) => {
+      const doc = bundle.documents.find((doc) => doc.url.includes("/zh-cn/"));
+      if (doc === undefined) throw new Error("Missing CNY source");
+      doc.body = doc.body.replace(/11 月\s*18 日/, "11 月 25 日");
+    });
+    expect(failures).toEqual(["https://api-docs.deepseek.com/zh-cn/quick_start/pricing/"]);
+    expect(result.commercial_facts ?? []).toEqual([]);
+    expect(
+      diagnostics.some(
+        (item) =>
+          item.disposition === "unresolved" &&
+          item.reason_code === "commercial_source_contract_drift",
+      ),
+    ).toBe(true);
+  });
 });
 describe("DeepSeek owned exact model limits", () => {
   it("does not select a last value from duplicate example properties", async () => {

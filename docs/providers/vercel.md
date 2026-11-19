@@ -165,7 +165,9 @@ never becomes a `request` rate, and a model that publishes only this amount reta
 The current model-detail payload publishes exact model/route search amounts, while its linked pricing
 component labels X posts and profiles fetched per 1K items. Both owned contracts are required: a
 canonical page and one matching backing model establish amounts; the reviewed component establishes
-units. These become independent native-search fees with caller-supplied fetched-post/profile counts.
+units. The canonical route is either the bare page slug or the chef-prefixed `chef/model` form, and a
+prefixed route accepts only a backing model whose chef also matches, so a route cannot claim another
+chef's amounts. These become independent native-search fees with caller-supplied fetched-post/profile counts.
 They do not borrow another seller's usage fields. Endpoint `x_search_post`/`x_search_user` observations
 converge only when they agree exactly after scaling; absent, duplicate, malformed or disagreeing page
 claims retain the endpoint's raw evidence. Field names alone do not establish a denominator.

@@ -72,7 +72,6 @@ const definitions = [
 export function deepseekToolServices(
   input: SourceParseInput,
   bundle: LinkedBundle,
-  existing: SourcePricingFacts,
   pricingInputs: readonly SourcePricingInputFact[],
 ): SourcePricingFacts {
   const facts: SourceCommercialPricingFact[] = [];
@@ -284,13 +283,9 @@ export function deepseekToolServices(
   }
   if (billing !== undefined) {
     const text = htmlText(load(billing).text());
-    const rules = [
-      "Tool calls are billed separately, at the web search, image search and web fetch prices in Models & Pricing, the same prices as the Search and Fetch APIs",
-      "a search call that returns results is billed for each of its queries",
-      "each image counts as 1 search, and each region the model selects in an image counts as 1 more",
-      "an opened page is billed only when it is fetched from the web",
-    ];
-    if (!rules.every((rule) => text.includes(rule))) {
+    const rule =
+      "These server tools are not billed (text search, image search and page fetch). Only model token usage is billed.";
+    if (!text.includes(rule)) {
       input.onPricingDependencyFailure?.(webToolsUrl);
       input.onPricingReconciliation?.({
         disposition: "unresolved",
@@ -301,72 +296,8 @@ export function deepseekToolServices(
       input.onPricingReconciliation?.({
         disposition: "normalized",
         reason_code: "service_billing_rule_verified",
-        sample:
-          "Native web tools: per-query search, per-image/region image search and billable page-fetch counters",
+        sample: "Native web tools: " + rule,
       });
-      for (const [resource, meter, key, definition] of [
-        [
-          "web-search",
-          "web_search",
-          "tool_search",
-          "Billed successful web search queries, excluding image searches and failed or empty searches",
-        ],
-        [
-          "web-search",
-          "image_search",
-          "tool_image_search",
-          "Billed successful image searches, one per image plus one per selected image region",
-        ],
-        [
-          "web-fetch",
-          "retrieval",
-          "tool_fetch",
-          "Billed successful pages fetched from the web; repeated opens, navigation and search-provided content are not billed",
-        ],
-      ] as const) {
-        const base = existing.commercial_facts?.find(
-          (fact) => fact.resource_key === resource && fact.offer_key === "standalone",
-        );
-        if (base === undefined) continue;
-        const signal = { namespace: "provider", provider_id: "deepseek", value: key } as const;
-        vocabulary.push({
-          kind: "usage_signal",
-          key,
-          unit: { factors: [{ unit: { namespace: "kmodels", value: "request" }, power: 1 }] },
-          resolution_phase: "outcome",
-          definition,
-        });
-        const mapped = directQuantityMethods(
-          signal,
-          ["chat", "responses", "messages"].flatMap((protocol) => [
-            `${protocol}.${key}`,
-            `${protocol}.stream.${key}`,
-          ]),
-          inputs,
-        );
-        facts.push({
-          ...base,
-          offer_key: "web_tools",
-          offer_name: "Built-in web tools",
-          price_facts: base.price_facts.map((rate) => ({
-            ...rate,
-            meter,
-            charge_binding: {
-              signal,
-              aggregation: "request",
-              ...(mapped.methods.length === 0 ? {} : { quantity_methods: mapped.methods }),
-              observations: [
-                {
-                  source_ref: input.source.id,
-                  locator: { kind: "fragment", value: webToolsUrl + "#billing" },
-                  raw: { fragment: rules.join(". ") },
-                },
-                ...mapped.facts.map(pricingInputObservation),
-              ],
-            },
-          })),
-        });
-      }
     }
   }
   return { commercial_facts: facts, vocabulary };

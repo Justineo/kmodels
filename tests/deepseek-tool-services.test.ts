@@ -102,36 +102,20 @@ it("collects independent page and speech services with exact current discounted 
   ).toBe(true);
 });
 
-it("uses billed native tool counters rather than display result counts, and preserves Messages totals and terminal usage", async () => {
-  const { result } = await parse();
+it("publishes no per-model web-tool charge now that server-side tools are unbilled, and keeps Messages totals", async () => {
+  const { result, failures } = await parse();
+  expect(failures).toEqual([]);
   expect(
     result.pricing_inputs?.filter(({ key }) => key.startsWith("messages.")).map(({ key }) => key),
   ).toHaveLength(12);
-  const native =
-    result.commercial_facts?.filter(({ offer_key }) => offer_key === "web_tools") ?? [];
+  expect(result.commercial_facts?.some(({ offer_key }) => offer_key === "web_tools")).toBe(false);
   expect(
-    native
-      .map(({ price_facts }) => price_facts[0]?.meter)
-      .sort((a, b) => (a ?? "").localeCompare(b ?? "")),
-  ).toEqual(["image_search", "retrieval", "web_search"]);
-  for (const fact of native) {
-    const binding = fact.price_facts[0]?.charge_binding;
-    expect(
-      binding?.quantity_methods?.flatMap(
-        ({ input_sources }) => input_sources?.map(({ locator }) => locator.value) ?? [],
+    (result.commercial_facts ?? []).some(({ price_facts }) =>
+      price_facts.some(({ charge_binding }) =>
+        JSON.stringify(charge_binding).includes("tool_search"),
       ),
-    ).toEqual([
-      `/usage/server_tool_use/${binding?.signal.value}`,
-      `/usage/server_tool_use/${binding?.signal.value}`,
-    ]);
-    expect(JSON.stringify(binding)).not.toContain("web_search_requests");
-    expect(JSON.stringify(binding)).not.toContain("web_fetch_requests");
-    expect(
-      binding?.quantity_methods?.flatMap(
-        ({ input_sources }) => input_sources?.map(({ absent_value }) => absent_value) ?? [],
-      ),
-    ).toEqual(["zero", "zero"]);
-  }
+    ),
+  ).toBe(false);
 });
 
 it.each(["retyped", "wrong-parent", "terminal", "partition"])(
@@ -208,7 +192,10 @@ it("rejects changed web-tool billing without weakening standalone prices", async
   const { result, failures } = await parse((bundle) => {
     const doc = bundle.documents.find(({ url }) => url.endsWith("/guides/web_tools"));
     if (!doc) throw Error("Missing billing guide");
-    doc.body = doc.body.replace("for each of its queries", "once for every call");
+    doc.body = doc.body.replace(
+      "These server tools are not billed (text search, image search and page fetch).",
+      "These server tools are billed per query at the Search and Fetch API prices.",
+    );
   });
   expect(failures).toContain("https://api-docs.deepseek.com/guides/web_tools");
   expect(result.commercial_facts?.some(({ offer_key }) => offer_key === "web_tools")).toBe(false);

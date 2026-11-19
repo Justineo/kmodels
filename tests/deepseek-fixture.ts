@@ -25,11 +25,11 @@ export async function deepseekBundle(source: SourceManifest, catalog?: string) {
     ),
   };
   for (const [body, name, heading] of [
-    [bundle.index, "services-catalog", "Web Search & Fetch Pricing"],
+    [bundle.index, "services-catalog", "Search & Fetch API Pricing"],
     [
       bundle.documents.find((doc) => doc.url.includes("/zh-cn/")),
       "services-cny",
-      "联网搜索与抓取价格",
+      "Search 与 Fetch API 价格",
     ],
   ] as const) {
     if (body === undefined) throw new Error("Missing service pricing owner");

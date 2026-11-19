@@ -1997,7 +1997,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v42",
+        extractorVersion: "vercel-catalog-v43",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
@@ -2311,7 +2311,7 @@ export const manifests = [
           minModels: 20,
           maxModels: 200,
         },
-        extractorVersion: "azure-retail-prices-v11",
+        extractorVersion: "azure-retail-prices-v12",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -4616,7 +4616,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "deepseek-catalog", minModels: 1, maxModels: 100 },
-        extractorVersion: "deepseek-catalog-v30",
+        extractorVersion: "deepseek-catalog-v31",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",

@@ -47,13 +47,20 @@ The fetch bundle contains only companions that contribute a current catalog or r
 - the public [Lists Models](https://api-docs.deepseek.com/api/list-models) example as a second
   current-inventory witness and typed, exact token-limit evidence; and
 - the [Search & Fetch guide](https://api-docs.deepseek.com/guides/search/) for successful-request
-  qualification and the tool-triggered billing scope. The English and Chinese price pages own
-  amounts; the guide's repeated prices do not replace them.
+  qualification and the distinction between direct client API calls and model-triggered
+  server-side search. The English and Chinese price pages own amounts and the "Search & Fetch API
+  Pricing" / "Search 与 Fetch API 价格" sections; the guide's repeated prices do not replace them.
 
-The fixed [Web Tools guide](https://api-docs.deepseek.com/guides/web_tools) owns the distinct
-native server-tool billing quantities. It is a required transport companion: an unavailable
-qualification must not withdraw previously accepted native tool tariffs. An unrecognized owned
-billing section similarly retains pricing. Historical bundles without that companion retain their
+Both price pages date the server-side exemption to November 18, 2026 at noon in Beijing
+(04:00 UTC). Current standalone amounts apply only to direct successful requests. The server-tool
+operation has a dated free state. These pages do not quantify earlier model-triggered charges.
+
+The fixed [Web Tools guide](https://api-docs.deepseek.com/guides/web_tools) owns the native
+server-tool billing statement. Its current "These server tools are not billed …" rule is verified
+verbatim; an unrecognized rule is recorded as contract drift without weakening the standalone
+tariffs. Because the source no longer bills per-query native tool usage, the extractor publishes no
+per-model web-tool charge; the model-level usage counters stay published as unbilled accounting
+inputs rather than being turned into rates. Historical bundles without that companion retain their
 independently evidenced standalone/client-tool branches. Optional File Parsing, OCR, TTS and ASR
 billing guides and the typed OCR response reference supply their independent usage semantics;
 the main bilingual price tables own every amount.
@@ -153,26 +160,26 @@ does not itself establish an extra service charge. Anthropic wildcard rewriting 
 not pricing or catalog identity.
 
 Search and Fetch have independent provider-service books, with no inferred model compatibility.
-Each has a standalone API offer and a separate offer for provider-side tool calls made through
-DeepSeek Harness, Claude Code or Codex, including Codex Alpha Search. Both offers currently publish
-one request tariff per currency: the guide states those tool calls are also billed per successful
-request, and neither price page declares a free interval or a scheduled change. The linked Codex
+Each has a standalone API offer and a separate offer for model-triggered server-side use. The
+standalone offer publishes one request tariff per currency; the guide states that a standalone
+request is billable only when it returns a result, and that searches calling the Search and Fetch
+APIs directly from the client are billed at the same prices (for example DeepSeek Harness with the
+DeepSeek Search API as the web search provider, and Codex Alpha Search). The linked Codex
 integration page describes the Alpha Search client feature but defers supported operations and
-billing to this guide, so it establishes no separate tariff. The parser requires that exact
-guide sentence, so a reintroduced free period, a different client scope or any rounding of the
-qualification is rejected as contract drift instead of being silently priced. The guide's repeated
-amounts never replace the price pages' cells. These service rates do not inherit model Peak/Off-peak
-periods.
+billing to this guide, so it establishes no separate tariff. The parser requires those exact
+guide sentences, so a different client scope or any rounding of the qualification is rejected as
+contract drift instead of being silently priced. The guide's repeated amounts never replace the
+price pages' cells. These service rates do not inherit model Peak/Off-peak periods.
 
-The English `Web Search & Fetch Pricing` and Chinese `联网搜索与抓取价格` sections own the amounts.
-Each publishes one `Item | Unit | Price` table (`项目 | 计费单位 | 价格`) with a
-`Search (text, image)` row (`搜索（文字、图片）`) at `Per 1,000 searches` (`每 1,000 次`) and a
-`Web fetch` row (`网页抓取`) at `Per 1,000 fetches` (`每 1,000 次`). The section heading, column
-headers, row labels and units are the contract: the retired `Search & Fetch Pricing` heading,
-`API` column and `successful requests` unit are rejected rather than reused, because a renamed or
-re-headed section may have changed its billing basis. The pages now state that tool-mediated use is
-billed on the same terms and defer the rules to the Web Tools billing section. The standalone
-guide's qualification rule still governs the standalone and client-tool request outcomes.
+The English `Search & Fetch API Pricing` and Chinese `Search 与 Fetch API 价格` sections own the
+amounts. Each publishes one `Item | Unit | Price` table (`项目 | 计费单位 | 价格`) with a
+`Search API (text)` row (`Search API（文字）`) and a `Fetch API` row, each at
+`Per 1,000 successful requests` (`每 1,000 次成功请求`). The section heading, column headers, row
+labels and units are the contract: the retired `Web Search & Fetch Pricing` heading, `Search
+(text, image)` row and `Per 1,000 searches` unit are rejected rather than reused, because a renamed
+or re-headed section may have changed its billing basis. Both pages date the exemption for
+model-triggered server-side search and web fetch; the parser cross-checks the English and Chinese
+statements and records drift if they disagree.
 
 Both services charge per successful request, independently of the number of search results.
 Search requires HTTP 200 and a non-empty results array; Fetch requires HTTP 200 with page content.
@@ -180,17 +187,15 @@ Failures, empty search results and timeouts are not billable. Consumers supply t
 qualified request counts. A results-array length, generated token count or emitted tool-call event
 cannot substitute for a billable request count. No response counter or model association is guessed.
 
-Native `deepseek_web_search` and `deepseek_read_url` operations have separate quantity bindings
-within those same service relationships. Web searches count successful queries, image searches
-count each image plus each selected region, and fetches count billable pages actually retrieved
-from the web. Repeated opens, page navigation, text finding and search-provided page content are
-free. The owned guide explicitly delegates to the central Search/Fetch tariffs. Typed
-`usage.server_tool_use.tool_search`, `tool_image_search` and `tool_fetch` fields supply billed
-counts in Chat, Responses and Messages, including their independently verified terminal envelopes.
-Display-only `web_search_requests` and `web_fetch_requests` include errors and cannot supply these
-quantities. A missing typed field removes its locator without discarding the published rate.
-Documented all-zero omission supplies zero only where the owned parent contract explicitly
-establishes that meaning; it is not a default for an unavailable usage payload.
+Native `deepseek_web_search` and `deepseek_read_url` operations are no longer billed per query. The
+owned guide states that server-side search and page fetch triggered through the model are free from
+the dated instant and that only model token usage is charged, so the extractor publishes no
+per-model web-tool charge and verifies that sentence verbatim. An unrecognized rule is recorded as
+contract drift without weakening the standalone tariffs. The typed
+`usage.server_tool_use.tool_search`, `tool_image_search` and `tool_fetch` fields stay published as
+unbilled accounting inputs; they no longer bind a rate. Display-only `web_search_requests` and
+`web_fetch_requests` never supply quantities. A missing typed field removes its locator without
+discarding the published rate.
 The guide positively names `deepseek-flash`; these service books do not assert compatibility with
 every model or propagate that capability through legacy redirects.
 

@@ -159,15 +159,12 @@ describe("DeepSeek commercial dependency isolation", () => {
       if (failure === "service scope") {
         const guide = bundle.documents.find((doc) => doc.url.includes("/guides/search/"));
         if (guide === undefined) throw new Error("Missing service guide");
-        guide.body = guide.body.replace(
-          /are also billed per\s+successful request/,
-          "are currently free of charge",
-        );
+        guide.body = guide.body.replace(/produces a\s+result/, "produces output");
       }
       if (failure === "service guide") {
         const guide = bundle.documents.find((doc) => doc.url.includes("/guides/search/"));
         if (guide === undefined) throw new Error("Missing service guide");
-        guide.body = guide.body.replace("non-empty", "empty");
+        guide.body = guide.body.replace(/directly from the\s+client/, "directly from a server");
       }
       bundle.index.body = bundle.index.body.replace("DeepSeek-V4-Flash-0731", "Updated-Flash");
       respond("2");

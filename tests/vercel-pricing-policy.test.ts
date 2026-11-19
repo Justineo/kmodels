@@ -621,6 +621,43 @@ describe("Vercel price authority", () => {
       modelObserved: true,
     });
   });
+  it("reads search amounts from a chef-prefixed canonical model route", () => {
+    const payload =
+      '16a:["$","$L172",null,{"backingModels":[{"chef":"spacexai","primaryModel":"grok-4.20-multi-agent","provider":"xai","xSearchPostCost":"5","xSearchUserCost":"10"}]}]\n';
+    const html = `<link rel="canonical" href="https://vercel.com/ai-gateway/models/spacexai/grok-4.20-multi-agent"><script>self.__next_f.push(${JSON.stringify([1, payload])})</script>`;
+    expect(vercelPageSearchPrices(html)).toEqual({
+      prices: [
+        {
+          model_id: "spacexai/grok-4.20-multi-agent",
+          provider: "xai",
+          posts_per_thousand: "5",
+          profiles_per_thousand: "10",
+        },
+      ],
+      modelObserved: true,
+    });
+    expect(
+      JSON.parse(normalizeVercelModelPage(`<h1>Grok 4.20 Multi-Agent</h1>${html}`, true)),
+    ).toMatchObject({
+      title: "Grok 4.20 Multi-Agent",
+      search_prices: [{ model_id: "spacexai/grok-4.20-multi-agent", posts_per_thousand: "5" }],
+    });
+  });
+  it("rejects a chef-prefixed canonical route whose backing model belongs to another chef", () => {
+    const payload =
+      '16a:["$","$L172",null,{"backingModels":[{"chef":"otherlabs","primaryModel":"grok-4.20-multi-agent","provider":"xai","xSearchPostCost":"5","xSearchUserCost":"10"}]}]\n';
+    const html = `<link rel="canonical" href="https://vercel.com/ai-gateway/models/spacexai/grok-4.20-multi-agent"><script>self.__next_f.push(${JSON.stringify([1, payload])})</script>`;
+    expect(vercelPageSearchPrices(html)).toEqual({ prices: [], modelObserved: false });
+    expect(() => normalizeVercelModelPage(`<h1>Grok 4.20 Multi-Agent</h1>${html}`, true)).toThrow(
+      "omitted its backing-model pricing payload",
+    );
+  });
+  it("does not let a chef-prefixed route claim another model's search amounts", () => {
+    const payload =
+      '16a:["$","$L172",null,{"backingModels":[{"chef":"spacexai","primaryModel":"grok-4.7","provider":"xai","xSearchPostCost":"5","xSearchUserCost":"10"}]}]\n';
+    const html = `<link rel="canonical" href="https://vercel.com/ai-gateway/models/spacexai/grok-4.20-multi-agent"><script>self.__next_f.push(${JSON.stringify([1, payload])})</script>`;
+    expect(vercelPageSearchPrices(html)).toEqual({ prices: [], modelObserved: false });
+  });
   it("normalizes a canonical page whose own backing model publishes no X-search amounts", async () => {
     const body = await readFile(
       new URL("./fixtures/vercel/pricing-contracts.txt", import.meta.url),

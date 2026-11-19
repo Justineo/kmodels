@@ -299,6 +299,13 @@ Retail matching is deterministic:
    version when no differently versioned tuple is already known; and
 4. infer a meter only when the native unit and a unique task/meter interpretation agree.
 
+Azure OpenAI Media's `Live 1 Gl` and `Live 1 DZ` consumption SKUs publish the exact
+`<SKU> Unit` meter per `1 Hour`. The [GPT-Live cost model](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/gpt-live#cost-model)
+identifies the billed duration as the voice session, including silence. These rates use
+`session_runtime` per hour with their native region and deployment scope. Backend model usage
+is billed separately. WebRTC has a 15-second minimum. This mapping publishes the unit price and
+makes no transport-independent claim about billed quantity or unrelated hourly meters.
+
 Unmatched version markers cannot qualify an older version or a versionless model. Use last
 verified, non-retired public identities when the nonexhaustive catalog omits an entire model ID.
 The prior identity must have provenance from a current, unchanged public catalog or supplement

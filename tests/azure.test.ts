@@ -1205,6 +1205,80 @@ describe("Azure adapters", () => {
     });
     expect(models.some(({ model_id }) => model_id === "gpt-5")).toBe(false);
   });
+  it("prices GPT-Live session hours as runtime duration instead of generic capacity", async () => {
+    const value = manifest("azure");
+    const source = azureRetailSource(1, 1);
+    const reconciliation: PricingReconciliationItem[] = [];
+    const parsed = parseSource({
+      provider: provider(value),
+      source,
+      body: await fixture("azure/retail-live-session.json"),
+      observedAt,
+      catalogModels: [
+        azurePricingModel("gpt-live-1", "2026-09-10"),
+        azurePricingModel("gpt-live-transcribe", "2026-07-29"),
+        {
+          ...azurePricingModel("Microsoft-Decision-1", "1"),
+          service_families: ["Foundry Models sold by Azure"],
+        },
+      ],
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    const live = parsed.models.find(({ model_id }) => model_id === "gpt-live-1");
+    expect(live?.price_facts).toEqual([
+      expect.objectContaining({
+        meter: "session_runtime",
+        unit: "hour",
+        price: "3",
+        raw_unit: "1 Hour",
+        conditions: expect.objectContaining({
+          region: "eastus2",
+          deployment_scope: "GlobalStandard",
+        }),
+      }),
+      expect.objectContaining({
+        meter: "session_runtime",
+        unit: "hour",
+        price: "3.3",
+        conditions: expect.objectContaining({
+          region: "swedencentral",
+          deployment_scope: "DataZoneStandard",
+        }),
+      }),
+    ]);
+    expect(parsed.models).toHaveLength(1);
+    expect(
+      reconciliation
+        .filter(({ disposition }) => disposition === "unsupported")
+        .map(({ sample }) => sample),
+    ).toEqual([
+      "Azure OpenAI Media / gpt-live-transcribe Gl / gpt-live-transcribe Gl Unit",
+      "Microsoft Decision Models / Microsoft Decision 1 / Microsoft Decision 1 1M Tokens",
+    ]);
+    const partition = assembleParsedProviderPricing(
+      "azure",
+      observedAt,
+      [{ source, models: parsed.models }],
+      parsed.models,
+    );
+    expect(partition?.books.flatMap(({ scope }) => scope)).toContainEqual({
+      kind: "models",
+      model_refs: ["azure/gpt-live-1@2026-09-10"],
+    });
+    expect(partition?.books.flatMap(({ offers }) => offers)).toEqual([
+      expect.objectContaining({
+        billing_mode: { namespace: "kmodels", value: "usage" },
+      }),
+    ]);
+    const rates =
+      partition?.books.flatMap(({ offers }) => offers.flatMap(({ terms }) => terms)) ?? [];
+    expect(rates).toHaveLength(1);
+    const rate = rates[0];
+    if (rate?.kind !== "rate") throw new Error("Missing GPT-Live session rate");
+    expect(rate.meter).toEqual(
+      expect.objectContaining({ namespace: "kmodels", value: "session_runtime" }),
+    );
+  });
   it("binds compact GPT identities and keeps Standard, Flex and Priority tariffs disjoint", () => {
     const source = azureRetailSource(1, 1);
     const catalog = azurePricingModel("gpt-6.1-terra", "2026-10-26");

@@ -20,7 +20,11 @@ export interface VercelPageSearchPrices {
 export function vercelPageSearchPrices(body: string): VercelPageSearchPrices {
   const $ = load(body);
   const canonical = $('link[rel="canonical"]').attr("href");
-  const slug = canonical?.match(/^https:\/\/vercel\.com\/ai-gateway\/models\/([a-z0-9._-]+)$/)?.[1];
+  const route = canonical?.match(
+    /^https:\/\/vercel\.com\/ai-gateway\/models\/(?:([a-z0-9._-]+)\/)?([a-z0-9._-]+)$/,
+  );
+  const routeChef = route?.[1];
+  const slug = route?.[2];
   if (slug === undefined) return { prices: [], modelObserved: false };
   const detail = z.tuple([
     z.literal("$"),
@@ -58,6 +62,9 @@ export function vercelPageSearchPrices(body: string): VercelPageSearchPrices {
         const parsed = detail.safeParse(JSON.parse(line.slice(line.indexOf(":") + 1)));
         if (!parsed.success) continue;
         for (const model of parsed.data[3].backingModels) {
+          // A chef-prefixed canonical route owns only its own backing model; another chef's
+          // amounts cannot satisfy or price it.
+          if (routeChef !== undefined && model.chef !== routeChef) continue;
           modelObserved = true;
           const posts = decimal.safeParse(model.xSearchPostCost);
           const profiles = decimal.safeParse(model.xSearchUserCost);
