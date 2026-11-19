@@ -15,7 +15,7 @@ import { afterEach, expect, it, vi } from "vite-plus/test";
 import {
   adoptionReady,
   candidateKey,
-  canRecordAttempt,
+  recordAttempt,
   chooseProvider,
   difficulty,
   digest,
@@ -75,14 +75,15 @@ function taskState() {
 it("accepts a finish only once for the prepared fingerprint and in run order", () => {
   const { state, task } = taskState();
   const prepared = structuredClone(state);
-  expect(canRecordAttempt(task, prepared, "10", 1)).toBe(true);
-  task.run_id = "10";
-  task.run_attempt = 1;
-  expect(canRecordAttempt(task, prepared, "10", 1)).toBe(false);
-  expect(canRecordAttempt(task, prepared, "9", 2)).toBe(false);
-  expect(canRecordAttempt(task, prepared, "10", 2)).toBe(true);
+  expect(recordAttempt(task, prepared, "10", 1, now)).toBe(true);
+  expect(recordAttempt(task, prepared, "10", 1, now)).toBe(false);
+  expect(recordAttempt(task, prepared, "9", 2, now)).toBe(false);
+  expect(recordAttempt(task, prepared, "10", 2, now)).toBe(true);
   task.fingerprint = digest("changed while verification was running");
-  expect(canRecordAttempt(task, prepared, "11", 1)).toBe(false);
+  expect(recordAttempt(task, prepared, "11", 1, now)).toBe(false);
+  expect(task).toMatchObject({ run_id: "10", run_attempt: 2, evidence_run: "11", attempts: 2 });
+  expect(recordAttempt(task, prepared, "9", 3, now)).toBe(false);
+  expect(task.evidence_run).toBe("11");
 });
 
 it("records a deployed attempt once and only links adoption of its exact snapshot", () => {

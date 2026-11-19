@@ -65,17 +65,24 @@ export const stateSchema = z.object({
     .default([]),
 });
 export type MaintenanceState = z.infer<typeof stateSchema>;
-export function canRecordAttempt(
+export function recordAttempt(
   task: MaintenanceTask,
   prepared: MaintenanceState,
   run: string,
   attempt: number,
+  now: Date,
 ): boolean {
+  if (task.run_id && BigInt(task.run_id) > BigInt(run)) return false;
+  if (task.run_id === run && (task.run_attempt ?? 0) >= attempt) return false;
+  // Even when an observer has reopened the task, the checks can inform the next investigation.
+  if (!task.evidence_run || BigInt(task.evidence_run) < BigInt(run)) task.evidence_run = run;
   const original = prepared.tasks.find((item) => item.id === task.id);
   if (task.fingerprint !== (original?.fingerprint ?? digest(task.id))) return false;
-  if (!task.run_id) return true;
-  if (task.run_id === run) return (task.run_attempt ?? 0) < attempt;
-  return BigInt(task.run_id) < BigInt(run);
+  task.attempts += 1;
+  task.last_attempt = now.toISOString();
+  task.run_id = run;
+  task.run_attempt = attempt;
+  return true;
 }
 export function recordDeployment(state: MaintenanceState, run: string, input: unknown): boolean {
   const receipt = z

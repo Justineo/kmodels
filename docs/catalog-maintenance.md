@@ -36,6 +36,8 @@ waiting for investigation or inference. An unavailable or invalid ledger stops p
 Tasks retain candidate identity, source/implementation fingerprint, attempts, evidence run, coverage,
 reason and next action. A changed fingerprint reopens the question and invalidates saved coverage.
 Finishing a run cannot overwrite a newer attempt or results for a changed fingerprint.
+An investigation superseded by a new fingerprint can still supply historical evidence for the
+next run, without changing its status, cooldown or takeover allowance.
 Incident selection respects severity, cooldown and waiting time; seven-day-old work cannot be
 starved by new high-severity work. New failures absent from the accepted snapshot still qualify.
 Blocked work backs off up to 72 hours; a checked no-defect conclusion lasts seven days unless the

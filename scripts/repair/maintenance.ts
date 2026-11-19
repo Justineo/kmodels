@@ -14,7 +14,7 @@ import { verificationFeedback } from "./verification-feedback.ts";
 import {
   adoptionReady,
   candidateKey,
-  canRecordAttempt,
+  recordAttempt,
   digest,
   leaseSchema,
   observeCandidates,
@@ -340,7 +340,6 @@ async function main(): Promise<void> {
         )
           continue;
         let task = state.tasks.find((task) => task.id === admitted.id);
-        if (task && !canRecordAttempt(task, prepared, run, attempt)) continue;
         if (!task) {
           task = {
             id: admitted.id,
@@ -358,11 +357,7 @@ async function main(): Promise<void> {
           };
           state.tasks.push(task);
         }
-        task.attempts += 1;
-        task.last_attempt = now.toISOString();
-        task.run_id = run;
-        task.run_attempt = attempt;
-        task.evidence_run = task.run_id;
+        if (!recordAttempt(task, prepared, run, attempt, now)) continue;
         if (
           decision?.takeover_attempted &&
           (decision.takeover_candidate_ids?.includes(task.id) ??
