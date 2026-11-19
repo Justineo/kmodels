@@ -13,7 +13,9 @@ Status: implemented
   Evidence lives outside the checkout; failed generated data never replaces the accepted pair.
   Report and verification artifacts must match the selected run's explicit attempt. Unscoped or
   other-attempt artifacts cannot substitute for missing evidence; missing attempt metadata fails
-  preparation instead of guessing an attempt.
+  preparation instead of guessing an attempt. Repair retries temporary GitHub artifact download
+  failures up to twice, after five and ten seconds. Each attempt extracts into a fresh directory,
+  and only a complete download contributes files to the selected evidence.
   Collection, generated-data verification, and build failures enter execution review even when
   the provider report contains no repair candidate. A generated verification that reports only
   test-body timeouts on both attempts leaves operational evidence in the refresh artifact

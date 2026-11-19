@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { appendFile, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
@@ -34,12 +35,50 @@ export const refreshExecutionSchema = z.object({
 });
 
 export type GitHubCommand = (args: string[], timeout?: number) => Promise<string>;
-export const github: GitHubCommand = async (args, timeout = 60_000) =>
+const ghCommand: GitHubCommand = async (args, timeout = 60_000) =>
   execFileSync("gh", args, {
     encoding: "utf8",
     maxBuffer: 24 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "pipe"],
     timeout,
   });
+
+export function retryArtifactDownloads(
+  gh: GitHubCommand,
+  wait: (ms: number) => Promise<void> = delay,
+): GitHubCommand {
+  return async (args, timeout) => {
+    if (args[0] !== "run" || args[1] !== "download") return gh(args, timeout);
+    const index = args.indexOf("--dir");
+    const destination = args[index + 1];
+    if (index < 0 || !destination) throw new Error("Missing artifact destination");
+    const parent = dirname(destination);
+    await mkdir(parent, { recursive: true });
+    for (let attempt = 1; ; attempt++) {
+      const stage = await mkdtemp(join(parent, ".gh-download-"));
+      try {
+        const command = args.with(index + 1, stage);
+        let output: string;
+        try {
+          output = await gh(command, timeout);
+        } catch (error) {
+          // gh errors can contain a signed blob URL. Keep its query out of Actions logs.
+          const message = String(error).replace(/https?:\/\/[^\s)]+/g, "[download URL]");
+          if (attempt >= 3 || !/\bHTTP (?:429|500|502|503|504)\b/i.test(message))
+            throw new Error(message);
+          await wait(5_000 * attempt);
+          continue;
+        }
+        await cp(stage, destination, { recursive: true });
+        return output;
+      } finally {
+        await rm(stage, { recursive: true, force: true });
+      }
+    }
+  };
+}
+
+export const github = retryArtifactDownloads(ghCommand);
 
 // Download evidence outside the checkout; never install a failed candidate as accepted data.
 export async function loadRefreshExecution(

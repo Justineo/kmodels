@@ -2,7 +2,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { loadRefreshExecution } from "../scripts/catalog-repair-evidence.ts";
+import {
+  loadRefreshExecution,
+  retryArtifactDownloads,
+} from "../scripts/catalog-repair-evidence.ts";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -56,6 +59,44 @@ function mockGitHub(
 }
 
 describe("repair execution evidence", () => {
+  it("retries a throttled download in isolation and merges only a completed artifact", async () => {
+    const dest = await directory();
+    await writeFile(join(dest, "existing"), "earlier artifact");
+    const wait = vi.fn(async () => {});
+    const gh = vi.fn(async (args: string[]) => {
+      expect(args.slice(0, -1)).toEqual(["run", "download", "123", "--name", "attempt-2", "--dir"]);
+      const stage = args.at(-1);
+      if (!stage) throw new Error("Missing stage");
+      if (wait.mock.calls.length === 0) {
+        await writeFile(join(stage, "partial"), "incomplete");
+        throw new Error("HTTP 503: Egress is over the account limit");
+      }
+      await writeFile(join(stage, "report"), "complete");
+      return "";
+    });
+    await retryArtifactDownloads(
+      gh,
+      wait,
+    )(["run", "download", "123", "--name", "attempt-2", "--dir", dest]);
+    expect(wait).toHaveBeenCalledOnce();
+    expect(await readFile(join(dest, "report"), "utf8")).toBe("complete");
+    expect(await readFile(join(dest, "existing"), "utf8")).toBe("earlier artifact");
+    await expect(readFile(join(dest, "partial"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+  it.each([
+    [403, 1],
+    [404, 1],
+    [503, 3],
+  ])("fails closed on HTTP %i after %i attempts", async (status, attempts) => {
+    const dest = await directory();
+    const gh = vi.fn(async () => {
+      throw new Error(`HTTP ${status} (https://blob.example/archive?sig=secret)`);
+    });
+    await expect(
+      retryArtifactDownloads(gh, async () => {})(["run", "download", "--dir", dest]),
+    ).rejects.toThrow(`HTTP ${status} ([download URL])`);
+    expect(gh).toHaveBeenCalledTimes(attempts);
+  });
   it("investigates shard assembly failures before a combined report exists", async () => {
     const evidence = await loadRefreshExecution(
       "example/catalog",

@@ -53,8 +53,12 @@ const gateway = await startCodexGateway({
       ? "printf catalog-tool-%s ok"
       : 'test -z "${CATALOG_REPAIR_OPENAI_API_KEY:-}${GH_TOKEN:-}${GITHUB_TOKEN:-}" && test ! -w /workspace/.git/config && test ! -w /trusted/package.json && test ! -w /tmp/gh-aw/agent/independent-sources && test ! -e /var/run/docker.sock && test "$(ls /sys/class/net)" = lo && printf catalog-tool-%s ok';
     const request = z
-      .object({ input: z.array(z.object({ type: z.string(), output: z.unknown().optional() })) })
+      .object({
+        input: z.array(z.object({ type: z.string(), output: z.unknown().optional() })),
+        tool_choice: z.unknown().optional(),
+      })
       .parse(JSON.parse(options.body));
+    if (calls === 2) assert.equal(request.tool_choice, "none");
     if (
       calls > 1 &&
       !request.input.some(
@@ -117,7 +121,7 @@ const gateway = await startCodexGateway({
     });
   },
 });
-gateway.startPhase();
+gateway.startPhase(runAllowance, 2);
 const relay = local ? startRelay(join(directory, "api.sock"), 0) : undefined;
 try {
   if (relay && !relay.listening)
@@ -229,11 +233,11 @@ try {
   assert.equal(calls, 2);
   gateway.startPhase();
   assert.equal(gateway.remaining(), runAllowance - 800);
-  gateway.startPhase(codexRequest(requestInput).reservation);
+  gateway.startPhase(codexRequest(requestInput, true).reservation);
   failNext = true;
   const pending = post();
   await started;
-  const reserved = 800 + codexRequest(requestInput).reservation;
+  const reserved = 800 + codexRequest(requestInput, true).reservation;
   const journal = z
     .object({ charged_microusd: z.number() })
     .parse(JSON.parse(await readFile(join(output, "review-usage.json"), "utf8")));

@@ -24,7 +24,10 @@ export async function boundedBody(stream: AsyncIterable<unknown>, limit: number)
   return Buffer.concat(chunks).toString("utf8");
 }
 
-export function codexRequest(input: unknown): { body: string; reservation: number } {
+export function codexRequest(
+  input: unknown,
+  finish = false,
+): { body: string; reservation: number } {
   const request = z
     .object({
       model: z.literal(catalogRepairModel),
@@ -60,6 +63,14 @@ export function codexRequest(input: unknown): { body: string; reservation: numbe
   // No hosted tools, images, conversation handles, background calls, websocket or alternate endpoints.
   const body = JSON.stringify({
     ...request,
+    ...(finish
+      ? {
+          tool_choice: "none",
+          instructions:
+            (request.instructions ?? "") +
+            "\nThis is the last funded response in this session. Return your assessment or requested JSON now using completed evidence. Identify every unresolved claim. Do not request more tools.",
+        }
+      : {}),
     model: catalogRepairModel,
     reasoning: { effort: "high" },
     stream: true,
@@ -165,6 +176,7 @@ export async function startCodexGateway(options: {
   let reserved = 0;
   let phaseLimit = charged;
   let calls = 0;
+  let phaseCallLimit = 60;
   let fetches = 0;
   let poisoned = false;
   const save = () =>
@@ -210,8 +222,11 @@ export async function startCodexGateway(options: {
     if (poisoned) throw new Error("Stopped inference route");
     if (options.lease.month !== new Date().toISOString().slice(0, 7))
       throw new Error("OpenAI lease expired");
-    if (++calls > 60) throw new Error("Codex request limit reached");
-    const request = codexRequest(input);
+    if (++calls > phaseCallLimit) throw new Error("Codex request limit reached");
+    let request = codexRequest(input);
+    // Leave room for the final answer before a growing transcript can no longer be reserved.
+    if (calls === phaseCallLimit || phaseLimit - charged < request.reservation * 1.5 + 250_000)
+      request = codexRequest(input, true);
     if (charged + request.reservation > Math.min(phaseLimit, options.lease.reserved_microusd))
       throw new Error("OpenAI phase budget exhausted");
     reserved = request.reservation;
@@ -274,8 +289,9 @@ export async function startCodexGateway(options: {
   });
   await chmod(options.socket, 0o600);
   return {
-    startPhase: (allowance = options.lease.reserved_microusd - charged) => {
+    startPhase: (allowance = options.lease.reserved_microusd - charged, maxCalls = 60) => {
       phaseLimit = Math.min(options.lease.reserved_microusd, charged + allowance);
+      phaseCallLimit = Math.min(60, calls + maxCalls);
     },
     charged: () => charged,
     remaining: () => phaseLimit - charged,

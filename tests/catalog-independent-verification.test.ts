@@ -149,6 +149,14 @@ it("bounds real Codex requests and prevents alternate models and hidden paid too
     max_output_tokens: 4096,
   });
   expect(request.reservation).toBeGreaterThan(0);
+  const closing = codexRequest(
+    { model: "gpt-6.2-sol", input: [], instructions: "Assess facts.", tools: [] },
+    true,
+  );
+  expect(JSON.parse(closing.body)).toMatchObject({
+    tool_choice: "none",
+    instructions: expect.stringMatching(/^Assess facts\.[\s\S]*unresolved claim/),
+  });
   for (const extra of [
     { model: "gpt-6.1-sol" },
     { model: "gpt-6-astra" },

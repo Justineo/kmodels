@@ -65,7 +65,8 @@ OpenAI is reserved for independent verification and concrete-error takeover, bot
 
 Preparation and DeepSeek investigation reserve USD 0 of OpenAI spend. After admission, a
 serialized budget job reserves up to USD 10 for the entire run attempt, subject to the remaining
-monthly allowance. Initial verification at every difficulty can use that reservation. New
+monthly allowance. Each blinded baseline may use half the remaining balance and at most 24 calls.
+The proposal comparison can use all remaining funds and calls. New
 reservations stop at USD 110 per UTC month, leaving USD 10 of the USD 120 allocation as headroom.
 Trusted settlement releases unused funds. The inference job has no ledger write token.
 
@@ -83,7 +84,9 @@ waiting for up to three minutes. A full queue returns HTTP 429 and an expired wa
 HTTP 503. Disconnecting releases a waiting slot. Only requests that start processing count toward the
 stage limits, and inference checks the available budget after the preceding call settles.
 Codex reads full source receipts from their read-only mount and uses a 32,000-token context
-with early compaction. Prompts specify the remaining budget, request narrow
+with early compaction and bounded tool output. The gateway requests a final answer before the
+next call risks exceeding the session budget or call limit. Unresolved claims remain open.
+Prompts specify the session budget, request narrow
 reads and focused checks, and reuse full acquired receipts without repeatedly dumping their bodies.
 Each Codex session has a 20-minute wall-clock limit. There are no automatic HTTP/stream retries,
 model fallbacks or unlimited escalation loops. Actions summaries report the stage reservation and
