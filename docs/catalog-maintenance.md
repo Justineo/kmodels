@@ -12,6 +12,22 @@ specific evidenced error permits one Codex repair attempt, followed by fresh ind
 verification. Missing evidence is incomplete work. No model evaluation, benchmark or paid
 experiment is added.
 
+| Investigation or review result                                         | Controller action                                                                                                                  |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Empty admission with a checked no-op                                   | Record an idle run and skip independent inference.                                                                                 |
+| Incomplete investigation or unavailable verification allowance         | Retain the reason and candidate history. Leave the overall repair incomplete.                                                      |
+| Completed repair or no-defect proposal with candidates                 | Reserve the run allowance and independently verify every proposed closure.                                                         |
+| Verified concrete contradiction                                        | Allow one bounded revision for the same evidence fingerprint and verify the resulting proposal.                                    |
+| Insufficient evidence, unfinished revision, or unresolved final review | Save the available receipts and next action before the delivery job reports incomplete work.                                       |
+| Supported closure                                                      | Send the verified artifact through detection and safe outputs. A repair additionally requires publication and deployment dispatch. |
+
+An invalid receipt or failed execution fails its owning stage. Settlement reads the journal from
+the last stage that could have spent money. If that journal is missing, the reservation stays in
+place. A completed initial decision reaches delivery directly. Only a takeover transfers the
+initial evidence to another inference job.
+Publication-validation retries load the proof from the job that uploaded the final verified
+proposal and bind the regression receipt to its patch hash.
+
 Refresh saves changed public source bodies and parser/contract failure evidence before losing the
 bytes to retention. Captures are gzip receipts with source identity, observation time, extractor
 version and SHA-256. Authenticated sources are excluded. Individual bodies are limited to 32 MiB
@@ -156,7 +172,12 @@ before returning its full report. Partial notes never authorize publication.
 
 Independent tests live in the writable `/workspace/repair-probes` mount, backed by the
 session's evidence directory. Its dedicated Vitest configuration runs probes offline against
-the read-only candidate checkout and hydrated snapshot. Takeover alone receives a writable
+the read-only candidate checkout and hydrated snapshot. Before revealing proposer material, the
+controller executes the same blinded tests against the base and the proposed tree. These offline
+replays have read-only evidence, no inference socket, and a three-minute test limit per tree.
+The comparison session receives the probe identities, exit codes and bounded output alongside
+the assessment. A no-op reuses the identical tree's single result. An empty probe list records the absence of a paired test. The reviewer still
+needs source, consumer and counterexample receipts for each supported claim. Takeover alone receives a writable
 candidate checkout. Its structured response can report an incomplete repair and carry the
 missing proof into the next investigation.
 

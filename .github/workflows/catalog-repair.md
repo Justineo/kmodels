@@ -237,6 +237,8 @@ jobs:
           retention-days: 30
           if-no-files-found: error
   verification_budget:
+    outputs:
+      route: ${{ steps.reserve.outputs.route }}
     needs: [agent, maintenance_prepare]
     if: needs.agent.result == 'success'
     runs-on: ubuntu-latest
@@ -258,7 +260,12 @@ jobs:
         with:
           name: catalog-repair-investigation
           path: ${{ runner.temp }}/independent-input/investigation
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: admitted-catalog-repair
+          path: ${{ runner.temp }}/independent-input
       - name: Reserve only the authorized verification budget
+        id: reserve
         env:
           GH_TOKEN: ${{ github.token }}
           MAINTENANCE_OPENAI_AVAILABLE: ${{ secrets.CATALOG_REPAIR_OPENAI_API_KEY != '' }}
@@ -273,7 +280,7 @@ jobs:
           if-no-files-found: error
   initial_verification:
     needs: [agent, verification_budget]
-    if: needs.agent.result == 'success'
+    if: needs.verification_budget.outputs.route == 'verify'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
@@ -315,6 +322,16 @@ jobs:
           path: ${{ runner.temp }}/independent-result/
           retention-days: 30
           if-no-files-found: warn
+      - name: Upload the final verified proposal
+        if: steps.independent.outputs.outcome == 'commit_repair' || steps.independent.outputs.outcome == 'noop'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: independently-verified-catalog-repair
+          path: |
+            ${{ runner.temp }}/independent-result/repair.patch
+            ${{ runner.temp }}/independent-result/repair.json
+          retention-days: 30
+          if-no-files-found: error
   takeover_budget:
     needs: [agent, initial_verification]
     if: needs.initial_verification.outputs.outcome == 'needs_takeover'
@@ -359,8 +376,11 @@ jobs:
           retention-days: 30
           if-no-files-found: error
   semantic_review:
-    needs: [agent, initial_verification, takeover_budget]
-    if: always() && needs.initial_verification.result == 'success' && (needs.initial_verification.outputs.outcome != 'needs_takeover' || needs.takeover_budget.result == 'success')
+    needs: [agent, verification_budget, initial_verification, takeover_budget]
+    if: >-
+      always() && !cancelled() && needs.verification_budget.result == 'success' &&
+      (needs.verification_budget.outputs.route != 'verify' || needs.initial_verification.result == 'success') &&
+      (needs.initial_verification.outputs.outcome != 'needs_takeover' || needs.takeover_budget.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     outputs:
@@ -375,6 +395,7 @@ jobs:
       - uses: ./.github/actions/setup-repair-toolchain
         if: needs.initial_verification.outputs.outcome == 'needs_takeover'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.initial_verification.outputs.outcome == 'needs_takeover'
         with:
           name: catalog-maintenance-initial
           path: ${{ runner.temp }}/independent-input/initial
@@ -393,15 +414,16 @@ jobs:
         with:
           name: catalog-repair-investigation
           path: ${{ runner.temp }}/independent-input/investigation
-      - name: Forward an independently verified initial conclusion
+      - name: Route the completed investigation
         id: forward
         if: needs.initial_verification.outputs.outcome != 'needs_takeover'
         env:
-          FINAL_OUTCOME: ${{ needs.initial_verification.outputs.outcome }}
+          FINAL_OUTCOME: ${{ needs.initial_verification.outputs.outcome || needs.verification_budget.outputs.route }}
         run: |
-          mkdir -p "$RUNNER_TEMP/independent-result"
-          cp -R "$RUNNER_TEMP/independent-input/initial/." "$RUNNER_TEMP/independent-result/"
-          echo "outcome=$FINAL_OUTCOME" >> "$GITHUB_OUTPUT"
+          case "$FINAL_OUTCOME" in
+            commit_repair|noop|idle|pending) echo "outcome=$FINAL_OUTCOME" >> "$GITHUB_OUTPUT" ;;
+            *) echo '::error::Missing trusted repair disposition'; exit 1 ;;
+          esac
       - name: Build the pinned isolated Codex runtime
         if: needs.initial_verification.outputs.outcome == 'needs_takeover'
         run: docker build --file .github/repair-codex.Dockerfile --tag kmodels-repair-codex:local .github
@@ -416,13 +438,14 @@ jobs:
         run: vp node scripts/repair/codex-runner.ts
       - name: Preserve independent verification and trusted spending
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
+        if: always() && needs.initial_verification.outputs.outcome == 'needs_takeover'
         with:
           name: catalog-maintenance-review
           path: ${{ runner.temp }}/independent-result/
           retention-days: 30
           if-no-files-found: warn
       - name: Upload the final verified proposal
+        if: steps.independent.outputs.outcome == 'commit_repair' || steps.independent.outputs.outcome == 'noop'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: independently-verified-catalog-repair
@@ -464,6 +487,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MAINTENANCE_INPUT: ${{ runner.temp }}/maintenance-results
           MAINTENANCE_PUBLISHED_REVISION: ${{ needs.publish_repair.outputs.revision }}
+          MAINTENANCE_INITIAL_OUTCOME: ${{ needs.initial_verification.outputs.outcome }}
+          MAINTENANCE_FINAL_OUTCOME: ${{ needs.semantic_review.outputs.outcome }}
           MAINTENANCE_INITIAL_RESULT: ${{ needs.initial_verification.result }}
           MAINTENANCE_REVIEW_RESULT: ${{ needs.semantic_review.result }}
         run: vp node scripts/repair/maintenance.ts finish
@@ -600,16 +625,18 @@ jobs:
     timeout-minutes: 60
   detection:
     needs: [activation, agent, semantic_review]
-    if: always() && needs.agent.result == 'success' && needs.semantic_review.result == 'success'
+    if: always() && needs.agent.result == 'success' && needs.semantic_review.result == 'success' && contains(fromJSON('["commit_repair","noop"]'), needs.semantic_review.outputs.outcome)
   safe_outputs:
     needs: [activation, agent, detection, semantic_review]
-    if: needs.agent.result == 'success' && needs.semantic_review.result == 'success'
+    if: needs.agent.result == 'success' && needs.semantic_review.result == 'success' && contains(fromJSON('["commit_repair","noop"]'), needs.semantic_review.outputs.outcome)
   conclusion:
     permissions:
       issues: none
   verify_delivery:
-    needs: [agent, safe_outputs, publish_repair, semantic_review]
-    if: always() && needs.agent.result == 'success'
+    needs: [agent, safe_outputs, publish_repair, semantic_review, maintenance_finish]
+    if: >-
+      always() && !cancelled() && !failure() && needs.semantic_review.result == 'success' &&
+      needs.maintenance_finish.result == 'success'
     runs-on: ubuntu-slim
     permissions:
       contents: read
@@ -621,6 +648,13 @@ jobs:
           PUBLICATION_RESULT: ${{ needs.publish_repair.result }}
         run: |
           set -euo pipefail
+          case "$REPAIR_OUTCOME" in
+            idle) echo 'No candidates admitted.' >> "$GITHUB_STEP_SUMMARY"; exit 0 ;;
+            pending)
+              echo 'Investigation remains open. See maintenance_finish for candidate findings and next actions.' >> "$GITHUB_STEP_SUMMARY"
+              echo '::error::Catalog repair incomplete; evidence retained for the next investigation.'
+              exit 1 ;;
+          esac
           if [ "$DELIVERY_RESULT" != 'success' ]; then
             echo '::error::Catalog repair delivery did not complete. See the failed job; the next scheduled run retries against the latest refresh.'
             exit 1

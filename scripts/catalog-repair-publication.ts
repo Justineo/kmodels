@@ -17,7 +17,9 @@ function object(value: unknown): value is Record<string, unknown> {
 }
 
 /** Accept both the raw safe-output journal and the framework's collected output. */
-export function parseRepairOutcome(output: string): RepairOutcome {
+export function parseInvestigationOutcome(
+  output: string,
+): RepairOutcome | { type: "report_incomplete"; reason: string; cause: string } {
   let lines: unknown[];
   try {
     const value: unknown = JSON.parse(output);
@@ -36,9 +38,9 @@ export function parseRepairOutcome(output: string): RepairOutcome {
       throw new Error("Invalid catalog repair outcome");
     if (["missing_data", "missing_tool", "report_incomplete"].includes(item.type)) {
       const reason = typeof item.reason === "string" ? item.reason.trim().slice(0, 1000) : "";
-      throw new Error(
-        `Catalog repair incomplete (${item.type})${reason === "" ? "" : `: ${JSON.stringify(reason)}`}`,
-      );
+      if (items.length !== 1)
+        throw new Error("A mixed incomplete journal cannot authorize a repair");
+      return { type: "report_incomplete", cause: item.type, reason };
     }
     if (!["noop", "commit_repair"].includes(item.type))
       throw new Error(`Catalog repair cannot emit ${item.type}`);
@@ -63,6 +65,15 @@ export function parseRepairOutcome(output: string): RepairOutcome {
   )
     return { type: "commit_repair", title: item.title.trim(), body: item.body };
   throw new Error("Catalog repair outcome is missing its explanation");
+}
+
+export function parseRepairOutcome(output: string): RepairOutcome {
+  const outcome = parseInvestigationOutcome(output);
+  if (outcome.type === "report_incomplete")
+    throw new Error(
+      `Catalog repair incomplete (${outcome.cause})${outcome.reason ? `: ${JSON.stringify(outcome.reason)}` : ""}`,
+    );
+  return outcome;
 }
 
 /** Inspect Git's NUL-delimited raw diff, including both sides of deletions and mode changes. */
@@ -265,10 +276,22 @@ export async function runRepairPublication(operation: string | undefined): Promi
       break;
     }
     case "capture": {
-      const outcome = parseRepairOutcome(await readFile(environment("GH_AW_SAFE_OUTPUTS"), "utf8"));
+      const outcome = parseInvestigationOutcome(
+        await readFile(environment("GH_AW_SAFE_OUTPUTS"), "utf8"),
+      );
       const required = environment("REPAIR_REQUIRED");
       if (!["true", "false"].includes(required))
         throw new Error("Invalid repair admission decision");
+      if (outcome.type === "report_incomplete") {
+        const directory = environment("REPAIR_ARTIFACT_DIR");
+        await mkdir(directory, { recursive: true });
+        await writeFile(
+          join(directory, "repair.json"),
+          JSON.stringify({ type: outcome.cause, reason: outcome.reason, base_sha: baseSha() }),
+        );
+        await output("outcome", outcome.type);
+        break;
+      }
       if (outcome.type === "commit_repair" && required !== "true")
         throw new Error("Catalog repair publication requires runner-owned admission");
       if (outcome.type === "noop" && required === "true") {

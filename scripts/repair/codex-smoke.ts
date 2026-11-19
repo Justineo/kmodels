@@ -2,12 +2,17 @@ import assert from "node:assert/strict";
 import { request } from "node:http";
 import { spawn } from "node:child_process";
 import { z } from "zod";
-import { mkdir, mkdtemp, readFile, rm, rmdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startRelay } from "./codex-relay.ts";
 import { startCodexGateway, codexRequest } from "./codex-gateway.ts";
-import { codexArguments, codexModelCatalog, containerArguments } from "./codex-runner.ts";
+import {
+  codexArguments,
+  codexModelCatalog,
+  containerArguments,
+  replayProbes,
+} from "./codex-runner.ts";
 import { runAllowance } from "./state.ts";
 
 // Protocol/isolation smoke with deterministic local Responses data, never paid inference.
@@ -24,10 +29,16 @@ const mountpoint = local ? undefined : await mkdir("repair-probes", { recursive:
 await writeFile(
   join(evidence, "probes/protocol.test.ts"),
   `
-import { readFileSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { expect, it } from "vite-plus/test";
 import { canonicalJson } from "../src/catalog/canonical-value.ts";
 it("reads the candidate snapshot offline", () => {
+  if (!existsSync("/input")) {
+    expect(existsSync("/gateway/api.sock")).toBe(false);
+    expect(existsSync("/output")).toBe(false);
+    expect(() => accessSync("/workspace/repair-probes",constants.W_OK)).toThrow();
+    expect(() => accessSync("/tmp/gh-aw/agent",constants.W_OK)).toThrow();
+  }
   expect(canonicalJson(JSON.parse(readFileSync("data/catalog-snapshot.json", "utf8")).version)).toBe("1");
 });
 `,
@@ -152,6 +163,28 @@ const gateway = await startCodexGateway({
 gateway.startPhase(runAllowance, 3);
 const relay = local ? startRelay(join(directory, "api.sock"), 0) : undefined;
 try {
+  if (!local) {
+    const work = join(directory, "baseline");
+    for (const dir of [".git", "node_modules", "repair-probes", "tests", "src/catalog", "data"])
+      await mkdir(join(work, dir), { recursive: true });
+    for (const file of ["package.json", "tests/setup.ts", "src/catalog/canonical-value.ts"])
+      await copyFile(file, join(work, file));
+    await writeFile(join(work, "data/catalog-snapshot.json"), JSON.stringify({ version: 0 }));
+    const replay = (tree: string) =>
+      replayProbes({
+        name: "catalog-probe-smoke",
+        work: tree,
+        trusted: process.cwd(),
+        evidence,
+        sources: join(output, "sources"),
+        toolchain: process.env.VP_HOME ?? "/tmp/kmodels-vite-plus",
+      });
+    const before = replay(work);
+    assert.equal(before.exit_code, 1, before.output);
+    assert.match(before.output, /AssertionError/);
+    const after = replay(process.cwd());
+    assert.equal(after.exit_code, 0, after.output);
+  }
   if (relay && !relay.listening)
     await new Promise<void>((resolve) => relay.once("listening", resolve));
   const address = relay?.address();

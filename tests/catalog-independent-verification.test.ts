@@ -23,6 +23,8 @@ import {
 } from "../scripts/repair/codex-runner.ts";
 import { digest } from "../scripts/repair/state.ts";
 import { verificationFeedback } from "../scripts/repair/verification-feedback.ts";
+import { investigationRoute, reviewRoute, settlementReceipt } from "../scripts/repair/flow.ts";
+import { parseInvestigationOutcome } from "../scripts/catalog-repair-publication.ts";
 
 function report(verdict: "supported" | "concrete_error" | "insufficient_evidence" = "supported") {
   const files = new Map<string, string>([
@@ -193,6 +195,64 @@ it("escalates only a concrete contradiction and keeps uncertainty incomplete", a
   expect(
     verificationVerdict(await checkVerification(unknown.input, [unknown.row.id], unknown.read)),
   ).toBe("insufficient_evidence");
+});
+
+it("routes only completed proposals with admitted work to independent verification", () => {
+  const noop = { type: "noop", message: "No repair required" } as const;
+  expect(investigationRoute(noop, 0)).toBe("idle");
+  expect(investigationRoute(noop, 1)).toBe("verify");
+  const patch = {
+    type: "commit_repair",
+    title: "Fix unit",
+    body: "Reproduced with source data",
+  } as const;
+  expect(investigationRoute(patch, 2)).toBe("verify");
+  expect(() => investigationRoute(patch, 0)).toThrow("admitted candidates");
+  for (const type of ["missing_data", "missing_tool", "report_incomplete"]) {
+    const unfinished = parseInvestigationOutcome(
+      JSON.stringify({ type, reason: "Missing original offer" }),
+    );
+    expect(unfinished).toEqual({
+      type: "report_incomplete",
+      cause: type,
+      reason: "Missing original offer",
+    });
+    for (const count of [0, 2]) expect(investigationRoute(unfinished, count)).toBe("pending");
+  }
+});
+
+it.each([
+  ["supported", "verified", "verified", "verified"],
+  ["concrete_error", "needs_takeover", "pending", "pending"],
+  ["insufficient_evidence", "pending", "pending", "pending"],
+] as const)(
+  "routes a checked %s verdict across initial and takeover stages",
+  async (verdict, first, repeated, revised) => {
+    const s = report(verdict);
+    const checked = await checkVerification(s.input, [s.row.id], s.read);
+    expect(reviewRoute(checked, "initial", false)).toBe(first);
+    expect(reviewRoute(checked, "initial", true)).toBe(repeated);
+    expect(reviewRoute(checked, "takeover", true)).toBe(revised);
+  },
+);
+
+it("settles only from the last stage that could have spent money, including failed stages", () => {
+  expect(settlementReceipt("skipped", "", "success")).toBe("catalog-maintenance-usage/usage.json");
+  for (const initial of ["pending", "noop", "commit_repair"]) {
+    expect(settlementReceipt("success", initial, "success")).toBe(
+      "catalog-maintenance-initial/review-usage.json",
+    );
+  }
+  expect(settlementReceipt("failure", "", "skipped")).toBe(
+    "catalog-maintenance-initial/review-usage.json",
+  );
+  expect(settlementReceipt("success", "needs_takeover", "skipped")).toBe(
+    "catalog-maintenance-initial/review-usage.json",
+  );
+  for (const result of ["success", "failure", "cancelled"])
+    expect(settlementReceipt("success", "needs_takeover", result)).toBe(
+      "catalog-maintenance-review/review-usage.json",
+    );
 });
 
 it("requires a bound concrete-error checkpoint before additional budget or takeover", async () => {

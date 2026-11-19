@@ -373,7 +373,10 @@ it("gates automatic publication on exact-patch validation and threat detection",
   expect(commit).toContain("gh workflow run void-deploy.yml --ref main");
   expect(agent).not.toMatch(/^\s+(?:contents|actions): write$/m);
   expect(publish).toContain("needs.agent.result == 'success'");
-  expect(delivery).toContain("always() && needs.agent.result == 'success'");
+  expect(delivery).toContain("!failure()");
+  expect(delivery).toContain("needs.maintenance_finish.result == 'success'");
+  expect(delivery).toContain("pending)");
+  expect(delivery).toContain("idle)");
   expect(delivery).toContain("${{ needs.safe_outputs.result }}");
   expect(delivery).toContain("${{ needs.publish_repair.result }}");
   expect(delivery).toContain("${{ needs.semantic_review.outputs.outcome }}");

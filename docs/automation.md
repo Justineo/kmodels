@@ -80,8 +80,8 @@ Status: implemented
   repair commits validated code directly to `main`; unavailable evidence, tool failures, timeouts, and incomplete investigation remain
   visible in Actions summaries, logs, artifacts, and failed job status. Every framework issue
   reporting path is explicitly disabled: agent/job failure reports, no-op reports, missing tools/data,
-  incomplete reports and threat-detection reports. Threat detection and
-  the incomplete-outcome check still run. The conclusion job has no issue permission, and the
+  incomplete reports and threat-detection reports. Threat detection runs for verified proposals.
+  The conclusion job has no issue permission, and the
   agent outcome gate rejects issue/comment/PR requests even when accompanied by a repair intent.
   The agent has only read permissions. The `commit_repair` safe-output job accepts the intent after
   successful investigation evidence checks, safe-output processing, and threat detection. The
@@ -138,10 +138,9 @@ Status: implemented
   actual parser before comparing output counts. Historical-byte identity establishes historical
   reproduction, while independently reproduced current-source defects remain repairable. One
   unresolved candidate does not prevent a validated independent repair commit; unresolved candidates
-  are listed explicitly. A post-execution outcome check fails incomplete, missing-data, missing-tool,
-  empty, unsupported, or contradictory final outputs even when the model process exits successfully.
-  Incomplete admission errors include the bounded, JSON-escaped blocker reason so the failed-step
-  log distinguishes an investigated source blocker from an unexplained engine failure.
+  are listed explicitly. The post-execution check rejects empty, unsupported or contradictory
+  output. A single incomplete, missing-data or missing-tool report records the bounded blocker
+  reason and routes to ledger settlement. The delivery job marks that repair incomplete.
   A `commit_repair` intent submits a focused, evidence-backed repair for trusted validation.
   The incident batch selects one provider, so another provider's unresolved source candidate stays
   deferred rather than becoming a prerequisite for this repair. A reviewed repair may coexist with
@@ -183,7 +182,8 @@ Status: implemented
   the next six-hour schedule. Repair commits record the Actions run
   in a `Kmodels-Repair-Run` trailer and explicitly dispatch `void-deploy.yml`, since the workflow
   token does not trigger push workflows. A final delivery job requires successful publication
-  and deployment dispatch for every repair intent. A passing inference process or a textual report is not delivery.
+  and deployment dispatch for every independently approved patch. Unresolved work reaches that
+  job after its receipts are recorded. Infrastructure errors remain visible at the stage that failed.
   Failed or incomplete runs leave their diagnostics in Actions; the next scheduled run re-evaluates
   the latest completed refresh evidence and retries remaining candidates. There is no issue-based queue,
   automatic success disposition, or immediate unbounded retry loop. DeepSeek inference uses

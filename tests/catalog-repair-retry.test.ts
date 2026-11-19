@@ -21,6 +21,7 @@ it("returns the failed check and assertion without including unrelated steps", (
 
 it("loads both artifacts only for a main repair that passed admission and failed validation", async () => {
   const calls: string[][] = [];
+  const artifacts: { name: string; expired: boolean }[] = [];
   const run = {
     path: ".github/workflows/catalog-repair.lock.yml",
     head_branch: "main",
@@ -43,7 +44,7 @@ it("loads both artifacts only for a main repair that passed admission and failed
     calls.push(args);
     if (args.some((arg) => arg.endsWith("/logs"))) return jobLog;
     if (args[0] === "api")
-      return JSON.stringify(args[1]?.includes("/artifacts?") ? { artifacts: [] } : run);
+      return JSON.stringify(args[1]?.includes("/artifacts?") ? { artifacts } : run);
     if (args.includes("--json")) return JSON.stringify({ jobs });
     return "";
   };
@@ -58,6 +59,29 @@ it("loads both artifacts only for a main repair that passed admission and failed
     "/retry/catalog-repair-investigation",
   ]);
 
+  calls.length = 0;
+  const upload = { name: "Upload the final verified proposal", conclusion: "success", ...window };
+  const initial = { ...detection, name: "initial_verification", steps: [upload] };
+  const final = {
+    ...initial,
+    name: "semantic_review",
+    steps: [{ ...upload, conclusion: "skipped" }],
+  };
+  jobs.push(initial, final);
+  const bundle = { name: "independently-verified-catalog-repair", expired: false };
+  artifacts.push(
+    bundle,
+    { name: "catalog-maintenance-initial", expired: false },
+    { name: "catalog-maintenance-review", expired: false },
+  );
+  expect((await load()).evidenceArtifact).toBe("catalog-maintenance-initial");
+  final.steps = initial.steps;
+  await expect(load()).rejects.toThrow("unique final verifier");
+  initial.steps = [];
+  expect((await load()).evidenceArtifact).toBe("catalog-maintenance-review");
+  bundle.expired = true;
+  await expect(load()).rejects.toThrow("unavailable for retry");
+  jobs.splice(-2);
   calls.length = 0;
   detection.conclusion = "failure";
   await expect(load()).rejects.toThrow("rejected by publication validation");

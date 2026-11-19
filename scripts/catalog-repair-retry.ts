@@ -128,18 +128,39 @@ export async function loadRepairRetry(
       );
   if (!feedback.trim() || feedback.length > 65_536)
     throw new Error("Publication validation feedback is empty or exceeds its limit");
-  const independentlyVerified = artifacts.some(
-    ({ name, expired }) => name === "independently-verified-catalog-repair" && !expired,
-  );
+  const independentlyVerified = jobs.some((job) => job.name === "semantic_review");
   const proposalArtifact = independentlyVerified
     ? "independently-verified-catalog-repair"
     : "admitted-catalog-repair";
-  for (const name of [
+  let evidenceArtifact = "catalog-repair-investigation";
+  if (independentlyVerified) {
+    const owners = jobs.filter(
+      (job) =>
+        ["initial_verification", "semantic_review"].includes(job.name) &&
+        job.conclusion === "success" &&
+        job.steps.some(
+          (step) =>
+            step.name === "Upload the final verified proposal" && step.conclusion === "success",
+        ),
+    );
+    if (owners.length !== 1) throw new Error("Retry requires a unique final verifier");
+    evidenceArtifact =
+      owners[0]?.name === "initial_verification"
+        ? "catalog-maintenance-initial"
+        : "catalog-maintenance-review";
+    for (const required of [proposalArtifact, evidenceArtifact])
+      if (!artifacts.some(({ name, expired }) => name === required && !expired))
+        throw new Error("Verified repair artifacts are unavailable for retry");
+  }
+  for (const name of [proposalArtifact, evidenceArtifact]) await download(name);
+  return {
+    run,
+    feedback,
+    step: failed.name,
+    independentlyVerified,
     proposalArtifact,
-    independentlyVerified ? "catalog-maintenance-review" : "catalog-repair-investigation",
-  ])
-    await download(name);
-  return { run, feedback, step: failed.name, independentlyVerified, proposalArtifact };
+    evidenceArtifact,
+  };
 }
 
 function environment(name: string): string {
@@ -152,27 +173,23 @@ async function main(): Promise<void> {
   const runId = environment("REPAIR_RETRY_RUN_ID");
   const runner = environment("RUNNER_TEMP");
   const directory = join(runner, "catalog-repair-retry");
-  const { run, feedback, step, independentlyVerified, proposalArtifact } = await loadRepairRetry(
-    environment("GITHUB_REPOSITORY"),
-    runId,
-    directory,
-  );
-  const investigation = join(directory, "catalog-repair-investigation");
-  const independent = join(directory, "catalog-maintenance-review");
+  const { run, feedback, step, independentlyVerified, proposalArtifact, evidenceArtifact } =
+    await loadRepairRetry(environment("GITHUB_REPOSITORY"), runId, directory);
+  const archive = join(directory, evidenceArtifact);
   const previousEvidence = independentlyVerified
-    ? join(independent, "effective-evidence")
-    : join(investigation, evidenceDirectory);
+    ? join(archive, "effective-evidence")
+    : join(archive, evidenceDirectory);
   const previousAdmission = await readFile(
     independentlyVerified
-      ? join(independent, "admission.json")
-      : join(investigation, runner, "gh-aw", "repair-admission.json"),
+      ? join(archive, "admission.json")
+      : join(archive, runner, "gh-aw", "repair-admission.json"),
     "utf8",
   );
   const previousReview = await readReviewEvidence(
     independentlyVerified
-      ? join(independent, "review.json")
+      ? join(archive, "review.json")
       : join(previousEvidence, "catalog-repair-review.json"),
-    independentlyVerified ? independent : previousEvidence,
+    independentlyVerified ? archive : previousEvidence,
   );
   await validateRepairReview(
     previousAdmission,
@@ -182,7 +199,12 @@ async function main(): Promise<void> {
         join(previousEvidence, relative(evidenceDirectory, path)),
         previousEvidence,
       ),
-    { requireRepair: true },
+    {
+      requireRepair: true,
+      patchHash: reviewHash(
+        await readFile(join(directory, proposalArtifact, "repair.patch"), "utf8"),
+      ),
+    },
   );
   const prior = z
     .object({ base_sha: z.literal(run.head_sha), candidates: z.array(z.unknown()) })

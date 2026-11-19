@@ -11,6 +11,8 @@ import { githubApi, readState, repository, writeState } from "./store.ts";
 import { recordDiscovery } from "./discovery.ts";
 import { checkTakeoverCheckpoint } from "./verification.ts";
 import { verificationFeedback } from "./verification-feedback.ts";
+import { investigationRoute, settlementReceipt } from "./flow.ts";
+import { parseInvestigationOutcome } from "../catalog-repair-publication.ts";
 import {
   adoptionReady,
   candidateKey,
@@ -177,6 +179,10 @@ async function main(): Promise<void> {
       .parse(JSON.parse(admissionText));
     const id = `${env("GITHUB_RUN_ID")}-${env("GITHUB_RUN_ATTEMPT")}`;
     let charged = 0;
+    const metadata = await readFile(join(input, "repair.json"), "utf8");
+    z.object({ base_sha: z.literal(env("GITHUB_SHA")) }).parse(JSON.parse(metadata));
+    const proposal = parseInvestigationOutcome(metadata);
+    let route = investigationRoute(proposal, admission.candidates.length);
     if (command === "reserve-takeover") {
       const prior = join(input, "initial");
       const evidence = join(prior, "effective-evidence");
@@ -201,12 +207,26 @@ async function main(): Promise<void> {
     const lease = state.leases.find((item) => item.id === id);
     if (!lease || charged > lease.reserved_microusd)
       throw new Error("Missing or invalid prior budget");
-    if (process.env.MAINTENANCE_OPENAI_AVAILABLE === "true" && admission.candidates.length)
+    if (route === "verify" && process.env.MAINTENANCE_OPENAI_AVAILABLE === "true")
       reserveRunBudget(state, id, now);
+    if (route === "verify" && lease.reserved_microusd <= charged) route = "pending";
     writeState(repo, state, sha);
     await mkdir(output, { recursive: true });
     await writeFile(join(output, "lease.json"), JSON.stringify(lease));
     await writeFile(join(output, "state.json"), JSON.stringify(state));
+    await writeFile(
+      join(output, "route.json"),
+      JSON.stringify({
+        route,
+        reason:
+          proposal.type === "report_incomplete"
+            ? proposal.reason || proposal.cause
+            : route === "pending"
+              ? "No OpenAI verification allowance available."
+              : "",
+      }),
+    );
+    if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `route=${route}\n`);
     await writeFile(
       join(output, "usage.json"),
       JSON.stringify({ lease_id: id, charged_microusd: charged }),
@@ -216,29 +236,41 @@ async function main(): Promise<void> {
   if (command === "finish") {
     const directory = env("MAINTENANCE_INPUT");
     const leasePath = join(directory, "catalog-maintenance-preparation/lease.json");
-    const usagePath = join(directory, "catalog-maintenance-usage/usage.json");
     const exists = (path: string) =>
       access(path).then(
         () => true,
         () => false,
       );
-    const reviewedUsagePath = join(directory, "catalog-maintenance-review/review-usage.json");
-    const initialUsagePath = join(directory, "catalog-maintenance-initial/review-usage.json");
-    let settlementPath: string | undefined;
-    if (await exists(reviewedUsagePath)) settlementPath = reviewedUsagePath;
-    else if (process.env.MAINTENANCE_REVIEW_RESULT === "skipped") {
-      if (await exists(initialUsagePath)) settlementPath = initialUsagePath;
-      else if (process.env.MAINTENANCE_INITIAL_RESULT === "skipped" && (await exists(usagePath)))
-        settlementPath = usagePath;
-    }
-    if (settlementPath) {
+    const initialOutcome = process.env.MAINTENANCE_INITIAL_OUTCOME;
+    const finalOutcome =
+      process.env.MAINTENANCE_REVIEW_RESULT === "success"
+        ? process.env.MAINTENANCE_FINAL_OUTCOME
+        : undefined;
+    const receipt = settlementReceipt(
+      process.env.MAINTENANCE_INITIAL_RESULT,
+      initialOutcome,
+      process.env.MAINTENANCE_REVIEW_RESULT,
+    );
+    const settlementPath = join(directory, receipt);
+    if (await exists(settlementPath)) {
       const lease = leaseSchema.parse(JSON.parse(await readFile(leasePath, "utf8")));
       const usage = z
         .object({ lease_id: z.literal(lease.id), charged_microusd: z.number().int().nonnegative() })
         .parse(JSON.parse(await readFile(settlementPath, "utf8")));
       settleBudget(state, lease.id, usage.charged_microusd);
     }
-    const independentDirectory = join(directory, "catalog-maintenance-review");
+    const independentDirectory = join(
+      directory,
+      initialOutcome === "needs_takeover"
+        ? "catalog-maintenance-review"
+        : "catalog-maintenance-initial",
+    );
+    const routePath = join(directory, "catalog-maintenance-verification-budget/route.json");
+    const route = (await exists(routePath))
+      ? z
+          .object({ route: z.enum(["verify", "pending", "idle"]), reason: z.string() })
+          .parse(JSON.parse(await readFile(routePath, "utf8")))
+      : undefined;
     const decisionPath = join(independentDirectory, "decision.json");
     const decision = (await exists(decisionPath))
       ? z
@@ -246,14 +278,17 @@ async function main(): Promise<void> {
             admission_sha256: z.string(),
             review_sha256: z.string(),
             patch_sha256: z.string(),
+            outcome: z.enum(["noop", "commit_repair"]),
             verdict: z.enum(["supported", "concrete_error", "insufficient_evidence"]),
             verified_candidate_ids: z.array(z.string()),
             takeover_attempted: z.boolean(),
             takeover_candidate_ids: z.array(z.string()).optional(),
+            reason: z.string().optional(),
           })
           .parse(JSON.parse(await readFile(decisionPath, "utf8")))
       : undefined;
     const finalReview =
+      (finalOutcome === "noop" || finalOutcome === "commit_repair") &&
       decision?.verdict === "supported" &&
       (await exists(join(independentDirectory, "review.json")));
     const admissionPath = finalReview
@@ -272,7 +307,12 @@ async function main(): Promise<void> {
           })
           .parse(JSON.parse(await readFile(publicationPath, "utf8")))
       : undefined;
-    if ((await exists(admissionPath)) && (await exists(reviewPath))) {
+    const hasInvestigation = (await exists(admissionPath)) && (await exists(reviewPath));
+    if (finalOutcome && !hasInvestigation)
+      throw new Error("Completed investigation is missing its admission or review");
+    if (["noop", "commit_repair"].includes(finalOutcome ?? "") && !finalReview)
+      throw new Error("Missing final independent proof");
+    if (hasInvestigation) {
       const feedback = await verificationFeedback(directory);
       const prepared = stateSchema.parse(
         JSON.parse(
@@ -290,6 +330,20 @@ async function main(): Promise<void> {
         })
         .parse(JSON.parse(admissionText));
       const text = await readFile(reviewPath, "utf8");
+      if (
+        finalReview &&
+        (decision.outcome !== finalOutcome ||
+          decision.admission_sha256 !== digest(admissionText) ||
+          decision.review_sha256 !== digest(text))
+      )
+        throw new Error("Independent decision does not match the final investigation");
+      if (
+        process.env.MAINTENANCE_PUBLISHED_REVISION &&
+        (!finalReview ||
+          published?.revision !== process.env.MAINTENANCE_PUBLISHED_REVISION ||
+          published.patch_sha256 !== decision.patch_sha256)
+      )
+        throw new Error("Published revision is missing its matching verified patch receipt");
       const review = z
         .object({
           candidates: z.array(
@@ -310,6 +364,14 @@ async function main(): Promise<void> {
       const evidenceRoot = finalReview
         ? join(independentDirectory, "effective-evidence")
         : resolve(reviewPath, "..");
+      if (finalReview) {
+        const expected = review.candidates
+          .filter((row) => row.status === "repaired" || row.status === "not_a_defect")
+          .map((row) => row.id)
+          .sort();
+        if (JSON.stringify(expected) !== JSON.stringify(decision.verified_candidate_ids.toSorted()))
+          throw new Error("Independent decision does not cover the final candidates");
+      }
       let verified = false;
       try {
         await validateRepairReview(
@@ -322,12 +384,14 @@ async function main(): Promise<void> {
             ),
           {
             allowPending: true,
+            requireNoDefect: finalReview && finalOutcome === "noop",
             requireRepair: review.candidates.some((candidate) => candidate.status === "repaired"),
-            ...(published ? { patchHash: published.patch_sha256 } : {}),
+            ...(finalReview ? { patchHash: decision.patch_sha256 } : {}),
           },
         );
         verified = true;
-      } catch {
+      } catch (error) {
+        if (finalReview) throw error;
         /* Partial notes survive as leads; invalid receipts never close a task. */
       }
       for (const admitted of admission.candidates) {
@@ -366,13 +430,7 @@ async function main(): Promise<void> {
           task.takeover_fingerprint = task.fingerprint;
         const row = review.candidates.find((row) => row.id === task.id);
         if (row) {
-          const supported =
-            finalReview &&
-            process.env.MAINTENANCE_REVIEW_RESULT === "success" &&
-            decision?.verdict === "supported" &&
-            decision.admission_sha256 === digest(admissionText) &&
-            decision.review_sha256 === digest(text) &&
-            decision.verified_candidate_ids.includes(task.id);
+          const supported = finalReview && decision.verified_candidate_ids.includes(task.id);
           const closed = row.status === "repaired" || row.status === "not_a_defect";
           const accepted = verified && (!closed || supported);
           const publication =
@@ -389,6 +447,8 @@ async function main(): Promise<void> {
               next_action:
                 closed && !supported
                   ? feedback.nextAction(task.id) ||
+                    decision?.reason ||
+                    route?.reason ||
                     "Independent verification did not support this conclusion. Inspect the initial and final verifier artifacts for evidence or resource limits."
                   : row.status === "repaired" && !publication
                     ? "The proposed patch was not published. Inspect the prior semantic-review and publication-validation feedback, revise the failed claim, and rerun its focused proof before resubmitting."
@@ -408,6 +468,22 @@ async function main(): Promise<void> {
       }
     }
     writeState(repo, state, sha);
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      const rows = state.tasks.filter((task) => task.evidence_run === env("GITHUB_RUN_ID"));
+      const detail = JSON.stringify(
+        {
+          reason: decision?.reason || route?.reason,
+          candidates: rows.map(({ id, status, next_action }) => ({ id, status, next_action })),
+        },
+        null,
+        2,
+      );
+      await appendFile(
+        process.env.GITHUB_STEP_SUMMARY,
+        `\n## Repair disposition\n\n${finalOutcome || "Interrupted"}\n\n<pre>${detail.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</pre>\n`,
+      );
+    }
+    return;
   } else if (command === "record-deployment") {
     const receipt = JSON.parse(await readFile(process.argv[3] ?? "", "utf8"));
     if (recordDeployment(state, env("GITHUB_RUN_ID"), receipt)) writeState(repo, state, sha);

@@ -1,4 +1,4 @@
-import { spawn, execFileSync } from "node:child_process";
+import { spawn, spawnSync, execFileSync } from "node:child_process";
 import {
   appendFile,
   cp,
@@ -18,6 +18,7 @@ import { validateRepairReview } from "../catalog-repair-review.ts";
 import { digest, leaseSchema, stateSchema } from "./state.ts";
 import { readSharedFile, writePrivateJson } from "./files.ts";
 import { startCodexGateway } from "./codex-gateway.ts";
+import { reviewRoute } from "./flow.ts";
 import { catalogRepairModel } from "./openai.ts";
 import {
   checkVerification,
@@ -150,21 +151,15 @@ export function codexArguments(modelCatalog = "/input/codex-model.json"): string
     "-",
   ];
 }
-export function containerArguments(
-  paths: {
-    name: string;
-    work: string;
-    trusted: string;
-    input: string;
-    output: string;
-    evidence: string;
-    gateway: string;
-    sources: string;
-    toolchain: string;
-  },
-  prompt: string,
-  writableCandidate = false,
-): string[] {
+type CheckoutPaths = {
+  name: string;
+  work: string;
+  trusted: string;
+  evidence: string;
+  sources: string;
+  toolchain: string;
+};
+function checkoutArguments(paths: CheckoutPaths, mode: "verify" | "takeover" | "replay"): string[] {
   return [
     "run",
     "--rm",
@@ -190,9 +185,9 @@ export function containerArguments(
     "--tmpfs",
     "/home/codex:rw,size=128m,mode=1777",
     "--mount",
-    `type=bind,source=${paths.work},target=/workspace${writableCandidate ? "" : ",readonly"}`,
+    `type=bind,source=${paths.work},target=/workspace${mode === "takeover" ? "" : ",readonly"}`,
     "--mount",
-    `type=bind,source=${join(paths.evidence, "probes")},target=/workspace/repair-probes`,
+    `type=bind,source=${join(paths.evidence, "probes")},target=/workspace/repair-probes${mode === "replay" ? ",readonly" : ""}`,
     "--mount",
     `type=bind,source=${join(paths.work, ".git")},target=/workspace/.git,readonly`,
     "--mount",
@@ -200,33 +195,63 @@ export function containerArguments(
     "--mount",
     `type=bind,source=${paths.trusted},target=/trusted,readonly`,
     "--mount",
-    `type=bind,source=${paths.input},target=/input,readonly`,
-    "--mount",
-    `type=bind,source=${paths.output},target=/output`,
-    "--mount",
-    `type=bind,source=${paths.evidence},target=/tmp/gh-aw/agent`,
+    `type=bind,source=${paths.evidence},target=/tmp/gh-aw/agent${mode === "replay" ? ",readonly" : ""}`,
     "--mount",
     `type=bind,source=${paths.sources},target=/tmp/gh-aw/agent/independent-sources,readonly`,
-    "--mount",
-    `type=bind,source=${paths.gateway},target=/gateway,readonly`,
     "--mount",
     `type=bind,source=${paths.toolchain},target=${paths.toolchain},readonly`,
     "--env",
     "HOME=/home/codex",
     "--env",
-    "CODEX_HOME=/home/codex/state",
-    "--env",
     `VP_HOME=${paths.toolchain}`,
-    "--env",
-    "KMODELS_REPAIR_ADMISSION=/input/admission.json",
     "--workdir",
     "/workspace",
+  ];
+}
+export function containerArguments(
+  paths: CheckoutPaths & { input: string; output: string; gateway: string },
+  prompt: string,
+  writableCandidate = false,
+): string[] {
+  return [
+    ...checkoutArguments(paths, writableCandidate ? "takeover" : "verify"),
+    "--mount",
+    `type=bind,source=${paths.input},target=/input,readonly`,
+    "--mount",
+    `type=bind,source=${paths.output},target=/output`,
+    "--mount",
+    `type=bind,source=${paths.gateway},target=/gateway,readonly`,
+    "--env",
+    "CODEX_HOME=/home/codex/state",
+    "--env",
+    "KMODELS_REPAIR_ADMISSION=/input/admission.json",
+    "--env",
+    `CATALOG_PROMPT=${prompt}`,
     "kmodels-repair-codex:local",
     "-c",
     'set -euo pipefail; mkdir -p "$CODEX_HOME"; source "$VP_HOME/env"; vp node /trusted/scripts/repair/codex-relay.ts & relay=$!; trap \'kill "$relay" 2>/dev/null || true\' EXIT; for attempt in {1..50}; do if vp node -e \'fetch("http://127.0.0.1:8765/health").then(()=>process.exit(0)).catch(()=>process.exit(1))\'; then break; fi; sleep 0.1; done; exec /usr/local/bin/catalog-codex "$@" < "$CATALOG_PROMPT"',
     "catalog-codex",
     ...codexArguments(),
-  ].flatMap((arg) => (arg === "--workdir" ? ["--env", `CATALOG_PROMPT=${prompt}`, arg] : [arg]));
+  ];
+}
+export function replayProbes(paths: CheckoutPaths) {
+  const result = spawnSync(
+    "docker",
+    [
+      ...checkoutArguments(paths, "replay"),
+      "kmodels-repair-codex:local",
+      "-c",
+      'source "$VP_HOME/env" || exit 126; timeout -k 5s 180s vp test --configLoader runner --config /trusted/scripts/repair/probe.config.ts --run > /tmp/probes.log 2>&1; rc=$?; tail -c 12000 /tmp/probes.log; exit "$rc"',
+    ],
+    { env: childEnv(), encoding: "utf8", timeout: 210000 },
+  );
+  if (result.error || result.status === null || [125, 126, 127].includes(result.status)) {
+    spawnSync("docker", ["rm", "--force", paths.name], { env: childEnv(), timeout: 10000 });
+    throw (
+      result.error ?? new Error(`Could not run independent probes: ${result.stderr.slice(-2000)}`)
+    );
+  }
+  return { exit_code: result.status, output: result.stdout };
 }
 async function runContainer(args: string[], output: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -369,7 +394,7 @@ async function main(): Promise<void> {
   await mkdir(gatewayDirectory, { recursive: true });
   let takeoverAttempted = false;
   let takeoverIds: string[] = [];
-  const saveDecision = async (verdict: string, ids: string[] = []) =>
+  const saveDecision = async (verdict: string, ids: string[] = [], reason?: string) =>
     writePrivateJson(join(output, "decision.json"), {
       schema_version: 1,
       admission_sha256: digest(admissionText),
@@ -377,10 +402,15 @@ async function main(): Promise<void> {
       patch_sha256: digest(patch),
       outcome: outcome.type,
       verdict,
+      ...(reason ? { reason } : {}),
       verified_candidate_ids: ids,
       takeover_attempted: takeoverAttempted,
       takeover_candidate_ids: takeoverAttempted ? takeoverIds : [],
     });
+  const pending = async (report: Verification, reason: string) => {
+    await saveDecision(verificationVerdict(report), [], reason);
+    if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, "outcome=pending\n");
+  };
   await saveDecision("insufficient_evidence");
   await writePrivateJson(join(output, "review-usage.json"), usage);
   const freshWork = async (name: string, candidate: string) => {
@@ -392,6 +422,8 @@ async function main(): Promise<void> {
     // The takeover checker computes the patch inside the container, where the probe mount is visible.
     await mkdir(join(work, ".git/info"), { recursive: true });
     await appendFile(join(work, ".git/info/exclude"), "\n/repair-probes/\n");
+    await mkdir(join(work, "repair-probes"), { recursive: true });
+    await mkdir(join(work, "node_modules"), { recursive: true });
     await cp(join(trusted, "data"), join(work, "data"), { recursive: true });
     if (candidate) {
       const path = join(runtime, `${name}.patch`);
@@ -459,8 +491,6 @@ async function main(): Promise<void> {
       );
       for (const [name, text] of Object.entries(files))
         await writeFile(join(directory, name), text);
-      await mkdir(join(work, "repair-probes"), { recursive: true });
-      await mkdir(join(work, "node_modules"), { recursive: true });
       await mkdir(join(evidence, "probes"), { recursive: true });
       const args = containerArguments(
         {
@@ -541,6 +571,7 @@ async function main(): Promise<void> {
         await mkdir(evidence, { recursive: true });
       }
       const expected = closedCandidates(review);
+      const baseline = await freshWork(`${label}-baseline`, "");
       let assessment =
         label === "revised"
           ? await restoreBlindedBaseline(join(input, "initial"), evidence, admissionText, expected)
@@ -556,8 +587,8 @@ async function main(): Promise<void> {
         );
         assessment = await run(
           "independent",
-          await freshWork(`${label}-baseline`, ""),
-          `Assess the candidates in /input/candidates.json on the unpatched baseline. Acquire original sources, identify the affected consumer and exercise a disjoint control. Return a concise baseline assessment with receipt paths, hashes and unresolved questions. A fresh session will test the proposed behavior.`,
+          baseline,
+          `Assess the candidates in /input/candidates.json on the unpatched baseline. Acquire original sources, identify the affected consumer and exercise a disjoint control. Keep executable consumer and counterexample tests in /workspace/repair-probes. The controller replays them against both revisions. Return a concise baseline assessment with receipt paths, hashes and unresolved questions. A fresh session will test the proposed behavior.`,
           {
             "candidates.json": JSON.stringify(
               admission.candidates.filter(({ id }) => expected.includes(id)),
@@ -572,14 +603,52 @@ async function main(): Promise<void> {
       }
       // The comparison inherits all unspent funds after the blinded session finishes.
       gateway.startPhase();
-      // Proposer evidence is made visible only after independent assessment has completed.
+      const work = patch ? await freshWork(`${label}-proposal`, patch) : baseline;
+      // Run the identical blinded tests on both trees before revealing proposer material.
+      const probeRoot = join(evidence, "probes");
+      await mkdir(probeRoot, { recursive: true });
+      await mkdir(join(evidence, "independent-sources"), { recursive: true });
+      await checkEvidenceTree(evidence);
+      const probes = (await readdir(probeRoot, { recursive: true, withFileTypes: true }))
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".test.ts"))
+        .map((entry) => relative(probeRoot, join(entry.parentPath, entry.name)))
+        .sort();
+      const replay = (tree: string, side: string) =>
+        replayProbes({
+          name: `catalog-${env("GITHUB_RUN_ID")}-${label}-${side}`,
+          work: tree,
+          trusted,
+          evidence,
+          sources: join(output, "sources"),
+          toolchain: env("VP_HOME"),
+        });
+      const before = probes.length ? replay(baseline, "before") : undefined;
+      const comparison = JSON.stringify({
+        base_sha: base,
+        patch_sha256: digest(patch),
+        probes: await Promise.all(
+          probes.map(async (path) => ({
+            path,
+            sha256: digest(await readFile(join(probeRoot, path), "utf8")),
+          })),
+        ),
+        ...(before && {
+          baseline: before,
+          ...(patch ? { proposal: replay(work, "after") } : { proposal_matches_baseline: true }),
+        }),
+      });
+      await writeFile(join(output, `${label}-probe-replay.json`), comparison);
       await cp(effectiveProofRoot, join(evidence, "proposer"), { recursive: true });
-      const work = await freshWork(`${label}-proposal`, patch);
       const text = await run(
         "verify",
         work,
-        `Independently decide every proposed closed conclusion in /input/proposal.json, using /input/assessment.txt and original sources. The candidate patch is applied in this checkout. Inspect /input/patch.diff; original proposer artifacts are under /tmp/gh-aw/agent/proposer. Reacquire or read full sources as needed, including contrary context. Cover exactly ${JSON.stringify(expected)}. Return the required JSON. supported requires successful actual-consumer and counterexample receipts, not just existing green tests. concrete_error requires a specific expected/actual contradiction tied to original evidence; otherwise use insufficient_evidence.`,
-        { "assessment.txt": assessment, "proposal.json": reviewText, "patch.diff": patch },
+        `Independently decide every proposed closed conclusion in /input/proposal.json, using /input/assessment.txt and original sources. The candidate patch is applied in this checkout. Read /input/probe-replay.json for the blinded tests, exit codes and output from both trees. Explain which observations distinguish the claimed fix from the control. An absent or failing probe may require a focused follow-up. Inspect /input/patch.diff; original proposer artifacts are under /tmp/gh-aw/agent/proposer. Reacquire or read full sources as needed, including contrary context. Cover exactly ${JSON.stringify(expected)}. Return the required JSON. supported requires successful actual-consumer and counterexample receipts, not just existing green tests. concrete_error requires a specific expected/actual contradiction tied to original evidence; otherwise use insufficient_evidence.`,
+        {
+          "assessment.txt": assessment,
+          "proposal.json": reviewText,
+          "patch.diff": patch,
+          "probe-replay.json": comparison,
+        },
         verificationOutputSchema,
       );
       const report = await checkVerification(JSON.parse(text), expected, (path) => {
@@ -617,24 +686,42 @@ async function main(): Promise<void> {
             ),
         });
       }
-      if (verificationVerdict(report) === "concrete_error") {
-        takeoverIds = report.candidates
-          .filter((row) => row.verdict === "concrete_error")
-          .map((row) => row.id);
-        const repeated = state.tasks.some(
-          (task) => takeoverIds.includes(task.id) && task.takeover_fingerprint === task.fingerprint,
-        );
-        if (repeated)
-          throw new Error("This evidence fingerprint already used its automatic Codex takeover");
-        if (stage === "initial") {
+      takeoverIds = report.candidates
+        .filter((row) => row.verdict === "concrete_error")
+        .map((row) => row.id);
+      const repeated = state.tasks.some(
+        (task) => takeoverIds.includes(task.id) && task.takeover_fingerprint === task.fingerprint,
+      );
+      if (stage === "initial") {
+        const route = reviewRoute(report, stage, repeated);
+        if (route === "needs_takeover") {
           await saveDecision("concrete_error");
           if (process.env.GITHUB_OUTPUT)
             await appendFile(process.env.GITHUB_OUTPUT, "outcome=needs_takeover\n");
           return;
         }
+        if (route === "pending") {
+          await pending(
+            report,
+            repeated
+              ? "The unchanged evidence already used its repair attempt."
+              : "Independent evidence does not support every proposed closure.",
+          );
+          return;
+        }
+      } else {
+        if (repeated) {
+          await pending(report, "The unchanged evidence already used its repair attempt.");
+          return;
+        }
         const remaining = lease.reserved_microusd - gateway.charged();
-        if (remaining < 2_000_000)
-          throw new Error("Insufficient reserved budget for takeover and fresh verification");
+        if (remaining < 2_000_000) {
+          await pending(
+            report,
+            "Remaining allowance cannot fund revision and independent re-verification.",
+          );
+          return;
+        }
         takeoverAttempted = true;
         await saveDecision("concrete_error");
         gateway.startPhase(remaining - 1_000_000, 24);
@@ -654,7 +741,8 @@ async function main(): Promise<void> {
             session: "takeover",
             reason: response.reason,
           });
-          throw new Error(`Catalog repair incomplete: ${response.reason}`);
+          await pending(report, response.reason);
+          return;
         }
         outcome = response;
         patch = snapshot(work, base);
@@ -684,6 +772,10 @@ async function main(): Promise<void> {
         );
         gateway.startPhase();
         report = await verify("revised");
+        if (reviewRoute(report, stage, true) === "pending") {
+          await pending(report, "The revised proposal still has unresolved independent findings.");
+          return;
+        }
       }
       await cp(effectiveProofRoot, evidence, { recursive: true, force: false });
       const verdict = verificationVerdict(report);
@@ -691,8 +783,6 @@ async function main(): Promise<void> {
         verdict,
         report.candidates.filter((row) => row.verdict === "supported").map((row) => row.id),
       );
-      if (verdict !== "supported")
-        throw new Error("Independent verification did not support every closed conclusion");
     } finally {
       await gateway.close();
       if (process.env.GITHUB_STEP_SUMMARY)

@@ -60,7 +60,7 @@ for (const run of [
         const decision = z
           .object({ verdict: z.enum(["concrete_error", "supported", "insufficient_evidence"]) })
           .parse(JSON.parse(await readFile(join(target, "decision.json"), "utf8")));
-        // Only a takeover can produce new final evidence. A forwarded initial report is identical.
+        // Only a takeover can produce additional review evidence.
         needFinalReview = decision.verdict === "concrete_error";
       }
     } catch {
