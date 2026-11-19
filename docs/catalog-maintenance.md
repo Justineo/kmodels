@@ -92,10 +92,22 @@ Each Codex session has a 20-minute wall-clock limit. There are no automatic HTTP
 model fallbacks or unlimited escalation loops. Actions summaries report the stage reservation and
 cumulative conservative charge for operational observation; no evaluation pipeline is added.
 
-Accounting uses integer micro-USD and conservative token-price ceilings, including cache-write
-and long-context headroom. Every call is reserved in a private atomic journal before HTTP starts.
-Unknown, interrupted and failed calls retain their reservation; completed calls settle recorded
-usage. A missing usage/reviewer artifact retains the larger run reservation. A month-boundary
+Every verifier call reserves its worst-case cost in the private atomic journal before HTTP starts.
+On completion the gateway uses the total input count to select GPT-6.2 Sol Standard rates for
+short context (up to 272,000 tokens) or long context. It subtracts billed cache reads and writes
+from input, prices 30-minute and 12-hour writes separately, and charges total output once.
+The [pricing table](https://developers.openai.com/api/docs/pricing) owns the rates and the
+[prompt caching guide](https://developers.openai.com/api/docs/guides/prompt-caching) defines the counts.
+Aggregate writes with unknown lifetime use the 12-hour rate. If cache counters are missing,
+the remaining input has its own unclassified line at the highest applicable rate.
+Inconsistent counts, interrupted calls and failed requests retain the reservation.
+
+Each stage's `review-usage.json` records its opening balance and one entry per dispatched request.
+Successful entries include the reported token counts, context band, rate and charge per category
+in integer nano-USD. The gateway rounds the sum up once to micro-USD and releases the difference
+from the reservation. The opening balance plus the request charges reconciles to the cumulative
+lease charge, including outstanding or retained reservations. Historical total-only receipts
+remain readable. A missing usage/reviewer artifact retains the larger run reservation. A month-boundary
 lease cannot make new calls. Budget exhaustion leaves any unverified repair unpublished and any unverified no-defect
 conclusion open. There is no low-risk bypass or inference-confidence shortcut. The ledger is a conservative workflow allowance, not an invoice or a
 provider-enforced account cap; other uses of the key are outside it. Review model prices before

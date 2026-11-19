@@ -7,7 +7,8 @@ import { fetchSource } from "../../src/catalog/fetch.ts";
 import { researchPublicSource, reviewedPublicSource } from "../../src/catalog/public-evidence.ts";
 import { manifests } from "../../src/catalog/manifests.ts";
 import { digest, type BudgetLease } from "./state.ts";
-import { catalogRepairModel, requestReservation, responseCost } from "./openai.ts";
+import { catalogRepairModel, requestReservation } from "./openai.ts";
+import { streamSettlement } from "./codex-usage.ts";
 import { writePrivateJson } from "./files.ts";
 
 export async function boundedBody(stream: AsyncIterable<unknown>, limit: number): Promise<string> {
@@ -86,40 +87,6 @@ export function codexRequest(
     reservation: requestReservation(catalogRepairModel, false, Buffer.byteLength(body)),
   };
 }
-export function streamCharge(text: string): number {
-  const events = text
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
-    .map((line): unknown => JSON.parse(line.slice(6)));
-  const completed = events.flatMap((event) => {
-    const result = z
-      .object({
-        type: z.literal("response.completed"),
-        response: z.object({
-          model: z.string(),
-          usage: z.object({
-            input_tokens: z.number().int().nonnegative(),
-            output_tokens: z.number().int().nonnegative(),
-          }),
-        }),
-      })
-      .safeParse(event);
-    return result.success ? [result.data.response] : [];
-  });
-  const response = completed[0];
-  if (
-    completed.length !== 1 ||
-    !response ||
-    (response.model !== catalogRepairModel && !response.model.startsWith(`${catalogRepairModel}-`))
-  )
-    throw new Error("Missing unique completed Codex usage; reservation retained");
-  return responseCost(
-    catalogRepairModel,
-    response.usage.input_tokens,
-    response.usage.output_tokens,
-    false,
-  );
-}
 
 export function serialRoute(serve: (req: IncomingMessage, res: ServerResponse) => Promise<void>) {
   let running: Promise<void> | undefined;
@@ -173,17 +140,32 @@ export async function startCodexGateway(options: {
   fetcher?: typeof fetch;
 }) {
   let charged = options.charged;
-  let reserved = 0;
+  type Receipt = {
+    call: number;
+    reserved_microusd: number;
+    status: "reserved" | "settled" | "retained" | "over_bound";
+    charged_microusd: number;
+    settlement?: ReturnType<typeof streamSettlement>;
+  };
+  const requests: Receipt[] = [];
   let phaseLimit = charged;
   let calls = 0;
   let phaseCallLimit = 60;
   let fetches = 0;
   let poisoned = false;
-  const save = () =>
-    writePrivateJson(join(options.privateDirectory, "review-usage.json"), {
-      lease_id: options.lease.id,
-      charged_microusd: charged + reserved,
-    });
+  const save = async () => {
+    try {
+      await writePrivateJson(join(options.privateDirectory, "review-usage.json"), {
+        lease_id: options.lease.id,
+        opening_charged_microusd: options.charged,
+        charged_microusd: charged,
+        requests,
+      });
+    } catch (error) {
+      poisoned = true;
+      throw error;
+    }
+  };
   await save();
   const handle = async (req: IncomingMessage): Promise<{ type: string; body: string }> => {
     const input: unknown = JSON.parse(await boundedBody(req, 170_000));
@@ -229,7 +211,14 @@ export async function startCodexGateway(options: {
       request = codexRequest(input, true);
     if (charged + request.reservation > Math.min(phaseLimit, options.lease.reserved_microusd))
       throw new Error("OpenAI phase budget exhausted");
-    reserved = request.reservation;
+    const receipt: Receipt = {
+      call: calls,
+      reserved_microusd: request.reservation,
+      status: "reserved",
+      charged_microusd: request.reservation,
+    };
+    requests.push(receipt);
+    charged += request.reservation;
     await save();
     try {
       const response = await (options.fetcher ?? fetch)("https://api.openai.com/v1/responses", {
@@ -241,22 +230,23 @@ export async function startCodexGateway(options: {
       });
       if (!response.ok || !response.body) throw new Error(`OpenAI failed (${response.status})`);
       const text = await boundedBody(response.body, 8 * 1024 * 1024);
-      const cost = streamCharge(text);
-      if (cost > reserved) {
+      const settlement = streamSettlement(text);
+      receipt.settlement = settlement;
+      if (settlement.charged_microusd > request.reservation) {
         // An invalid price/token bound disables every remaining call and retains the full lease.
         poisoned = true;
+        receipt.status = "over_bound";
+        receipt.charged_microusd += options.lease.reserved_microusd - charged;
         charged = options.lease.reserved_microusd;
-        reserved = 0;
-        await save();
         throw new Error("OpenAI usage exceeded its reserved bound");
       }
-      charged += cost;
-      reserved = 0;
+      receipt.status = "settled";
+      receipt.charged_microusd = settlement.charged_microusd;
+      charged -= request.reservation - settlement.charged_microusd;
       await save();
       return { type: "text/event-stream", body: text };
     } catch (error) {
-      charged += reserved;
-      reserved = 0;
+      if (receipt.status === "reserved") receipt.status = "retained";
       await save();
       throw error;
     }

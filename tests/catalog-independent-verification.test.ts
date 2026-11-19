@@ -10,12 +10,8 @@ import {
   closedCandidates,
   verificationVerdict,
 } from "../scripts/repair/verification.ts";
-import {
-  codexRequest,
-  streamCharge,
-  boundedBody,
-  serialRoute,
-} from "../scripts/repair/codex-gateway.ts";
+import { codexRequest, boundedBody, serialRoute } from "../scripts/repair/codex-gateway.ts";
+import { streamSettlement } from "../scripts/repair/codex-usage.ts";
 import {
   checkEvidenceTree,
   codexArguments,
@@ -183,13 +179,18 @@ it("settles only one completed SSE response and charges reasoning output", async
       response: { model: "gpt-6.2-sol", usage: { input_tokens: 10, output_tokens: 20 } },
     }) +
     "\n\n";
-  expect(streamCharge(event)).toBe(400);
-  expect(streamCharge(event.replace("gpt-6.2-sol", "gpt-6.2-sol-2026-11-17"))).toBe(400);
-  expect(() => streamCharge(event.replace("gpt-6.2-sol", "gpt-6.1-sol"))).toThrow(
+  expect(streamSettlement(event)).toMatchObject({
+    charged_microusd: 250,
+    charges: { unclassified_input: { tokens: 10, cost_nanousd: 50000 } },
+  });
+  expect(
+    streamSettlement(event.replace("gpt-6.2-sol", "gpt-6.2-sol-2026-11-17")).charged_microusd,
+  ).toBe(250);
+  expect(() => streamSettlement(event.replace("gpt-6.2-sol", "gpt-6.1-sol"))).toThrow(
     "reservation retained",
   );
-  expect(() => streamCharge(event + event)).toThrow("unique completed");
-  expect(() => streamCharge('data: {"type":"response.failed"}\n\n')).toThrow();
+  expect(() => streamSettlement(event + event)).toThrow("unique completed");
+  expect(() => streamSettlement('data: {"type":"response.failed"}\n\n')).toThrow();
   await expect(
     boundedBody(
       (async function* () {
@@ -199,6 +200,65 @@ it("settles only one completed SSE response and charges reasoning output", async
       5,
     ),
   ).rejects.toThrow("limit");
+});
+function settle(input: number, details: unknown) {
+  return streamSettlement(
+    "data: " +
+      JSON.stringify({
+        type: "response.completed",
+        response: {
+          model: "gpt-6.2-sol",
+          service_tier: "default",
+          usage: {
+            input_tokens: input,
+            input_tokens_details: details,
+            output_tokens: 20,
+            output_tokens_details: { reasoning_tokens: 15 },
+          },
+        },
+      }),
+  );
+}
+it("prices disjoint cache buckets at the total-input context boundary and rounds once", () => {
+  const details = {
+    cached_tokens: 4,
+    cache_write_tokens: 3,
+    cache_write_tokens_details: { ttl_30m_tokens: 1, ttl_12h_tokens: 2 },
+  };
+  const short = settle(272000, details);
+  expect(short.charges).toMatchObject({
+    ordinary_input: { tokens: 271993, cost_nanousd: 543986000 },
+    cache_read: { tokens: 4, cost_nanousd: 400 },
+    cache_write_30m: { tokens: 1, cost_nanousd: 2500 },
+    cache_write_12h: { tokens: 2, cost_nanousd: 10000 },
+    output: { tokens: 20, cost_nanousd: 200000 },
+  });
+  expect(short.charged_microusd).toBe(544199);
+  const long = settle(272001, details);
+  expect(long.context_band).toBe("long");
+  expect(long.charged_microusd).toBe(1088302);
+});
+it("preserves ambiguous tokens separately and credits confirmed hits", () => {
+  const partial = settle(100, { cached_tokens: 90 });
+  expect(partial.charges.unclassified_input).toMatchObject({ tokens: 10, cost_nanousd: 50000 });
+  expect(partial.charged_microusd).toBe(259);
+  const aggregate = settle(100, { cached_tokens: 90, cache_write_tokens: 3 });
+  expect(aggregate.charges.cache_write_unknown_ttl).toMatchObject({
+    tokens: 3,
+    cost_nanousd: 15000,
+  });
+  expect(aggregate.charged_microusd).toBe(238);
+  expect(
+    settle(10, { cached_tokens: 0, cache_write_tokens: 0 }).charges.ordinary_input.tokens,
+  ).toBe(10);
+});
+it.each([
+  { cached_tokens: 9, cache_write_tokens: 2 },
+  { cached_tokens: -1 },
+  { cache_write_tokens: 2, cache_write_tokens_details: { ttl_30m_tokens: 1, ttl_12h_tokens: 2 } },
+  { cache_write_tokens_details: { ttl_30m_tokens: 1 } },
+])("rejects inconsistent or malformed cache details", (details) => {
+  expect(() => settle(10, details)).toThrow();
 });
 it("serves a burst in arrival order and drops excess, expired and disconnected requests", async () => {
   vi.useFakeTimers();

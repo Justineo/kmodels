@@ -93,7 +93,16 @@ const gateway = await startCodexGateway({
       status: "completed",
       model: "gpt-6.2-sol",
       output: [item],
-      usage: { input_tokens: 10, output_tokens: 20, total_tokens: 30 },
+      usage: {
+        input_tokens: 10,
+        output_tokens: 20,
+        total_tokens: 30,
+        input_tokens_details: {
+          cached_tokens: 4,
+          cache_write_tokens: 3,
+          cache_write_tokens_details: { ttl_30m_tokens: 2, ttl_12h_tokens: 1 },
+        },
+      },
     };
     const events = [
       { type: "response.created", response: { ...response, status: "in_progress", output: [] } },
@@ -182,7 +191,7 @@ try {
   if (
     (await readFile(join(output, "result.json"), "utf8")).trim() !== "catalog-protocol-ok" ||
     calls !== 2 ||
-    gateway.charged() !== 800
+    gateway.charged() !== 434
   )
     throw new Error("Codex protocol smoke did not complete with exact mocked usage");
   // Exercise ambiguous transport failure and contention against the same real Unix gateway.
@@ -232,16 +241,41 @@ try {
   }
   assert.equal(calls, 2);
   gateway.startPhase();
-  assert.equal(gateway.remaining(), runAllowance - 800);
+  assert.equal(gateway.remaining(), runAllowance - 434);
   gateway.startPhase(codexRequest(requestInput, true).reservation);
   failNext = true;
   const pending = post();
   await started;
-  const reserved = 800 + codexRequest(requestInput, true).reservation;
-  const journal = z
-    .object({ charged_microusd: z.number() })
-    .parse(JSON.parse(await readFile(join(output, "review-usage.json"), "utf8")));
-  assert.equal(journal.charged_microusd, reserved);
+  const reserved = 434 + codexRequest(requestInput, true).reservation;
+  const journal = async () =>
+    z
+      .object({
+        charged_microusd: z.number(),
+        requests: z.array(
+          z.object({
+            status: z.string(),
+            charged_microusd: z.number(),
+            settlement: z
+              .object({
+                charges: z.object({
+                  cache_read: z.object({ tokens: z.number(), cost_nanousd: z.number() }),
+                }),
+              })
+              .optional(),
+          }),
+        ),
+      })
+      .parse(JSON.parse(await readFile(join(output, "review-usage.json"), "utf8")));
+  const pendingJournal = await journal();
+  assert.equal(pendingJournal.charged_microusd, reserved);
+  assert.deepEqual(
+    pendingJournal.requests.map((row) => row.status),
+    ["settled", "settled", "reserved"],
+  );
+  assert.deepEqual(pendingJournal.requests[0]?.settlement?.charges.cache_read, {
+    tokens: 4,
+    cost_nanousd: 400,
+  });
   const queued = post();
   assert.equal(await post("/source", { source: "outside-admission" }), 400);
   failNetwork(new Error("Ambiguous transport failure"));
@@ -261,7 +295,13 @@ try {
   );
   assert.deepEqual(await Promise.all(burst), [200, 200, 200, 200]);
   assert.equal(calls, 7);
-  assert.equal(gateway.charged(), reserved + 4 * 400);
+  assert.equal(gateway.charged(), reserved + 4 * 217);
+  const final = await journal();
+  assert.equal(final.requests[2]?.status, "retained");
+  assert.equal(
+    final.requests.reduce((sum, row) => sum + row.charged_microusd, 0),
+    final.charged_microusd,
+  );
   console.log(
     "Codex tool protocol, private accounting and failure-budget smoke passed without paid inference.",
   );

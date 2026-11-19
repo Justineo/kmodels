@@ -29,8 +29,8 @@ const answerSchema = z.object({
   }),
 });
 
-// USD per million tokens = micro-USD per token. Charge all input at the largest cache-write
-// rate, including long-context pricing; unknown/failed requests retain their full reservation.
+// USD per million tokens = micro-USD per token. Reserve at the largest cache-write and
+// output rates. The verifier settles completed Responses usage in codex-usage.ts.
 export const inputCeiling = { "gpt-6-luna": 0.5, [catalogRepairModel]: 10 };
 export const outputCeiling = { "gpt-6-luna": 0.75, [catalogRepairModel]: 15 };
 export function requestReservation(
