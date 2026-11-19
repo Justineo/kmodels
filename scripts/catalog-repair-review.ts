@@ -1,11 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { appendFile, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const evidenceDirectory = "/tmp/gh-aw/agent";
-const reviewPath = `${evidenceDirectory}/catalog-repair-review.json`;
 
 export const periodicReviewAreas = [
   "discovery",
@@ -327,6 +326,51 @@ function outputTypes(output: string): string[] {
   return values.map((value) => text(record(value).type));
 }
 
+/** The investigation archive excludes previous/. Preserve only proof actually read by the checker. */
+export async function checkInvestigationReview(
+  admission: string,
+  root: string,
+  options: Parameters<typeof validateRepairReview>[3],
+) {
+  const file = resolve(root, "catalog-repair-review.json");
+  const review = await readReviewEvidence(file, root);
+  const prior = new Map<string, string>();
+  const base = await realpath(root);
+  const summary = await validateRepairReview(
+    admission,
+    review,
+    async (path) => {
+      const body = await readReviewEvidence(path, root);
+      if (
+        relative(base, await realpath(path)).startsWith("previous/") ||
+        relative(root, path).startsWith("previous/")
+      )
+        prior.set(path, reviewHash(body));
+      return body;
+    },
+    options,
+  );
+  if (!prior.size) return { summary, review };
+
+  const copies = new Map<string, string>();
+  for (const [path, expected] of prior) {
+    const body = await readReviewEvidence(path, root);
+    if (reviewHash(body) !== expected) throw new Error(`Review evidence changed: ${path}`);
+    const copy = resolve(root, `reused-${randomUUID()}.json`);
+    await writeFile(copy, body, { flag: "wx" });
+    copies.set(path, copy);
+  }
+  const portable = JSON.stringify(JSON.parse(review), (_key, value: unknown) => {
+    if (!object(value) || typeof value.path !== "string") return value;
+    const copy = copies.get(value.path);
+    return copy && value.sha256 === prior.get(value.path) ? { ...value, path: copy } : value;
+  });
+  const staged = resolve(root, `review-${randomUUID()}.json`);
+  await writeFile(staged, portable, { flag: "wx" });
+  await rename(staged, file);
+  return { summary, review: portable };
+}
+
 async function main(): Promise<void> {
   const operation = process.argv[2];
   if (operation === "hash") {
@@ -402,17 +446,20 @@ async function main(): Promise<void> {
       ? outputTypes(await readFile(text(process.env.GH_AW_SAFE_OUTPUTS), "utf8"))
       : [];
   const admissionText = await readFile(admission, "utf8");
-  const reviewText = await readReviewEvidence(reviewPath);
   const requireRepair = operation === "check-repair" || types.includes("commit_repair");
   const patchHash = requireRepair ? await checkedPatchHash() : undefined;
-  const summary = await validateRepairReview(admissionText, reviewText, readReviewEvidence, {
-    allowPending:
-      operation === "check-incomplete" ||
-      types.some((type) => ["report_incomplete", "missing_data", "missing_tool"].includes(type)),
-    requireRepair,
-    requireNoDefect: operation === "check-no-defect" || types.includes("noop"),
-    ...(patchHash === undefined ? {} : { patchHash }),
-  });
+  const { summary, review: reviewText } = await checkInvestigationReview(
+    admissionText,
+    evidenceDirectory,
+    {
+      allowPending:
+        operation === "check-incomplete" ||
+        types.some((type) => ["report_incomplete", "missing_data", "missing_tool"].includes(type)),
+      requireRepair,
+      requireNoDefect: operation === "check-no-defect" || types.includes("noop"),
+      ...(patchHash === undefined ? {} : { patchHash }),
+    },
+  );
   console.log(
     `Repair investigation evidence checked: ${JSON.stringify(summary)}. This checks evidence coverage, not semantic correctness.`,
   );

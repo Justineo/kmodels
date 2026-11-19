@@ -1,8 +1,9 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vite-plus/test";
 import {
+  checkInvestigationReview,
   readReviewEvidence,
   reviewHash,
   validateRepairReview,
@@ -493,6 +494,48 @@ it("accepts sanitized failed-execution review without requiring live collection 
     candidates: [{ ...row, id: "workflow/refresh-execution" }],
   });
   expect(await validateRepairReview(admission, review, s.read)).toMatchObject({ blocked: 1 });
+});
+
+it("preserves only validated historical proof when the investigation archive excludes previous runs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "kmodels-resumed-review-"));
+  try {
+    const s = scenario();
+    const row = s.repaired();
+    const previous = join(root, "previous", "17");
+    await mkdir(previous, { recursive: true });
+    const paths = new Map<string, string>();
+    for (const [name, body] of s.files) {
+      const target = join(
+        name === "/source" || name === row.checks[0]?.output.path ? previous : root,
+        name.replaceAll("/", "-"),
+      );
+      await writeFile(target, body);
+      paths.set(name, target);
+    }
+    await writeFile(join(previous, "unreferenced"), "historical notes");
+    const report = JSON.stringify(JSON.parse(s.report([row])), (key, value: unknown) =>
+      key === "path" && typeof value === "string" ? paths.get(value) : value,
+    );
+    const file = join(root, "catalog-repair-review.json");
+    await writeFile(file, report);
+    const options = { requireRepair: true };
+    const oldSource = join(previous, "-source");
+    const source = await readFile(oldSource, "utf8");
+    await writeFile(oldSource, "changed");
+    await expect(checkInvestigationReview(s.admission, root, options)).rejects.toThrow(
+      "evidence changed",
+    );
+    expect(await readFile(file, "utf8")).toBe(report);
+    await writeFile(oldSource, source);
+    const checked = await checkInvestigationReview(s.admission, root, options);
+    expect(checked.summary.repaired).toBe(1);
+    expect(checked.review).not.toContain(previous);
+    await rm(join(root, "previous"), { recursive: true });
+    expect(await checkInvestigationReview(s.admission, root, options)).toEqual(checked);
+    expect((await readdir(root)).filter((name) => name.startsWith("reused-"))).toHaveLength(2);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 it("does not follow review artifacts outside the evidence directory, including symlinks", async () => {

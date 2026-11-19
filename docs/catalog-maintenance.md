@@ -42,7 +42,10 @@ fingerprint changes. The daily provider/global rotation remains independent. Idl
 resume unfinished periodic reviews, and admitted tasks can load up to two prior investigation
 artifacts, including available semantic-review and publication-validation feedback. An unpublished
 proposal explicitly directs the next run to address those findings. Prior evidence is a lead: freshness, implementation applicability and proof must be
-rechecked. Previous artifact directories are excluded from new uploads to avoid recursive growth.
+rechecked. The investigation checker copies referenced historical proof into the current artifact
+after validating the review, preserving each receipt's contents, hash and original timestamps.
+It updates the review paths before independent verification. Previous artifact directories are
+excluded from new uploads to avoid recursive growth.
 
 Incident batches admit at most two due candidates from the selected provider; additional work
 remains explicitly deferred. Mandatory source/execution completeness checks are still added, and
