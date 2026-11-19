@@ -1,5 +1,22 @@
 import { z } from "zod";
 import { digest } from "./state.ts";
+import { parseRepairOutcome, type RepairOutcome } from "../catalog-repair-publication.ts";
+
+const takeoverResponse = z.object({
+  type: z.enum(["commit_repair", "noop", "report_incomplete"]),
+  summary: z.string().min(1).max(8000),
+  body: z.string().max(30000),
+});
+export const takeoverOutputSchema = z.toJSONSchema(takeoverResponse);
+export function readTakeoverResponse(
+  text: string,
+): RepairOutcome | { type: "report_incomplete"; reason: string } {
+  const { type, summary, body } = takeoverResponse.parse(JSON.parse(text));
+  if (type === "report_incomplete") return { type, reason: summary };
+  return parseRepairOutcome(
+    JSON.stringify(type === "noop" ? { type, message: summary } : { type, title: summary, body }),
+  );
+}
 
 const explanation = z.string().min(10).max(8000);
 const reference = z.object({

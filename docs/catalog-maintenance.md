@@ -154,9 +154,15 @@ and the entire set of candidates under review match. Different scope requires a 
 investigation. A comparison may checkpoint candidate-specific next actions and receipt paths
 before returning its full report. Partial notes never authorize publication.
 
+Independent tests live in the writable `/workspace/repair-probes` mount, backed by the
+session's evidence directory. Its dedicated Vitest configuration runs probes offline against
+the read-only candidate checkout and hydrated snapshot. Takeover alone receives a writable
+candidate checkout. Its structured response can report an incomplete repair and carry the
+missing proof into the next investigation.
+
 Each Codex session runs in a disposable container with networking disabled, no capabilities,
 non-root identity, read-only container filesystem, read-only Git metadata, dependencies and trusted
-code. Only its disposable worktree and evidence/output directories are writable. It receives no
+code. It receives no
 OpenAI key, GitHub token or Docker socket. A local relay reaches a host-owned Unix socket; the
 trusted gateway supplies only bounded Responses inference and public sources belonging to the
 admission, using existing reviewed HTTPS hosts and fetch limits. Original source receipts are

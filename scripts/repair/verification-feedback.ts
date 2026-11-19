@@ -39,10 +39,18 @@ export async function verificationFeedback(directory: string) {
         );
     }
     const interruption = z
-      .object({ session: z.enum(["independent", "verify", "takeover"]) })
+      .object({
+        session: z.enum(["independent", "verify", "takeover"]),
+        reason: z.string().max(8000).optional(),
+      })
       .safeParse(await read("interruption.json"));
     if (interruption.success)
-      interrupted = `The ${interruption.data.session} session was interrupted. Inspect ${artifact}/sessions and its saved evidence.`;
+      interrupted = [
+        `The ${interruption.data.session} session was interrupted. Inspect ${artifact}/sessions and its saved evidence.`,
+        interruption.data.reason,
+      ]
+        .filter(Boolean)
+        .join(" ");
   }
   return {
     initialErrors,

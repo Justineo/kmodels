@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { request } from "node:http";
 import { spawn } from "node:child_process";
 import { z } from "zod";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startRelay } from "./codex-relay.ts";
@@ -19,6 +19,19 @@ const output = join(directory, "output");
 for (const path of [evidence, input, output, join(directory, "home")]) await mkdir(path);
 await mkdir(join(output, "sources"));
 await mkdir(join(evidence, "independent-sources"));
+await mkdir(join(evidence, "probes"));
+const mountpoint = local ? undefined : await mkdir("repair-probes", { recursive: true });
+await writeFile(
+  join(evidence, "probes/protocol.test.ts"),
+  `
+import { readFileSync } from "node:fs";
+import { expect, it } from "vite-plus/test";
+import { canonicalJson } from "../src/catalog/canonical-value.ts";
+it("reads the candidate snapshot offline", () => {
+  expect(canonicalJson(JSON.parse(readFileSync("data/catalog-snapshot.json", "utf8")).version)).toBe("1");
+});
+`,
+);
 let calls = 0;
 // The first tool response crosses the CLI's 24k compaction threshold.
 const protocolCharge = 50_217 + 217 + 217;
@@ -53,7 +66,7 @@ const gateway = await startCodexGateway({
     if (typeof options?.body !== "string") throw new Error("Missing protocol request");
     const command = local
       ? "printf catalog-tool-%s ok"
-      : 'test -z "${CATALOG_REPAIR_OPENAI_API_KEY:-}${GH_TOKEN:-}${GITHUB_TOKEN:-}" && test ! -w /workspace/.git/config && test ! -w /trusted/package.json && test ! -w /tmp/gh-aw/agent/independent-sources && test ! -e /var/run/docker.sock && test "$(ls /sys/class/net)" = lo && printf catalog-tool-%s ok';
+      : 'test -z "${CATALOG_REPAIR_OPENAI_API_KEY:-}${GH_TOKEN:-}${GITHUB_TOKEN:-}" && test ! -w /workspace/package.json && test ! -w /workspace/.git/config && test -w /workspace/repair-probes && test ! -w /trusted/package.json && test ! -w /tmp/gh-aw/agent/independent-sources && test ! -e /var/run/docker.sock && test "$(ls /sys/class/net)" = lo && vp node /trusted/scripts/catalog-repair-review.ts probe consumer investigation -- test --configLoader runner --config /trusted/scripts/repair/probe.config.ts --run repair-probes/protocol.test.ts && printf catalog-tool-%s ok';
     const request = z
       .object({
         input: z.array(z.object({ type: z.string(), output: z.unknown().optional() })),
@@ -318,5 +331,6 @@ try {
   relay?.closeAllConnections();
   relay?.close();
   await gateway.close();
+  if (mountpoint) await rmdir(mountpoint);
   await rm(directory, { recursive: true, force: true });
 }

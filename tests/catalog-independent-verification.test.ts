@@ -9,6 +9,7 @@ import {
   checkTakeoverCheckpoint,
   closedCandidates,
   reusableBaseline,
+  readTakeoverResponse,
   verificationVerdict,
 } from "../scripts/repair/verification.ts";
 import { codexRequest, boundedBody, serialRoute } from "../scripts/repair/codex-gateway.ts";
@@ -59,6 +60,25 @@ function report(verdict: "supported" | "concrete_error" | "insufficient_evidence
     files,
   };
 }
+it("preserves an unfinished takeover and applies the existing publication constraints to completed ones", () => {
+  const result = (type: string, summary: string, body = "") =>
+    readTakeoverResponse(JSON.stringify({ type, summary, body }));
+  expect(result("report_incomplete", "Still missing the final regression receipt.")).toEqual({
+    type: "report_incomplete",
+    reason: "Still missing the final regression receipt.",
+  });
+  expect(result("noop", "Every candidate was checked.")).toEqual({
+    type: "noop",
+    message: "Every candidate was checked.",
+  });
+  expect(result("commit_repair", "Fix scope", "Checked both consumers.")).toEqual({
+    type: "commit_repair",
+    title: "Fix scope",
+    body: "Checked both consumers.",
+  });
+  expect(() => result("commit_repair", "Unchecked patch")).toThrow();
+});
+
 it("reuses only a blinded baseline from the same admission and complete candidate set", () => {
   const checkpoint = {
     admission_sha256: digest("base and admission"),
@@ -397,6 +417,8 @@ it("isolates Codex from host secrets, external networks, Git metadata and public
   expect(args).toContain("--read-only");
   expect(args).toContain("no-new-privileges");
   expect(args).toContain("type=bind,source=/work/.git,target=/workspace/.git,readonly");
+  expect(args).toContain("type=bind,source=/work,target=/workspace,readonly");
+  expect(args).toContain("type=bind,source=/evidence/probes,target=/workspace/repair-probes");
   expect(args).toContain(
     "type=bind,source=/private/sources,target=/tmp/gh-aw/agent/independent-sources,readonly",
   );
