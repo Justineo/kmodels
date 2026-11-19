@@ -217,29 +217,31 @@ try {
     join(input, "prompt.txt"),
     "Run the supplied protocol check, then reply catalog-protocol-ok.",
   );
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(local ? "codex" : "docker", args, {
-      env: { PATH: process.env.PATH, HOME: directory, CODEX_HOME: join(directory, "home") },
-      stdio: ["pipe", "pipe", "pipe"],
+  const execute = (expected: number) =>
+    new Promise<void>((resolve, reject) => {
+      const child = spawn(local ? "codex" : "docker", args, {
+        env: { PATH: process.env.PATH, HOME: directory, CODEX_HOME: join(directory, "home") },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let log = "";
+      child.stdout.on("data", (chunk: Buffer) => {
+        log += chunk.toString();
+      });
+      child.stderr.on("data", (chunk: Buffer) => {
+        log += chunk.toString();
+      });
+      child.stdin.end("Run the supplied protocol check, then reply catalog-protocol-ok.");
+      const timer = setTimeout(() => {
+        child.kill("SIGTERM");
+      }, 60000);
+      child.on("error", reject);
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        if (code === expected) resolve();
+        else reject(new Error(log.slice(-6000)));
+      });
     });
-    let log = "";
-    child.stdout.on("data", (chunk: Buffer) => {
-      log += chunk.toString();
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      log += chunk.toString();
-    });
-    child.stdin.end("Run the supplied protocol check, then reply catalog-protocol-ok.");
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-    }, 60000);
-    child.on("error", reject);
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolve();
-      else reject(new Error(log.slice(-6000)));
-    });
-  });
+  await execute(0);
   if (
     (await readFile(join(output, "result.json"), "utf8")).trim() !== "catalog-protocol-ok" ||
     calls !== 3 ||
@@ -261,8 +263,10 @@ try {
       req.end(JSON.stringify(body));
     });
   assert.equal(gateway.remainingCalls(), 0);
-  assert.equal(await post(), 400);
+  await execute(1);
+  assert.equal(gateway.lastDenial()?.message, "Codex request limit reached");
   gateway.startPhase(1_000_000);
+  assert.equal(gateway.lastDenial(), undefined);
   assert(codexRequest(requestInput).reservation > gateway.remaining());
   // Hold a source request open while the inference route evaluates its own budget.
   const source = request({
@@ -287,6 +291,7 @@ try {
     await ready;
     const queued = post("/source", { source: "outside-admission" });
     assert.equal(await post(), 400);
+    assert.equal(gateway.lastDenial()?.message, "OpenAI phase budget exhausted");
     source.end(JSON.stringify({ source: "outside-admission" }));
     assert.equal(await sourceResult, 400);
     assert.equal(await queued, 400);
@@ -294,6 +299,8 @@ try {
     source.destroy();
   }
   assert.equal(calls, 3);
+  assert.equal(await post("/v1/responses", { model: "invalid" }), 400);
+  assert.equal(gateway.lastDenial(), undefined);
   gateway.startPhase();
   assert.equal(gateway.remaining(), runAllowance - protocolCharge);
   assert.equal(gateway.remainingCalls(), 57);

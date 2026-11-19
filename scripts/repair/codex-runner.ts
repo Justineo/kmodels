@@ -17,7 +17,7 @@ import { assertRepairChanges, parseRepairOutcome } from "../catalog-repair-publi
 import { validateRepairReview } from "../catalog-repair-review.ts";
 import { digest, leaseSchema, stateSchema } from "./state.ts";
 import { readSharedFile, writePrivateJson } from "./files.ts";
-import { startCodexGateway } from "./codex-gateway.ts";
+import { InferenceAllowanceExhausted, startCodexGateway } from "./codex-gateway.ts";
 import { reviewRoute } from "./flow.ts";
 import { catalogRepairModel } from "./openai.ts";
 import {
@@ -253,13 +253,14 @@ export function replayProbes(paths: CheckoutPaths) {
   }
   return { exit_code: result.status, output: result.stdout };
 }
-async function runContainer(args: string[], output: string): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
+async function runContainer(args: string[], output: string): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
     const child = spawn("docker", args, { env: childEnv(), stdio: ["ignore", "pipe", "pipe"] });
     let log = "";
-    let exceeded = false;
+    let stopped = false;
     const name = args[args.indexOf("--name") + 1];
     const stop = () => {
+      stopped = true;
       if (name) spawn("docker", ["rm", "--force", name], { env: childEnv(), stdio: "ignore" });
       child.kill("SIGTERM");
     };
@@ -267,7 +268,6 @@ async function runContainer(args: string[], output: string): Promise<void> {
     for (const stream of [child.stdout, child.stderr])
       stream.on("data", (chunk: Buffer) => {
         if (Buffer.byteLength(log) + chunk.length > 16 * 1024 * 1024) {
-          exceeded = true;
           stop();
         } else log += chunk.toString();
       });
@@ -282,8 +282,8 @@ async function runContainer(args: string[], output: string): Promise<void> {
         .then(() => writeFile(path, log, { flag: "wx" }))
         .then(
           () =>
-            code === 0 && !exceeded
-              ? resolve()
+            (code === 0 || code === 1) && !stopped
+              ? resolve(code)
               : reject(
                   new Error(`Codex execution incomplete (${code}); see independent transcript`),
                 ),
@@ -407,8 +407,8 @@ async function main(): Promise<void> {
       takeover_attempted: takeoverAttempted,
       takeover_candidate_ids: takeoverAttempted ? takeoverIds : [],
     });
-  const pending = async (report: Verification, reason: string) => {
-    await saveDecision(verificationVerdict(report), [], reason);
+  const pending = async (report: Verification | undefined, reason: string) => {
+    await saveDecision(report ? verificationVerdict(report) : "insufficient_evidence", [], reason);
     if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, "outcome=pending\n");
   };
   await saveDecision("insufficient_evidence");
@@ -516,9 +516,17 @@ async function main(): Promise<void> {
       git(work, ["add", "--all"]);
       const before = git(work, ["write-tree"]).trim();
       try {
-        await runContainer(args, resultDirectory);
+        const code = await runContainer(args, resultDirectory);
+        if (code !== 0)
+          throw (
+            gateway.lastDenial() ??
+            new Error(`Codex execution failed (${code}); see independent transcript`)
+          );
       } catch (error) {
-        await writePrivateJson(join(output, "interruption.json"), { session: name });
+        await writePrivateJson(join(output, "interruption.json"), {
+          session: name,
+          ...(error instanceof InferenceAllowanceExhausted && { reason: error.message }),
+        });
         throw error;
       } finally {
         if (name === "verify" && (await readdir(resultDirectory)).includes("progress.json")) {
@@ -783,6 +791,10 @@ async function main(): Promise<void> {
         verdict,
         report.candidates.filter((row) => row.verdict === "supported").map((row) => row.id),
       );
+    } catch (error) {
+      if (!(error instanceof InferenceAllowanceExhausted)) throw error;
+      await pending(undefined, error.message);
+      return;
     } finally {
       await gateway.close();
       if (process.env.GITHUB_STEP_SUMMARY)

@@ -110,6 +110,9 @@ with early compaction and bounded tool output. The last two call slots disable f
 use so that context compaction after a tool result leaves a slot for the actual final response.
 Both calls count toward the same limit and require a monetary reservation. The gateway can
 also request a final answer early when the remaining budget is low. Unresolved claims remain open.
+If the CLI exits after the gateway refuses the next call for lack of money, calls or a valid
+lease month, the controller saves the interruption and returns pending work without needing a
+final model message. Transport, protocol and runner failures retain their own failed stage.
 Prompts specify the session budget, request narrow
 reads and focused checks, and reuse full acquired receipts without repeatedly dumping their bodies.
 Each Codex session has a 20-minute wall-clock limit. There are no automatic HTTP/stream retries,

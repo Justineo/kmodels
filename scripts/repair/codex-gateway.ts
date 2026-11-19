@@ -130,6 +130,8 @@ export function serialRoute(serve: (req: IncomingMessage, res: ServerResponse) =
   };
 }
 
+export class InferenceAllowanceExhausted extends Error {}
+
 export async function startCodexGateway(options: {
   key: string;
   lease: BudgetLease;
@@ -153,6 +155,7 @@ export async function startCodexGateway(options: {
   let phaseCallLimit = 60;
   let fetches = 0;
   let poisoned = false;
+  let denied: InferenceAllowanceExhausted | undefined;
   const save = async () => {
     try {
       await writePrivateJson(join(options.privateDirectory, "review-usage.json"), {
@@ -203,16 +206,16 @@ export async function startCodexGateway(options: {
     }
     if (poisoned) throw new Error("Stopped inference route");
     if (options.lease.month !== new Date().toISOString().slice(0, 7))
-      throw new Error("OpenAI lease expired");
+      throw new InferenceAllowanceExhausted("OpenAI lease expired");
     const remainingCalls = phaseCallLimit - calls;
-    if (remainingCalls <= 0) throw new Error("Codex request limit reached");
+    if (remainingCalls <= 0) throw new InferenceAllowanceExhausted("Codex request limit reached");
     let request = codexRequest(input);
     // Codex can spend the next Responses call compacting context after a tool result.
     // Stop requesting tools with room for both compaction and the actual final answer.
     if (remainingCalls <= 2 || phaseLimit - charged < request.reservation * 1.5 + 250_000)
       request = codexRequest(input, true);
     if (charged + request.reservation > Math.min(phaseLimit, options.lease.reserved_microusd))
-      throw new Error("OpenAI phase budget exhausted");
+      throw new InferenceAllowanceExhausted("OpenAI phase budget exhausted");
     const receipt: Receipt = {
       call: ++calls,
       reserved_microusd: request.reservation,
@@ -254,10 +257,12 @@ export async function startCodexGateway(options: {
     }
   };
   const serve = async (req: IncomingMessage, res: ServerResponse) => {
+    if (req.url === "/v1/responses") denied = undefined;
     try {
       const { type, body } = await handle(req);
       res.writeHead(200, { "Content-Type": type }).end(body);
     } catch (error) {
+      if (error instanceof InferenceAllowanceExhausted) denied = error;
       res.writeHead(400, { "Content-Type": "application/json" }).end(
         JSON.stringify({
           error: {
@@ -282,10 +287,12 @@ export async function startCodexGateway(options: {
   await chmod(options.socket, 0o600);
   return {
     startPhase: (allowance = options.lease.reserved_microusd - charged, maxCalls = 60) => {
+      denied = undefined;
       phaseLimit = Math.min(options.lease.reserved_microusd, charged + allowance);
       phaseCallLimit = Math.min(60, calls + maxCalls);
     },
     charged: () => charged,
+    lastDenial: () => denied,
     remaining: () => phaseLimit - charged,
     remainingCalls: () => phaseCallLimit - calls,
     close: async () => {
