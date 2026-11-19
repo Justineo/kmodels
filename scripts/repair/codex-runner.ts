@@ -394,7 +394,7 @@ async function main(): Promise<void> {
       await writeFile(
         join(directory, "prompt.txt"),
         instructions +
-          `This session has at most USD ${(gateway.remaining() / 1_000_000).toFixed(2)} available. Investigate the admitted claims with narrow reads and focused checks. Reuse acquired source receipts; do not dump full files or rerun unchanged checks. Preserve evidence limits honestly.\n` +
+          `This session has at most ${gateway.remainingCalls()} Responses calls including compaction and final output, and USD ${(gateway.remaining() / 1_000_000).toFixed(2)} available. Run the decisive consumer check and counterexample early. Reuse acquired source receipts, batch narrow reads and preserve evidence limits honestly.\n` +
           prompt,
       );
       for (const [name, text] of Object.entries(files))
@@ -453,7 +453,10 @@ async function main(): Promise<void> {
       }
       const expected = closedCandidates(review);
       const baseline = await freshWork(`${label}-baseline`, "");
-      gateway.startPhase(Math.floor(gateway.remaining() / 2), 24);
+      gateway.startPhase(
+        Math.floor(gateway.remaining() / 2),
+        Math.min(24, Math.floor(gateway.remainingCalls() / 2)),
+      );
       const assessment = await run(
         "independent",
         baseline,

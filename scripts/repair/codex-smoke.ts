@@ -20,6 +20,8 @@ for (const path of [evidence, input, output, join(directory, "home")]) await mkd
 await mkdir(join(output, "sources"));
 await mkdir(join(evidence, "independent-sources"));
 let calls = 0;
+// The first tool response crosses the CLI's 24k compaction threshold.
+const protocolCharge = 50_217 + 217 + 217;
 let failNext = false;
 let signalStart: () => void = () => undefined;
 let failNetwork: (error: Error) => void = () => undefined;
@@ -58,9 +60,12 @@ const gateway = await startCodexGateway({
         tool_choice: z.unknown().optional(),
       })
       .parse(JSON.parse(options.body));
-    if (calls === 2) assert.equal(request.tool_choice, "none");
+    if (calls === 1) assert.notEqual(request.tool_choice, "none");
+    if (calls === 2 || calls === 3) assert.equal(request.tool_choice, "none");
+    const checkpoint = "compacted-catalog-proof";
+    if (calls === 3) assert.ok(options.body.includes(checkpoint), "Missing compacted context");
     if (
-      calls > 1 &&
+      calls === 2 &&
       !request.input.some(
         (item) =>
           item.type === "custom_tool_call_output" &&
@@ -68,6 +73,7 @@ const gateway = await startCodexGateway({
       )
     )
       throw new Error("Missing real tool round-trip output");
+    const outputText = calls === 2 ? checkpoint : "catalog-protocol-ok";
     const item =
       calls === 1
         ? {
@@ -84,7 +90,7 @@ const gateway = await startCodexGateway({
             type: "message",
             role: "assistant",
             status: "completed",
-            content: [{ type: "output_text", text: "catalog-protocol-ok", annotations: [] }],
+            content: [{ type: "output_text", text: outputText, annotations: [] }],
           };
     const response = {
       id: "resp_smoke",
@@ -94,9 +100,9 @@ const gateway = await startCodexGateway({
       model: "gpt-6.2-sol",
       output: [item],
       usage: {
-        input_tokens: 10,
+        input_tokens: calls === 1 ? 25010 : 10,
         output_tokens: 20,
-        total_tokens: 30,
+        total_tokens: calls === 1 ? 25030 : 30,
         input_tokens_details: {
           cached_tokens: 4,
           cache_write_tokens: 3,
@@ -119,7 +125,7 @@ const gateway = await startCodexGateway({
               item_id: item.id,
               output_index: 0,
               content_index: 0,
-              delta: "catalog-protocol-ok",
+              delta: outputText,
             },
           ]),
       { type: "response.output_item.done", output_index: 0, item },
@@ -130,7 +136,7 @@ const gateway = await startCodexGateway({
     });
   },
 });
-gateway.startPhase(runAllowance, 2);
+gateway.startPhase(runAllowance, 3);
 const relay = local ? startRelay(join(directory, "api.sock"), 0) : undefined;
 try {
   if (relay && !relay.listening)
@@ -190,8 +196,8 @@ try {
   });
   if (
     (await readFile(join(output, "result.json"), "utf8")).trim() !== "catalog-protocol-ok" ||
-    calls !== 2 ||
-    gateway.charged() !== 434
+    calls !== 3 ||
+    gateway.charged() !== protocolCharge
   )
     throw new Error("Codex protocol smoke did not complete with exact mocked usage");
   // Exercise ambiguous transport failure and contention against the same real Unix gateway.
@@ -208,6 +214,8 @@ try {
       req.on("error", reject);
       req.end(JSON.stringify(body));
     });
+  assert.equal(gateway.remainingCalls(), 0);
+  assert.equal(await post(), 400);
   gateway.startPhase(1_000_000);
   assert(codexRequest(requestInput).reservation > gateway.remaining());
   // Hold a source request open while the inference route evaluates its own budget.
@@ -239,14 +247,15 @@ try {
   } finally {
     source.destroy();
   }
-  assert.equal(calls, 2);
+  assert.equal(calls, 3);
   gateway.startPhase();
-  assert.equal(gateway.remaining(), runAllowance - 434);
+  assert.equal(gateway.remaining(), runAllowance - protocolCharge);
+  assert.equal(gateway.remainingCalls(), 57);
   gateway.startPhase(codexRequest(requestInput, true).reservation);
   failNext = true;
   const pending = post();
   await started;
-  const reserved = 434 + codexRequest(requestInput, true).reservation;
+  const reserved = protocolCharge + codexRequest(requestInput, true).reservation;
   const journal = async () =>
     z
       .object({
@@ -270,7 +279,7 @@ try {
   assert.equal(pendingJournal.charged_microusd, reserved);
   assert.deepEqual(
     pendingJournal.requests.map((row) => row.status),
-    ["settled", "settled", "reserved"],
+    ["settled", "settled", "settled", "reserved"],
   );
   assert.deepEqual(pendingJournal.requests[0]?.settlement?.charges.cache_read, {
     tokens: 4,
@@ -284,7 +293,7 @@ try {
   assert.equal(gateway.charged(), reserved);
   gateway.startPhase(0);
   assert.equal(await post(), 400);
-  assert.equal(calls, 3);
+  assert.equal(calls, 4);
   failNext = false;
   gateway.startPhase();
   const burst = Array.from({ length: 4 }, () =>
@@ -294,10 +303,10 @@ try {
     }),
   );
   assert.deepEqual(await Promise.all(burst), [200, 200, 200, 200]);
-  assert.equal(calls, 7);
+  assert.equal(calls, 8);
   assert.equal(gateway.charged(), reserved + 4 * 217);
   const final = await journal();
-  assert.equal(final.requests[2]?.status, "retained");
+  assert.equal(final.requests[3]?.status, "retained");
   assert.equal(
     final.requests.reduce((sum, row) => sum + row.charged_microusd, 0),
     final.charged_microusd,

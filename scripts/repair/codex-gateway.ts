@@ -69,7 +69,7 @@ export function codexRequest(
           tool_choice: "none",
           instructions:
             (request.instructions ?? "") +
-            "\nThis is the last funded response in this session. Return your assessment or requested JSON now using completed evidence. Identify every unresolved claim. Do not request more tools.",
+            "\nTool use is closed. For a compaction request, summarize the completed checks, receipt paths and unresolved claims for the final turn. Otherwise return your assessment or requested JSON now using completed evidence. Identify every unresolved claim.",
         }
       : {}),
     model: catalogRepairModel,
@@ -204,15 +204,17 @@ export async function startCodexGateway(options: {
     if (poisoned) throw new Error("Stopped inference route");
     if (options.lease.month !== new Date().toISOString().slice(0, 7))
       throw new Error("OpenAI lease expired");
-    if (++calls > phaseCallLimit) throw new Error("Codex request limit reached");
+    const remainingCalls = phaseCallLimit - calls;
+    if (remainingCalls <= 0) throw new Error("Codex request limit reached");
     let request = codexRequest(input);
-    // Leave room for the final answer before a growing transcript can no longer be reserved.
-    if (calls === phaseCallLimit || phaseLimit - charged < request.reservation * 1.5 + 250_000)
+    // Codex can spend the next Responses call compacting context after a tool result.
+    // Stop requesting tools with room for both compaction and the actual final answer.
+    if (remainingCalls <= 2 || phaseLimit - charged < request.reservation * 1.5 + 250_000)
       request = codexRequest(input, true);
     if (charged + request.reservation > Math.min(phaseLimit, options.lease.reserved_microusd))
       throw new Error("OpenAI phase budget exhausted");
     const receipt: Receipt = {
-      call: calls,
+      call: ++calls,
       reserved_microusd: request.reservation,
       status: "reserved",
       charged_microusd: request.reservation,
@@ -285,6 +287,7 @@ export async function startCodexGateway(options: {
     },
     charged: () => charged,
     remaining: () => phaseLimit - charged,
+    remainingCalls: () => phaseCallLimit - calls,
     close: async () => {
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
