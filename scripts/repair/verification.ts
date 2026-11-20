@@ -46,10 +46,16 @@ export const verificationSchema = z.object({
         reason: explanation,
         expected: z.string().max(8000),
         actual: z.string().max(8000),
-        evidence: z.array(reference).max(20),
+        evidence: z
+          .array(reference)
+          .max(20)
+          .describe(
+            "Hash original evidence files under /tmp/gh-aw/agent/. Session inputs may corroborate them.",
+          ),
         checks: z
           .array(z.object({ kind: z.enum(["consumer", "counterexample"]), output: reference }))
-          .max(10),
+          .max(10)
+          .describe("Cite command receipts under /tmp/gh-aw/agent/."),
       }),
     )
     .max(100),
@@ -83,6 +89,37 @@ export function closedCandidates(review: unknown): string[] {
     .parse(review)
     .candidates.filter((row) => ["repaired", "not_a_defect"].includes(row.status))
     .map((row) => row.id);
+}
+
+// Session inputs are immutable context. Only independently gathered evidence follows the
+// report into a later job, where these session-specific mounts no longer exist.
+export async function checkSessionVerification(
+  text: string,
+  ids: readonly string[],
+  inputs: ReadonlyMap<string, string>,
+  read: (path: string) => Promise<string>,
+): Promise<Verification> {
+  const report = verificationSchema.parse(JSON.parse(text));
+  for (const row of report.candidates) {
+    row.evidence = row.evidence.filter((ref) => {
+      const input = inputs.get(ref.path);
+      if (input === undefined) return true;
+      if (digest(input) !== ref.sha256) throw new Error("Verifier cited a changed session input");
+      return false;
+    });
+  }
+  return checkVerification(report, ids, (path) => {
+    const prefix = "/tmp/gh-aw/agent/";
+    if (
+      !path.startsWith(prefix) ||
+      path
+        .slice(prefix.length)
+        .split("/")
+        .some((part) => !part || part === "." || part === "..")
+    )
+      throw new Error("Verification receipts must be files in the evidence directory");
+    return read(path);
+  });
 }
 export async function checkVerification(
   input: unknown,

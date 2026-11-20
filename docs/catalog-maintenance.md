@@ -173,6 +173,11 @@ commands; it cannot mechanically prove that a model chose a sufficient semantic 
 or unavailable evidence remains `insufficient_evidence`. These are operational verification gates,
 not a guarantee of semantic completeness.
 
+The verifier may also cite a named read-only session input. The controller checks its exact
+bytes and carries independent evidence and command receipts into the durable report. A patch,
+assessment or replay summary cannot establish a finding alone. An unverifiable answer leaves
+the work pending with the original response and validation reason.
+
 Only concrete errors trigger Sol high takeover. It starts from the proposed tree, may edit only
 the existing repair allowlist and must regenerate the ordinary review/regression proof for its
 exact final patch. Its handoff includes the eligible contradictions, affected files, receipts

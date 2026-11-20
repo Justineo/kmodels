@@ -64,7 +64,11 @@ price reconciliation findings; do not create active Serverless records from thos
 
 The [Serverless price book](https://docs.fireworks.ai/serverless/pricing) supplies exact
 Standard and Priority rates. Priority is a service-tier selector for the same identifier.
-Fast, Ultra-fast and US-only variants with a distinct ID require an exact match in the
+An em dash in the Priority column explicitly excludes that tier for the listed ID. Its table
+rates require Standard, and its exact inference rule supplies Standard for an omitted tier.
+An explicit Priority selector or choice cannot inherit those rates. The pricing table owns
+this availability claim even if a console mode still advertises a Priority SKU.
+Fast, Ultra-fast, Flex and US-only variants with a distinct ID require an exact match in the
 [mode](https://docs.fireworks.ai/serverless/serverless-modes) or
 [US-only](https://docs.fireworks.ai/serverless/us-only-serverless) route table and keep their
 own model records even when pricing is absent. The route-table heading is matched
@@ -80,8 +84,10 @@ Other ambiguous units or meters stay raw. Exact API IDs bind these offers throug
 inference-price lookup.
 
 Every model with numeric price facts reports numeric pricing. A model record whose rate is not
-published, such as a Fast, Ultra-fast or US-only route without its own price row, stays unknown
-rather than borrowing the base model's rate.
+published, such as a Fast, Ultra-fast, Flex or US-only route without its own price row, stays unknown
+rather than borrowing the base model's rate. Flex prices arrive as an adjacent discounted row
+that names the same base card link, so the Flex row binds to its own router ID instead of
+repeating the base model's standard rate.
 
 The [Spot guide](https://docs.fireworks.ai/guides/spot-serverless) owns Spot identifiers and
 their token rates. A Spot ID has a separate model record and rate. A retry using the Standard

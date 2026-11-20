@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   checkVerification,
+  checkSessionVerification,
   checkTakeoverCheckpoint,
   closedCandidates,
   reusableBaseline,
@@ -62,6 +63,33 @@ function report(verdict: "supported" | "concrete_error" | "insufficient_evidence
     files,
   };
 }
+it("checks session context without counting it as independent evidence", async () => {
+  const s = report("concrete_error");
+  const path = "/tmp/gh-aw/agent/independent-sources/source.json";
+  const source = { path, sha256: digest("official source") };
+  const patch = { path: "/input/patch.diff", sha256: digest("proposed edit") };
+  const inputs = new Map([[patch.path, "proposed edit"]]);
+  const read = vi.fn(async () => "official source");
+  const verify = (evidence: (typeof source)[]) =>
+    checkSessionVerification(
+      JSON.stringify({
+        candidates: [{ ...s.row, evidence, checks: [] }],
+      }),
+      [s.row.id],
+      inputs,
+      read,
+    );
+  expect((await verify([patch, source])).candidates[0]?.evidence).toEqual([source]);
+  expect(read).toHaveBeenCalledExactlyOnceWith(path);
+  await expect(verify([patch])).rejects.toThrow("original evidence");
+  await expect(verify([{ ...patch, sha256: source.sha256 }])).rejects.toThrow(
+    "changed session input",
+  );
+  await expect(verify([{ ...source, path: "/input/unlisted.txt" }])).rejects.toThrow(
+    "evidence directory",
+  );
+});
+
 it("preserves an unfinished takeover and applies the existing publication constraints to completed ones", () => {
   const result = (type: string, summary: string, body = "") =>
     readTakeoverResponse(JSON.stringify({ type, summary, body }));
