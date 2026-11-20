@@ -23,6 +23,7 @@ import {
   recordOutcome,
   recordDeployment,
   prepareBudgetLease,
+  priorTakeovers,
   reserveRunBudget,
   settleBudget,
   stateSchema,
@@ -283,6 +284,7 @@ async function main(): Promise<void> {
             verified_candidate_ids: z.array(z.string()),
             takeover_attempted: z.boolean(),
             takeover_candidate_ids: z.array(z.string()).optional(),
+            takeover_keys: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)).optional(),
             reason: z.string().optional(),
           })
           .parse(JSON.parse(await readFile(decisionPath, "utf8")))
@@ -426,8 +428,13 @@ async function main(): Promise<void> {
           decision?.takeover_attempted &&
           (decision.takeover_candidate_ids?.includes(task.id) ??
             feedback.initialErrors.has(task.id))
-        )
+        ) {
+          const key = decision.takeover_keys?.[task.id];
+          const prior = priorTakeovers(task);
+          if (key) task.takeover_keys = [...new Set([...prior, key])];
+          else delete task.takeover_keys;
           task.takeover_fingerprint = task.fingerprint;
+        }
         const row = review.candidates.find((row) => row.id === task.id);
         if (row) {
           const supported = finalReview && decision.verified_candidate_ids.includes(task.id);

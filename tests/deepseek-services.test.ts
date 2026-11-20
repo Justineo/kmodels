@@ -325,6 +325,32 @@ describe("DeepSeek native Search and Fetch charges", () => {
       expect(result.commercial_facts ?? []).toEqual([]);
     },
   );
+  it("keeps standalone tariffs and attributes the revised token-billing notice to server tools", async () => {
+    const { result, failures } = await parsed((bundle) => {
+      bundle.index.body = bundle.index.body.replace(
+        /server-side search and web\s+fetch triggered when calling the model are no longer billed; only model token usage is\s+billed\./,
+        "the server-side search and web fetch tool calls triggered when calling the model are no longer billed; the results they return are appended to the model context and billed as model token usage.",
+      );
+      const cny = bundle.documents.find((doc) => doc.url.includes("/zh-cn/"));
+      if (!cny) throw new Error("Missing CNY source");
+      cny.body = cny.body.replace(
+        /服务端搜索、网页抓取不再计费，仅按模型 Token\s+用量计费。/,
+        "服务端搜索、网页抓取，其工具调用本身不再计费；工具返回的结果会拼接到模型上下文中参与推理，按模型 Token 用量计费。",
+      );
+    });
+    expect(failures).toEqual([]);
+    const facts = result.commercial_facts ?? [];
+    expect(
+      facts
+        .filter((fact) => fact.offer_key === "standalone")
+        .map((fact) => fact.price_facts.length),
+    ).toEqual([2, 2]);
+    expect(
+      facts
+        .flatMap((fact) => fact.state_facts ?? [])
+        .filter((state) => state.raw.fragment?.includes("appended to the model context")),
+    ).toHaveLength(2);
+  });
   it("rejects a currency page that publishes a different exemption instant", async () => {
     const { result, diagnostics, failures } = await parsed((bundle) => {
       const doc = bundle.documents.find((doc) => doc.url.includes("/zh-cn/"));
@@ -340,6 +366,22 @@ describe("DeepSeek native Search and Fetch charges", () => {
           item.reason_code === "commercial_source_contract_drift",
       ),
     ).toBe(true);
+  });
+  it.each([
+    ["same paragraph", "An additional fee of USD 1 per server-side search call applies."],
+    [
+      "adjacent paragraph",
+      "</p><p>An additional fee of USD 1 per server-side search call applies.",
+    ],
+  ])("withholds the exemption when a %s contradicts the notice", async (_, contradiction) => {
+    const { result, failures } = await parsed((bundle) => {
+      bundle.index.body = bundle.index.body.replace(
+        /only model token usage is\s+billed\./,
+        (match) => match + " " + contradiction,
+      );
+    });
+    expect(failures).toEqual([source.url]);
+    expect(result.commercial_facts ?? []).toEqual([]);
   });
 });
 describe("DeepSeek owned exact model limits", () => {

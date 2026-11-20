@@ -4,6 +4,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { extractBedrockPricingInputs } from "../src/catalog/bedrock-accounting.ts";
+import { compactBedrockRegionalSelections } from "../src/catalog/bedrock-commercial.ts";
+import type { CommercialSelection } from "../src/catalog/pricing-schema.ts";
 import { formatPricingInterpretationSample } from "../src/catalog/bedrock.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
@@ -125,6 +127,64 @@ function priceDimension(unit: string, usage: string) {
   };
 }
 describe("Bedrock adapters", () => {
+  it("factors regional alternatives without widening a sibling's scope or losing quotes", () => {
+    function claim(
+      region: string,
+      index: number,
+      endpoint: string,
+      observed = region,
+    ): CommercialSelection {
+      return {
+        dimension: "served_service_tier",
+        coverage: "not_applicable",
+        alternatives: [],
+        applicability: {
+          any_of: [
+            {
+              all_of: (["endpoint", "region"] as const).map((dimension) => ({
+                kind: "categorical",
+                dimension: { namespace: "kmodels", value: dimension },
+                values: [
+                  {
+                    namespace: "provider",
+                    provider_id: "amazon-bedrock",
+                    value: dimension === "region" ? region : endpoint,
+                  },
+                ],
+              })),
+            },
+          ],
+        },
+        observations: [
+          {
+            source_ref: "bedrock-models",
+            locator: { kind: "sku", value: String(index) },
+            raw: { conditions: [{ dimension: "region", value: observed }] },
+          },
+        ],
+      };
+    }
+    const claims = Array.from({ length: 1025 }, (_, i) =>
+      claim(i % 2 ? "east" : "west", i, "runtime"),
+    );
+    const sibling = claim("west", 1025, "mantle"),
+      unmatched = claim("west", 1026, "runtime", "unknown");
+    const compacted = compactBedrockRegionalSelections([...claims, sibling, unmatched]);
+    expect(compacted).toHaveLength(3);
+    expect(compacted).toContainEqual(sibling);
+    expect(compacted).toContainEqual(unmatched);
+    const joined = compacted.find((row) => row.observations.length === claims.length);
+    expect(joined?.applicability.any_of).toHaveLength(1);
+    expect(joined?.applicability.any_of[0]?.all_of).toContainEqual({
+      kind: "categorical",
+      dimension: { namespace: "kmodels", value: "region" },
+      values: ["east", "west"].map((value) => ({
+        namespace: "provider",
+        provider_id: "amazon-bedrock",
+        value,
+      })),
+    });
+  });
   it.each(["-cross-region-global-preview", "-turbo-cross-region-global"])(
     "does not default an unreviewed Global token SKU suffix to Standard (%s)",
     async (suffix) => {
@@ -138,7 +198,7 @@ describe("Bedrock adapters", () => {
       if (model === undefined) throw new Error("Missing Nova Lite model");
       const ordinary = model.price_facts.filter(({ source_locator }) =>
         ["Y4AEYVEPEQF37W7V", "MDSF3DD9G2Y8H2XT", "M7YGSJTF5SURAR9T", "VK3JN3SGJ5623F6Z"].some(
-          (sku) => source_locator?.value.startsWith(`AmazonBedrock:${sku}:`),
+          (sku) => source_locator?.value === `AmazonBedrock:${sku}.JRTCKXETXF.6YS6EN2CT7`,
         ),
       );
       expect(ordinary).toHaveLength(4);
@@ -588,7 +648,7 @@ describe("Bedrock adapters", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v54");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v55");
     expect(
       source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
         id,

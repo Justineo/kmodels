@@ -313,6 +313,25 @@ describe("canonical pricing canonical assembly", () => {
     expect(term.raw_variants).toEqual([]);
   });
 
+  it("keeps every observation when repeated clauses fit a single canonical variant", () => {
+    const rates = Array.from({ length: 1025 }, (_, i) => rate(inputTokens(i % 2), `source-${i}`));
+    const term = assemble(input(rates)).books[0]?.offers[0]?.terms[0];
+    if (term?.kind !== "rate") throw new Error("Expected a rate");
+    expect(term.variants).toHaveLength(1);
+    expect(term.variants[0]?.applicability.any_of).toHaveLength(2);
+    expect(term.variants[0]?.observations).toHaveLength(1025);
+  });
+
+  it("coalesces bounded shards across the original bisection", () => {
+    const rates = Array.from({ length: 2050 }, (_, index) =>
+      rate(inputTokens(index), `tokens-${index}`),
+    );
+    const term = assemble(input(rates)).books[0]?.offers[0]?.terms[0];
+    if (term?.kind !== "rate") throw new Error("Expected a rate");
+    expect(term.variants).toHaveLength(3);
+    expect(term.variants.flatMap((variant) => variant.observations)).toHaveLength(rates.length);
+  });
+
   it("downgrades every value involved in an unequal overlap", () => {
     const source = input([
       rate(unconditionalApplicability, "standard"),

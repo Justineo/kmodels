@@ -299,6 +299,14 @@ Retail matching is deterministic:
    version when no differently versioned tuple is already known; and
 4. infer a meter only when the native unit and a unique task/meter interpretation agree.
 
+Cohere Retail `Embed` token SKUs explicitly distinguish `Img` and `Txt`. On a uniquely
+matched embedding model these are embedding-token rates with separate image and text input
+modalities. A native meter ID alone cannot transfer a price between catalog subjects.
+For the exact `Microsoft Decision 1 1M Tokens` Retail meter, Microsoft's
+[Foundry price table](https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/microsoft/)
+places the Decision 1 tariff under input tokens and marks cached input and output unavailable.
+Retail supplies each region, amount, start and meter ID. This mapping is specific to Decision 1.
+
 Azure OpenAI Media's `Live 1 Gl` and `Live 1 DZ` consumption SKUs publish the exact
 `<SKU> Unit` meter per `1 Hour`. The [GPT-Live cost model](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/gpt-live#cost-model)
 identifies the billed duration as the voice session, including silence. These rates use

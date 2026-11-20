@@ -179,7 +179,10 @@ labels and units are the contract: the retired `Web Search & Fetch Pricing` head
 (text, image)` row and `Per 1,000 searches` unit are rejected rather than reused, because a renamed
 or re-headed section may have changed its billing basis. Both pages date the exemption for
 model-triggered server-side search and web fetch; the parser cross-checks the English and Chinese
-statements and records drift if they disagree.
+statements and records drift if they disagree. Both reviewed wordings distinguish the free
+server-side tool call from billable model tokens, including results appended to context.
+The complete billing prose must agree across each owned section. A later per-call fee or
+exception in the same section invalidates the exemption even when the original sentence remains.
 
 Both services charge per successful request, independently of the number of search results.
 Search requires HTTP 200 and a non-empty results array; Fetch requires HTTP 200 with page content.

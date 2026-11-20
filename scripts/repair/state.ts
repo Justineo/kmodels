@@ -18,6 +18,7 @@ export const taskSchema = z.object({
   retry_at: timestamp.optional(),
   attempts: z.number().int().nonnegative(),
   takeover_fingerprint: hash.optional(),
+  takeover_keys: z.array(hash).max(2).optional(),
   status: z.enum(["pending", "blocked", "not_a_defect", "code_published", "adopted"]),
   reason: z.string().max(8000),
   next_action: z.string().max(8000),
@@ -37,6 +38,17 @@ export const taskSchema = z.object({
     .default([]),
 });
 export type MaintenanceTask = z.infer<typeof taskSchema>;
+
+// Older ledgers recorded the attempt but not its patch or reproducer.
+export function priorTakeovers(task: MaintenanceTask | undefined): string[] {
+  if (!task || task.takeover_fingerprint !== task.fingerprint) return [];
+  return task.takeover_keys ?? [task.fingerprint];
+}
+
+export function canTakeOver(task: MaintenanceTask | undefined, key: string): boolean {
+  const prior = priorTakeovers(task);
+  return prior.length < 2 && !prior.includes(key);
+}
 export const leaseSchema = z.object({
   id: z.string().regex(/^\d+-\d+$/),
   month: z.string().regex(/^\d{4}-\d{2}$/),

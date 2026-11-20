@@ -1,8 +1,7 @@
-import { load } from "cheerio";
 import type { LinkedBundle } from "./bundle.ts";
 import { deepseekPrice } from "./deepseek-pricing-policy.ts";
-import { document, section } from "./deepseek-services.ts";
-import { htmlTables, htmlText } from "./html.ts";
+import { billingProse, document, section } from "./deepseek-services.ts";
+import { htmlTables } from "./html.ts";
 import { markdownProse, markdownSection } from "./markdown.ts";
 import { commercialResource, publishedRate, rawPricingFact, scaleDecimal } from "./pricing.ts";
 import {
@@ -282,10 +281,14 @@ export function deepseekToolServices(
     });
   }
   if (billing !== undefined) {
-    const text = htmlText(load(billing).text());
+    const text = billingProse(billing);
     const rule =
       "These server tools are not billed (text search, image search and page fetch). Only model token usage is billed.";
-    if (!text.includes(rule)) {
+    if (
+      text !==
+      "The usage in the final message_delta, or in a non-streaming response, is the billed usage of the whole request, summed over its inference steps: " +
+        rule
+    ) {
       input.onPricingDependencyFailure?.(webToolsUrl);
       input.onPricingReconciliation?.({
         disposition: "unresolved",

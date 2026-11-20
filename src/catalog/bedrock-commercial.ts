@@ -61,7 +61,10 @@ const invocationResources = new Set(["guardrails", "prompt-routing", "reranking"
 export function compactBedrockRegionalSelections(
   claims: CommercialSelection[],
 ): CommercialSelection[] {
-  const groups = new Map<string, CommercialSelection[]>();
+  const groups = new Map<
+    string,
+    { claims: CommercialSelection[]; common: PriceCondition[]; regions: Set<string> }
+  >();
   const result: CommercialSelection[] = [];
   for (const claim of claims) {
     const { applicability, observations, ...binding } = claim;
@@ -85,19 +88,40 @@ export function compactBedrockRegionalSelections(
       result.push(claim);
       continue;
     }
-    const key = canonicalJson([binding, clause.all_of.filter((condition) => condition !== region)]);
-    const group = groups.get(key);
-    if (group) group.push(claim);
-    else groups.set(key, [claim]);
+    const common = clause.all_of.filter((condition) => condition !== region);
+    const key = canonicalJson([binding, common]);
+    const group = groups.get(key) ?? { claims: [], common, regions: new Set<string>() };
+    group.claims.push(claim);
+    group.regions.add(value.value);
+    groups.set(key, group);
   }
-  for (const group of groups.values()) {
+  for (const { claims: group, common, regions } of groups.values()) {
     const [first] = group;
-    if (!first || group.length === 1 || group.length > pricingLimits.applicabilityClauses) {
+    if (!first || group.length === 1) {
+      result.push(...group);
+      continue;
+    }
+    if (regions.size > pricingLimits.categoricalValuesPerCondition) {
       result.push(...group);
       continue;
     }
     const applicability = canonicalizeApplicability({
-      any_of: group.flatMap((c) => c.applicability.any_of),
+      any_of: [
+        {
+          all_of: [
+            ...common,
+            {
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "region" },
+              values: [...regions].map((value) => ({
+                namespace: "provider",
+                provider_id: "amazon-bedrock",
+                value,
+              })),
+            },
+          ],
+        },
+      ],
     });
     if (Buffer.byteLength(JSON.stringify(applicability)) > pricingLimits.applicabilityBytes)
       result.push(...group);

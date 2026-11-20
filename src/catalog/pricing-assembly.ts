@@ -1005,13 +1005,9 @@ function normalizeAtomicApplicability<
   };
 }
 
-function groupedApplicability(
-  observations: NormalizedPriceObservation[],
-): PriceApplicability | undefined {
+function boundedUnion(values: PriceApplicability[]): PriceApplicability | undefined {
   try {
-    const applicability = unionApplicabilities(
-      observations.map(({ establishes_applicability }) => establishes_applicability),
-    );
+    const applicability = unionApplicabilities(values);
     return selectorWithinLimit(applicability) ? applicability : undefined;
   } catch (error) {
     if (isSelectorLimit(error)) return undefined;
@@ -1032,7 +1028,29 @@ function groupedApplicabilityChunks<T extends { observation: NormalizedPriceObse
     .map((item) => ({ item, key: normalizedObservationKey(item.observation) }))
     .sort((left, right) => compareUtf8(left.key, right.key))
     .map(({ item }) => item);
-  return compactApplicabilityChunk(sorted);
+  const chunks = compactApplicabilityChunk(sorted);
+  if (!chunks || chunks.length < 3) return chunks;
+  // Bisection bounds each shard, but shards from different halves may still fit together.
+  // Union only adds canonical clauses, so a pair that did not fit cannot fit after growth.
+  for (const [index, left] of chunks.entries()) {
+    for (let next = index + 1; next < chunks.length;) {
+      const right = chunks[next];
+      if (!right) break;
+      const applicability = boundedUnion([left.applicability, right.applicability]);
+      if (!applicability) {
+        next++;
+        continue;
+      }
+      left.applicability = applicability;
+      left.items = left.items.concat(right.items);
+      left.observations = sortUnique(
+        left.observations.concat(right.observations),
+        normalizedObservationKey,
+      );
+      chunks.splice(next, 1);
+    }
+  }
+  return chunks;
 }
 
 function compactApplicabilityChunk<T extends { observation: NormalizedPriceObservation }>(
@@ -1042,7 +1060,9 @@ function compactApplicabilityChunk<T extends { observation: NormalizedPriceObser
     items.map(({ observation }) => observation),
     normalizedObservationKey,
   );
-  const applicability = groupedApplicability(observations);
+  const applicability = boundedUnion(
+    observations.map(({ establishes_applicability }) => establishes_applicability),
+  );
   if (applicability !== undefined) return [{ items, applicability, observations }];
   if (items.length < 2) return;
   const middle = Math.ceil(items.length / 2);

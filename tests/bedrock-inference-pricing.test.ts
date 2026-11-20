@@ -717,7 +717,13 @@ it("retains Nova Pro optimized tariffs in all three evidenced source Regions thr
   expect(
     speeds.some(
       (claim) =>
-        claim.applicability.any_of.length === 3 &&
+        claim.applicability.any_of.length === 1 &&
+        claim.applicability.any_of[0]?.all_of.some(
+          (c) =>
+            c.kind === "categorical" &&
+            c.dimension.value === "region" &&
+            c.values.map((v) => v.value).join(",") === "us-east-1,us-east-2,us-west-2",
+        ) &&
         new Set(
           claim.observations.flatMap(
             ({ raw }) =>

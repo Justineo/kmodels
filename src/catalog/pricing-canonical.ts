@@ -96,18 +96,17 @@ export function normalizeUnitExpression(expression: UnitExpression): UnitExpress
 }
 
 export function canonicalizeApplicability(value: PriceApplicability): PriceApplicability {
-  const clauses = value.any_of.flatMap(({ all_of }) => {
+  const clauses = new Map<string, PriceApplicability["any_of"][number]>();
+  for (const { all_of } of value.any_of) {
     const conditions = normalizeClause(all_of);
-    return conditions === undefined ? [] : [{ all_of: conditions }];
-  });
-  if (clauses.length === 0) throw new Error("Applicability has no satisfiable clause");
-  if (clauses.length > pricingLimits.applicabilityClauses)
-    throw new Error("Applicability clause limit exceeded");
-  return {
-    any_of: uniqueByCanonicalBytes(
-      clauses.sort((left, right) => compareUtf8(canonicalKey(left), canonicalKey(right))),
-    ),
-  };
+    if (conditions === undefined) continue;
+    const clause = { all_of: conditions };
+    clauses.set(canonicalKey(clause), clause);
+    if (clauses.size > pricingLimits.applicabilityClauses)
+      throw new Error("Applicability clause limit exceeded");
+  }
+  if (!clauses.size) throw new Error("Applicability has no satisfiable clause");
+  return { any_of: [...clauses].sort(([a], [b]) => compareUtf8(a, b)).map(([, clause]) => clause) };
 }
 
 export function unionApplicabilities(values: PriceApplicability[]): PriceApplicability {
@@ -409,12 +408,6 @@ function conditionWeight(condition: PriceCondition): number {
   if (condition.kind === "boolean") return 2;
   if (condition.kind === "decimal_range") return 3;
   return 1 + condition.values.length;
-}
-
-function uniqueByCanonicalBytes<T extends object>(values: T[]): T[] {
-  return values.filter(
-    (value, index) => index === 0 || canonicalKey(value) !== canonicalKey(values[index - 1]!),
-  );
 }
 
 function compareDecimals(left: string, right: string): number {
