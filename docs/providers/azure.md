@@ -318,6 +318,15 @@ Unmatched version markers cannot qualify an older version or a versionless model
 verified, non-retired public identities when the nonexhaustive catalog omits an entire model ID.
 The prior identity must have provenance from a current, unchanged public catalog or supplement
 extractor. A current identity, version or documented alias takes precedence over this fallback.
+An unversioned SKU can keep its previously verified family owner when a nonexhaustive source
+omits that tuple but still lists the same known versions. This requires the accepted Retail
+source to establish the same native meter, Region and exact model ID. A new version, alias,
+retirement or competing ID prevents this fallback. Independently versioned SKUs retain their
+explicit binding.
+When retained and current model IDs differ in case, the Retail model join still requires
+unique ownership. For example, the native V5 Fast image SKU and meter name identify Embed V5,
+but its ARM SKU name says `Embed V6 Glbl`. Neither that identifier nor the native meter ID
+establishes that a previously priced case-sensitive catalog subject is the current versioned one.
 Rates for a retained identity still come from the current Retail response and are published only
 when the final core contains that exact identity.
 

@@ -16,6 +16,29 @@ export function azureRetailMeterKey(modelRef: string, meterId: string, region?: 
   return canonicalJson([modelRef, meterId, region ?? ""]);
 }
 
+export function acceptedAzureRetailMeters(
+  prior: PricingReplaySource | undefined,
+  record: SourceRecord | undefined,
+) {
+  const keys = new Set<string>();
+  if (
+    !prior ||
+    record?.id !== azureRetailSourceId ||
+    prior.source_id !== record.id ||
+    prior.content_hash !== record.content_hash ||
+    prior.extractor_version !== record.extractor_version
+  )
+    return keys;
+  for (const model of prior.models) {
+    if (model.version !== undefined) continue;
+    for (const fact of model.price_facts) {
+      if (fact.source_locator?.kind === "meter")
+        keys.add(azureRetailMeterKey(model.uid, fact.source_locator.value, fact.conditions.region));
+    }
+  }
+  return keys;
+}
+
 export function azureRetailModelRetired(
   model: Pick<ProviderModel, "status" | "retired_at">,
   observedAt: string,

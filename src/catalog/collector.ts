@@ -2,7 +2,11 @@ import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import type { ZodType } from "zod";
 import { parseSource } from "./adapters.ts";
-import { azureRetailSourceId, validateAzureRetailPublication } from "./azure-retail-publication.ts";
+import {
+  acceptedAzureRetailMeters,
+  azureRetailSourceId,
+  validateAzureRetailPublication,
+} from "./azure-retail-publication.ts";
 import { captureRepairSource } from "./catalog-repair-capture.ts";
 import {
   captureInferencePriceSources,
@@ -987,6 +991,7 @@ export async function collectProvider(
   state: FetchState,
   observedAt: string,
   onSourceFetch?: (sourceId: string, durationMs: number) => void,
+  acceptedRetail?: PricingReplaySource,
 ): Promise<ProviderResult> {
   if (manifest.notConfiguredReason !== undefined) {
     return {
@@ -1196,6 +1201,10 @@ export async function collectProvider(
           onContractFinding: contractFindings.add,
           ...(source.extractor.kind === "azure-retail-prices"
             ? {
+                previousRetailMeters: acceptedAzureRetailMeters(
+                  acceptedRetail,
+                  oldSourceById.get(source.id),
+                ),
                 previousCatalogModels: comparableOldModels.filter(({ source_refs }) =>
                   source_refs.some((id) => {
                     const owner = currentSources.get(id);
@@ -1665,6 +1674,7 @@ export async function collectProviders(
   observedAt: string,
   rebuildProvider: string | undefined,
   selected: readonly ProviderManifest[] = manifests,
+  acceptedRetail?: PricingReplaySource,
 ): Promise<CollectionBatch> {
   const sourceDurations: { provider_id: string; source_id: string; duration_ms: number }[] = [];
   const collected = await Promise.all(
@@ -1682,6 +1692,7 @@ export async function collectProviders(
             duration_ms: durationMs,
           });
         },
+        acceptedRetail,
       );
       return {
         result,
@@ -1783,14 +1794,22 @@ async function prepareCollectionInputs(options: CollectionOptions) {
   const received = options.loadCollected === undefined ? undefined : await options.loadCollected();
   const state = received?.state ?? structuredClone(previousState);
 
-  const collected =
-    received ?? (await collectProviders(previous, state, observedAt, options.rebuildProvider));
   const acceptedAzure = acceptedPricing.provider_snapshots.find(
     ({ provider_id }) => provider_id === "azure",
   );
   const acceptedAzureRetail = previousPricingCompilation?.providers
     .find(({ provider_id }) => provider_id === "azure")
     ?.sources.find(({ source_id }) => source_id === azureRetailSourceId);
+  const collected =
+    received ??
+    (await collectProviders(
+      previous,
+      state,
+      observedAt,
+      options.rebuildProvider,
+      manifests,
+      acceptedAzureRetail,
+    ));
   const previousRetailRecord = acceptedCatalog?.sources.find(
     ({ id }) => id === azureRetailSourceId,
   );

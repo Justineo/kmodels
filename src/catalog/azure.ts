@@ -2334,6 +2334,26 @@ export function parseAzureRetailPrices(input: Input): SourceParseResult {
     currentCatalog.flatMap(({ model_id, aliases }) => [model_id, ...aliases]),
   );
   const previousCatalog = input.previousCatalogModels ?? [];
+  const previousVersions = new Set(previousCatalog.map(({ uid }) => uid));
+  // A missing unversioned tuple and a newly introduced version have different implications.
+  // Keep the verified family owner for unqualified SKUs if the current versions were already known.
+  const stableFamilies = new Set(currentCatalog.map((model) => model.model_id));
+  for (const model of currentCatalog) {
+    if (model.version === undefined || !previousVersions.has(model.uid))
+      stableFamilies.delete(model.model_id);
+    for (const alias of model.aliases) stableFamilies.delete(alias);
+  }
+  const priorFamilies = new Map(
+    previousCatalog
+      .filter(
+        (m) =>
+          m.version === undefined &&
+          stableFamilies.has(m.model_id) &&
+          !m.aliases.some((a) => currentIds.has(a)) &&
+          !azureRetailModelRetired(m, input.observedAt),
+      )
+      .map((m) => [m.model_id, m.uid]),
+  );
   const catalogModels = [
     ...currentCatalog,
     ...previousCatalog.filter(
@@ -2343,7 +2363,6 @@ export function parseAzureRetailPrices(input: Input): SourceParseResult {
         !azureRetailModelRetired(model, input.observedAt),
     ),
   ];
-  const previousVersions = new Set(previousCatalog.map(({ uid }) => uid));
   const previousIds = new Set(
     previousCatalog.flatMap(({ model_id, aliases }) => [model_id, ...aliases]),
   );
@@ -2402,7 +2421,15 @@ export function parseAzureRetailPrices(input: Input): SourceParseResult {
       });
       continue;
     }
-    const identity = bindRetailModelIdentity(parsedIdentity, catalogModels);
+    const family =
+      parsedIdentity.version === undefined ? priorFamilies.get(parsedIdentity.id) : undefined;
+    const identity =
+      family &&
+      input.previousRetailMeters?.has(
+        azureRetailMeterKey(family, price.meterId, price.armRegionName),
+      )
+        ? parsedIdentity
+        : bindRetailModelIdentity(parsedIdentity, catalogModels);
     if (
       identity === undefined ||
       (parsedIdentity.version === undefined &&

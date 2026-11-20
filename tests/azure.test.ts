@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { applySupplementGroups } from "../src/catalog/collector.ts";
+import { azureRetailMeterKey } from "../src/catalog/azure-retail-publication.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
@@ -2387,19 +2388,33 @@ describe("Azure adapters", () => {
       tasks: ["video_generation" as const],
     };
     const newVersion = { ...azurePricingModel("sora-2", "2025-12-08"), tasks: old.tasks };
-    const parse = (catalogModels: ProviderModel[], previousCatalogModels: ProviderModel[]) =>
+    const parse = (
+      catalogModels: ProviderModel[],
+      previousCatalogModels: ProviderModel[],
+      previousRetailMeters = new Set<string>(),
+    ) =>
       parseSource({
         provider: provider(manifest("azure")),
         source: azureRetailSource(0, 2),
         observedAt,
         catalogModels,
         previousCatalogModels,
+        previousRetailMeters,
         body: JSON.stringify({ prices: [row] }),
       }).models;
     expect(parse([unrelated], [old]).map(({ uid }) => uid)).toEqual([old.uid]);
     expect(parse([unrelated], [{ ...old, status: "retired" }])).toEqual([]);
     expect(parse([unrelated], [{ ...old, retired_at: "2026-02-01" }])).toEqual([]);
     expect(parse([unrelated, newVersion], [old])).toEqual([]);
+    const family = { ...azurePricingModel("sora-2"), tasks: old.tasks };
+    const receipt = new Set([
+      azureRetailMeterKey(family.uid, "10000000-0000-0000-0000-000000000007", ""),
+    ]);
+    expect(parse([newVersion], [family, newVersion], receipt).map((m) => m.uid)).toEqual([
+      family.uid,
+    ]);
+    expect(parse([newVersion], [family, newVersion]).map((m) => m.uid)).toEqual([newVersion.uid]);
+    expect(parse([newVersion], [family, old])).toEqual([]);
     const alias = {
       ...azurePricingModel("sora-new", "2025-12-08"),
       aliases: [old.model_id],
