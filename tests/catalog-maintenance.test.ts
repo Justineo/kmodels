@@ -74,7 +74,7 @@ function taskState() {
   return { state, task, item };
 }
 
-it("bounds distinct takeover cases per candidate and migrates previously spent attempts", () => {
+it("spends a takeover once for each distinct verified case and reads legacy ledgers", () => {
   const { task } = taskState();
   const a = digest("case-a"),
     b = digest("case-b");
@@ -84,7 +84,8 @@ it("bounds distinct takeover cases per candidate and migrates previously spent a
   expect(canTakeOver(task, a)).toBe(false);
   expect(canTakeOver(task, b)).toBe(true);
   task.takeover_keys.push(b);
-  expect(canTakeOver(task, digest("third case"))).toBe(false);
+  expect(canTakeOver(task, digest("third case"))).toBe(true);
+  expect(canTakeOver(task, a)).toBe(false);
   expect(canTakeOver({ ...task, fingerprint: digest("fresh source") }, a)).toBe(true);
 });
 

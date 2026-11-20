@@ -95,11 +95,11 @@ Trusted settlement releases unused funds. The inference job has no ledger write 
 A hash-bound concrete-error checkpoint authorizes takeover on the same lease. Takeover requires
 at least USD 2 remaining and leaves USD 1 available for fresh final verification. Final verification
 can use the entire remaining balance. Charges from earlier sessions count toward the USD 10 total.
-For each candidate and source fingerprint, the controller allows up to two distinct takeover
-attempts across runs. A rejected patch and its cited executable counterexamples identify the
-attempt. Repeated receipts for the same case do not spend another attempt. An older ledger
-entry with no recorded patch counts as one attempt. A spent candidate cannot block a new
-case for a sibling. A separate publication-validation
+For each candidate and source fingerprint, the controller records the rejected patch and its
+cited executable checks. Repeated receipts for the same case do not spend another attempt.
+A changed proposal or reproducer can receive a new revision under the ordinary scheduling,
+call and budget limits. Older ledger entries without a case key allow the first identifiable
+case. A spent candidate cannot block a new case for a sibling. A separate publication-validation
 continuation still requires all ordinary gates.
 
 The Codex gateway accepts at most 60 serial Responses calls per stage, each bounded to 160 KB

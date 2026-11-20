@@ -431,8 +431,7 @@ async function main(): Promise<void> {
         ) {
           const key = decision.takeover_keys?.[task.id];
           const prior = priorTakeovers(task);
-          if (key) task.takeover_keys = [...new Set([...prior, key])];
-          else delete task.takeover_keys;
+          task.takeover_keys = key ? [...new Set([...prior, key])] : prior;
           task.takeover_fingerprint = task.fingerprint;
         }
         const row = review.candidates.find((row) => row.id === task.id);

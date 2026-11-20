@@ -718,7 +718,7 @@ async function main(): Promise<void> {
       );
       const repeated = findings.length > 0 && !eligible.length;
       const spentReason =
-        "The rejected patch and counterexample already used takeover, or the candidate reached its two-attempt evidence limit.";
+        "Each rejected patch and its cited checks already used takeover for this evidence.";
       if (stage === "initial") {
         const route = reviewRoute(report, stage, repeated);
         if (route === "needs_takeover") {
