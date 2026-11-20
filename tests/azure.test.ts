@@ -2415,6 +2415,11 @@ describe("Azure adapters", () => {
     ]);
     expect(parse([newVersion], [family, newVersion]).map((m) => m.uid)).toEqual([newVersion.uid]);
     expect(parse([newVersion], [family, old])).toEqual([]);
+    const upper = { ...azurePricingModel("Sora-2", newVersion.version), tasks: old.tasks };
+    expect(parse([upper], [family, upper], receipt).map((m) => m.uid)).toEqual([family.uid]);
+    expect(parse([upper], [family, upper]).map((m) => m.uid)).toEqual([upper.uid]);
+    expect(parse([upper], [family, old], receipt)).toEqual([]);
+    expect(parse([upper, newVersion], [family, upper, newVersion], receipt)).toEqual([]);
     const alias = {
       ...azurePricingModel("sora-new", "2025-12-08"),
       aliases: [old.model_id],

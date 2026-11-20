@@ -264,6 +264,93 @@ it("keeps the accepted price when the same native meter moves to a disjoint acti
   );
 });
 
+it("recognizes the historical Cohere label only for the same scoped embedding token meter", () => {
+  const owner = {
+    ...baseModel({
+      providerId: "azure",
+      id: "Cohere-embed-v5-Fast",
+      name: "Cohere Embed V5 Fast",
+      sourceId: source.id,
+      observedAt: at,
+    }),
+    service_families: ["Foundry Models sold by Azure"],
+    tasks: ["embeddings" as const],
+  };
+  const row = {
+    ...native,
+    productName: "Cohere Models",
+    skuName: "Embed V5 Fast Img Glbl",
+    meterName: "Embed V5 Fast Img Glbl Tokens",
+    unitOfMeasure: "1K",
+  };
+  const [priced] = parseSource({
+    provider,
+    source,
+    observedAt: at,
+    catalogModels: [owner],
+    body: JSON.stringify({ prices: [row] }),
+  }).models;
+  const fact = priced?.price_facts[0];
+  if (!priced || !fact) throw new Error("Missing Cohere image meter");
+  expect(fact).toMatchObject({ meter: "embedding", conditions: { modality: "image" } });
+  const { modality: _modality, ...conditions } = fact.conditions;
+  const current = {
+    source_id: source.id,
+    content_hash: "a".repeat(64),
+    extractor_version: source.extractorVersion,
+    models: [priced],
+  };
+  const prior = {
+    ...current,
+    extractor_version: "azure-retail-prices-v12",
+    models: [
+      { ...priced, price_facts: [{ ...fact, meter: "image_generation" as const, conditions }] },
+    ],
+  };
+  const snapshot: ProviderPricingSnapshot = {
+    provider_id: "azure",
+    observed_at: at,
+    publication: "fresh",
+    source_records: [
+      {
+        id: source.id,
+        url: source.url,
+        observed_at: at,
+        content_hash: prior.content_hash,
+        extractor_version: prior.extractor_version,
+      },
+    ],
+  };
+  const loss = (candidate: typeof fact, baseline = prior) =>
+    azureRetailPricingLoss(
+      {
+        models: [owner],
+        pricingReplaySources: [{ ...current, models: [{ ...priced, price_facts: [candidate] }] }],
+        coverage: {
+          provider_id: "azure",
+          status: "fresh",
+          model_count: 1,
+          pricing_term_count: 1,
+          checked_at: at,
+        },
+      },
+      snapshot,
+      baseline,
+      undefined,
+    );
+  expect(loss(fact)).toBeUndefined();
+  expect(loss({ ...fact, conditions: { ...fact.conditions, modality: "text" } })).toContain(
+    "lost 1",
+  );
+  expect(loss({ ...fact, conditions: { ...fact.conditions, region: "another-region" } })).toContain(
+    "lost 1",
+  );
+  expect(loss({ ...fact, source_locator: { kind: "meter", value: "another-meter" } })).toContain(
+    "lost 1",
+  );
+  expect(loss(fact, { ...prior, extractor_version: source.extractorVersion })).toContain("lost 1");
+});
+
 it("withholds a candidate missing a current region, a previously announced future rate or an exact tier", () => {
   const sibling = { ...native, armRegionName: "eastus", meterId: "eastus-output" };
   const future = { ...native, effectiveStartDate: "2027-01-01T00:00:00Z" };

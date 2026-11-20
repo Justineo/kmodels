@@ -2343,17 +2343,26 @@ export function parseAzureRetailPrices(input: Input): SourceParseResult {
       stableFamilies.delete(model.model_id);
     for (const alias of model.aliases) stableFamilies.delete(alias);
   }
-  const priorFamilies = new Map(
-    previousCatalog
-      .filter(
-        (m) =>
-          m.version === undefined &&
-          stableFamilies.has(m.model_id) &&
-          !m.aliases.some((a) => currentIds.has(a)) &&
-          !azureRetailModelRetired(m, input.observedAt),
-      )
-      .map((m) => [m.model_id, m.uid]),
-  );
+  // Learn family names and registry names can differ only in capitalization.
+  // Fold for this join, keeping the native IDs for both publication and version checks.
+  const currentSpellings = [...currentIds];
+  const currentFolded = new Set(currentSpellings.map((id) => id.toLowerCase()));
+  const priorFamilies = new Map<string, Pick<ProviderModel, "uid" | "model_id">>();
+  for (const id of stableFamilies) {
+    const folded = id.toLowerCase();
+    if (currentSpellings.some((other) => other !== id && other.toLowerCase() === folded)) continue;
+    const owners = previousCatalog.filter(
+      (m) => m.version === undefined && m.model_id.toLowerCase() === folded,
+    );
+    const [owner] = owners;
+    if (
+      owners.length === 1 &&
+      owner &&
+      !owner.aliases.some((alias) => currentFolded.has(alias.toLowerCase())) &&
+      !azureRetailModelRetired(owner, input.observedAt)
+    )
+      priorFamilies.set(id, owner);
+  }
   const catalogModels = [
     ...currentCatalog,
     ...previousCatalog.filter(
@@ -2363,6 +2372,8 @@ export function parseAzureRetailPrices(input: Input): SourceParseResult {
         !azureRetailModelRetired(model, input.observedAt),
     ),
   ];
+  const familyOwners = new Set([...priorFamilies.values()].map((model) => model.uid));
+  const matchingModels = catalogModels.filter((model) => !familyOwners.has(model.uid));
   const previousIds = new Set(
     previousCatalog.flatMap(({ model_id, aliases }) => [model_id, ...aliases]),
   );
@@ -2390,14 +2401,14 @@ export function parseAzureRetailPrices(input: Input): SourceParseResult {
       });
       continue;
     }
-    const parsedIdentity = catalogRetailModelIdentity(price, catalogModels);
+    const parsedIdentity = catalogRetailModelIdentity(price, matchingModels);
     if (parsedIdentity === undefined) {
       // The same native row can disqualify an older binding that discarded its version marker.
       const hasVersionMarker = retailIdentityTokens(price.skuName).some((token) =>
         /^\d{4,8}$/.test(token),
       );
       const formerIdentity = hasVersionMarker
-        ? catalogRetailModelIdentity(price, catalogModels, true)
+        ? catalogRetailModelIdentity(price, matchingModels, true)
         : undefined;
       const formerBinding =
         formerIdentity === undefined
@@ -2426,9 +2437,9 @@ export function parseAzureRetailPrices(input: Input): SourceParseResult {
     const identity =
       family &&
       input.previousRetailMeters?.has(
-        azureRetailMeterKey(family, price.meterId, price.armRegionName),
+        azureRetailMeterKey(family.uid, price.meterId, price.armRegionName),
       )
-        ? parsedIdentity
+        ? { id: family.model_id }
         : bindRetailModelIdentity(parsedIdentity, catalogModels);
     if (
       identity === undefined ||
