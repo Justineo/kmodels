@@ -464,6 +464,11 @@ function applyKimiCapabilityDetails(
         : undefined;
       const nested = propertiesSchema.safeParse(request?.[route.field]);
       const scope = `Kimi ${route.label} API (${market}, POST ${route.path}).`;
+      const binding = {
+        interface: `Kimi ${route.label} API`,
+        condition: market === "China" ? "China" : "International",
+        endpoint: route.path,
+      };
       for (const model of models) {
         if (!model.api_endpoints?.some(({ path }) => path === route.path)) continue;
         const ref = mapping[model.model_id];
@@ -483,17 +488,10 @@ function applyKimiCapabilityDetails(
             {
               kind: "prompt_cache",
               mode: "implicit",
-              supported: true,
               scope: scope + " Automatic prefix caching is enabled by default.",
+              applicability: binding,
             },
           ];
-          if (route.key !== "messages")
-            statements.push({
-              kind: "prompt_cache",
-              mode: "explicit",
-              supported: false,
-              scope: scope + " The request cache-mode parameter supports implicit placement only.",
-            });
           routes.set(route.key, statements);
           cache.set(model, routes);
         }
@@ -519,6 +517,7 @@ function applyKimiCapabilityDetails(
             {
               kind: "reasoning_effort",
               scope,
+              applicability: { ...binding, parameter: fieldPath },
               supported_values: effort.data.enum,
               ...(effort.data.default === undefined ? {} : { default_value: effort.data.default }),
             },

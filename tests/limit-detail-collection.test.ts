@@ -73,13 +73,13 @@ function model(at = now, details?: LimitDetailGroup[]) {
   };
 }
 
-function cacheDetail(claim: string, supported = true): CapabilityDetailGroup {
+function cacheDetail(claim: string): CapabilityDetailGroup {
   const { evidence, source_ref } = detail(claim);
   return {
     claim,
     source_ref,
     evidence,
-    statements: [{ kind: "prompt_cache", mode: "implicit", supported, scope: "Interactions API" }],
+    statements: [{ kind: "prompt_cache", mode: "implicit", scope: "Interactions API" }],
   };
 }
 

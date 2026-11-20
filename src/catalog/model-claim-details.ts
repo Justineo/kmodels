@@ -20,11 +20,30 @@ const documentEvidenceSchema = z.strictObject({
 });
 
 export type ModelDetailEvidence = z.infer<typeof documentEvidenceSchema>;
+
+/**
+ * Website detail chunks cite each source by link, locator and observation time. Excerpts and
+ * document hashes remain audit evidence in canonical storage.
+ */
+const claimSourceSchema = documentEvidenceSchema.pick({
+  document_url: true,
+  locator: true,
+  observed_at: true,
+});
+export type ModelClaimSource = z.infer<typeof claimSourceSchema>;
+
+export function claimSources(evidence: readonly ModelClaimSource[]): ModelClaimSource[] {
+  return evidence.map(({ document_url, locator, observed_at }) => ({
+    document_url,
+    locator,
+    observed_at,
+  }));
+}
 export interface ModelClaimGroup {
   source_ref: string;
   claim: string;
   statements: readonly unknown[];
-  evidence: readonly ModelDetailEvidence[];
+  evidence: readonly ModelClaimSource[];
 }
 
 export function hasClaimStatements(groups: readonly ModelClaimGroup[] | undefined): boolean {
@@ -64,12 +83,23 @@ export function validateModelDetailSources(core: Pick<Catalog, "models" | "sourc
 }
 
 export function modelClaimGroupSchema<Statement extends z.ZodType>(statement: Statement) {
+  return modelClaimGroupWith(statement, documentEvidenceSchema);
+}
+
+export function websiteClaimGroupSchema<Statement extends z.ZodType>(statement: Statement) {
+  return modelClaimGroupWith(statement, claimSourceSchema);
+}
+
+function modelClaimGroupWith<Statement extends z.ZodType, Evidence extends z.ZodType>(
+  statement: Statement,
+  evidence: Evidence,
+) {
   return z.strictObject({
     source_ref: z.string().min(1).max(128),
     claim: z.string().min(1).max(128),
     // An evidenced empty observation withdraws this claim; omission does not.
     statements: z.array(statement).max(16),
-    evidence: z.array(documentEvidenceSchema).min(1).max(3),
+    evidence: z.array(evidence).min(1).max(3),
   });
 }
 

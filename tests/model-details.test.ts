@@ -1,341 +1,213 @@
 import { describe, expect, it } from "vite-plus/test";
 import { load } from "cheerio";
 import ModelDetails from "../src/components/ModelDetails.vue";
-import ModelCapabilityDetails from "../src/components/ModelCapabilityDetails.vue";
 import ModelClaimEvidence from "../src/components/ModelClaimEvidence.vue";
 import type { WebsiteModel, WebsiteModelDetail } from "../src/catalog/website-schema.ts";
 import { unknownCapabilities } from "../src/catalog/schema.ts";
 import { renderComponent } from "./render-component.ts";
 import type { LimitDetailGroup } from "../src/catalog/model-limit-details.ts";
-import type {
-  CapabilityDetailGroup,
-  CapabilityStatement,
-} from "../src/catalog/model-capability-details.ts";
+import type { CapabilityStatement } from "../src/catalog/model-capability-details.ts";
 
 describe("model details", () => {
-  it("renders explicit cache exclusions and native effort in their named API scope", async () => {
-    const scope = "Example API <tag>";
-    const group: CapabilityDetailGroup = {
-      source_ref: "test-models",
-      claim: "interactions",
-      statements: [
-        { kind: "prompt_cache", scope, mode: "implicit", supported: true },
-        { kind: "prompt_cache", scope, mode: "explicit", supported: false },
-        {
-          kind: "reasoning_effort",
-          scope,
-          supported_values: ["low", "high"],
-          unsupported_values: ["none", "minimal"],
-          default_value: "medium",
-        },
-      ],
-      evidence: [
-        {
-          document_url: "https://example.com/capabilities",
-          observed_at: "2026-11-17T00:00:00.000Z",
-          locator: "Interactions modes",
-          content_hash: "2".repeat(64),
-          excerpt: "Implicit context caching and native effort levels.",
-        },
-      ],
-    };
-    const model: WebsiteModel = {
-      provider_id: "test",
-      model_id: "model",
-      name: "Model",
-      uid: "test/model",
-      aliases: [],
-      tasks: [],
-      status: "active",
-      release_stage: "stable",
-      detail_chunk: 0,
-      pricing: { outcome: "unknown" },
-    };
-    const props = {
-      model,
+  const sourceOf = (document_url: string) => ({
+    document_url,
+    observed_at: "2026-11-17T00:00:00.000Z",
+    locator: "Request options",
+  });
+  const effortOn = (
+    endpoint: string,
+    supported_values: string[],
+    default_value?: string,
+  ): CapabilityStatement => ({
+    kind: "reasoning_effort",
+    scope: `Example API <tag> ${endpoint}`,
+    applicability: { interface: "Example API", endpoint },
+    supported_values,
+    ...(default_value === undefined ? {} : { default_value }),
+  });
+  const inspectorModel: WebsiteModel = {
+    provider_id: "test",
+    model_id: "model",
+    name: "Model",
+    uid: "test/model",
+    aliases: [],
+    tasks: [],
+    status: "active",
+    release_stage: "stable",
+    detail_chunk: 0,
+    pricing: { outcome: "unknown" },
+  };
+  function inspector(detail: Partial<WebsiteModelDetail>) {
+    return renderComponent(ModelDetails, {
+      model: inspectorModel,
       providerName: "Test",
       provider: undefined,
       dataVersion: "a".repeat(64),
       detail: {
-        model_ref: model.uid,
+        model_ref: inspectorModel.uid,
         modalities: { input: ["text", "image"], output: ["text"] },
-        capabilities: {
-          ...unknownCapabilities(),
-          prompt_cache: true,
-          effort_control: false,
-          tool_call: true,
-          streaming: true,
-        },
-        delivery_modes: ["streaming"],
-        scope: "global_catalog" as const,
-        capability_details: [group],
+        capabilities: unknownCapabilities(),
+        scope: "global_catalog",
+        api_endpoints: [
+          { name: "Chat", path: "/chat" },
+          { name: "Responses", path: "/responses" },
+        ],
+        ...detail,
       } satisfies WebsiteModelDetail,
       loading: false,
       error: undefined,
       pricingTarget: undefined,
-    };
-    const html = await renderComponent(ModelDetails, props);
-    const $ = load(html);
-    const settings = $(".capability-list > li > details");
-    expect(
-      settings
-        .children("summary")
-        .map((_, node) => $(node).find("span").text())
-        .get(),
-    ).toEqual(["Reasoning", "Prompt caching"]);
-    expect($(".capability-list > li")).toHaveLength(3);
-    expect($(".capability-list > li > div").text()).toBe("Tool calling");
-    expect($(".modality-flow > div").first().text()).toMatch(/Input\s+text, image/);
-    expect($(".modality-flow > div").last().text()).toMatch(/Output\s+text/);
-    expect($(".fact-grid").text()).toContain("streaming");
-    expect(settings.filter("[open]")).toHaveLength(0);
-    const effort = settings.eq(0);
-    const cache = settings.eq(1);
-    expect(effort.children("summary").text()).toContain("Model-wide status unknown");
-    expect(effort.find(".capability-effort-control").text()).toMatch(
-      /Effort control\s+Unsupported model-wide/,
-    );
-    expect(effort.find(".capability-behavior").text()).not.toContain("Automatic");
-    expect(cache.find("strong").text()).toContain("Automatic");
-    expect(cache.text()).toContain("The API can reuse repeated prompt content automatically.");
-    expect(cache.find("strong").text()).toContain("Caller-defined");
-    expect(cache.find(".capability-behavior").text()).not.toContain("Documented levels");
-    expect(effort.find("details a").attr("href")).toBe("https://example.com/capabilities");
-    const evidence = cache.find("details");
-    expect(evidence.children("summary").text()).toContain("1 source");
-    expect(evidence.find("a").attr("href")).toBe("https://example.com/capabilities");
-    expect(evidence.find("button time").attr("datetime")).toBe("2026-11-17T00:00:00.000Z");
-    expect(settings.text()).not.toContain("2026-11-17");
-    expect(html).toContain(">Unsupported<");
-    expect(
-      effort
-        .find(".effort-values dt")
-        .map((_, el) => $(el).text())
-        .get(),
-    ).toEqual(["Documented levels", "Default", "Unsupported values"]);
-    expect(
-      effort
-        .find(".effort-values code")
-        .map((_, el) => $(el).text())
-        .get(),
-    ).toEqual(["low, high", "medium", '"none", "minimal"']);
-    expect(html).toContain("Example API &lt;tag&gt;");
-    expect(settings.text()).not.toContain("https://example.com/capabilities");
-    expect(html).toContain('href="https://example.com/capabilities"');
-    expect(html).not.toContain("Unresolved source conflict");
-    const scoped = load(
-      await renderComponent(ModelDetails, {
-        ...props,
-        detail: {
-          ...props.detail,
-          capabilities: { ...unknownCapabilities(), fine_tuning: false },
-          capability_details: [
-            {
-              ...group,
-              statements: group.statements.filter(({ kind }) => kind === "prompt_cache"),
-            },
-            { ...group, claim: "withdrawn", statements: [] },
-          ],
-        },
-      }),
-    );
-    expect(scoped(".capability-list > li")).toHaveLength(2);
-    expect(scoped(".capability-list > li > details > summary").text()).toMatch(
-      /Prompt caching\s*API-specific/,
-    );
-    expect(scoped(".capability-list > li > div").text()).toMatch(/Fine-tuning\s*Unsupported/);
-    expect(scoped(".capability-list").text()).not.toContain("Reasoning");
-    const flags = load(
-      await renderComponent(ModelDetails, {
-        ...props,
-        detail: {
-          ...props.detail,
-          capabilities: {
-            ...unknownCapabilities(),
-            reasoning: true,
-            tool_call: true,
-            effort_control: true,
-          },
-          capability_details: [{ ...group, statements: [] }],
-        },
-      }),
-    );
-    expect(
-      flags(".capability-list > li > div")
-        .map((_, el) => flags(el).find("span").text())
-        .get(),
-    ).toEqual(["Reasoning", "Tool calling"]);
-    expect(flags(".capability-list > li").first().text()).toContain("Effort control supported");
-    expect(flags(".capability-list details")).toHaveLength(0);
-    const empty = await renderComponent(ModelDetails, {
-      ...props,
-      detail: { ...props.detail, capabilities: unknownCapabilities(), capability_details: [] },
     });
+  }
+  const texts = ($: ReturnType<typeof load>, selector: string) =>
+    $(selector)
+      .map((_, el) => $(el).text().trim())
+      .get();
+
+  it("lists supported capabilities with structured values and leaves unsupported ones out", async () => {
+    const html = await inspector({
+      capabilities: {
+        ...unknownCapabilities(),
+        tool_call: true,
+        prompt_cache: true,
+        fine_tuning: false,
+        streaming: true,
+      },
+      delivery_modes: ["streaming"],
+      capability_details: [
+        {
+          source_ref: "test-models",
+          claim: "effort",
+          statements: [
+            effortOn("/chat", ["low", "high"], "high"),
+            effortOn("/responses", ["low", "high"], "high"),
+          ],
+          evidence: [sourceOf("https://example.com/effort")],
+        },
+        {
+          source_ref: "test-models",
+          claim: "cache",
+          statements: [{ kind: "prompt_cache", scope: "Example API", mode: "implicit" }],
+          evidence: [sourceOf("https://example.com/cache")],
+        },
+      ],
+    });
+    const $ = load(html);
+    expect(texts($, ".modality-flow > div:first-child .tag")).toEqual(["text", "image"]);
+    expect(texts($, ".modality-flow > div:last-child .tag")).toEqual(["text"]);
+    expect($(".fact-grid").text()).toContain("streaming");
+    expect(texts($, ".capability-tags .tag")).toEqual(["Tool calling"]);
+    expect(texts($, ".capability-details > div > dt")).toEqual([
+      "Reasoning effort",
+      "Prompt caching",
+    ]);
+    const effort = $(".capability-details > div").first();
+    expect(texts($, ".capability-details > div:first-child .capability-value")).toEqual([
+      "low",
+      "high",
+    ]);
+    const defaultValue = effort.find("[data-default]");
+    expect(defaultValue.text()).toBe("high");
+    expect(defaultValue.attr("aria-label")).toBe("high (default)");
+    expect(texts($, ".capability-details > div:last-child .capability-value")).toEqual([
+      "automatic",
+    ]);
+    expect(effort.find(".claim-sources a").attr("href")).toBe("https://example.com/effort");
+    expect(effort.find(".source-label")).toHaveLength(0);
+    for (const hidden of ["Example API", "caller-defined", "Unsupported", "Fine-tuning", "Varies"])
+      expect(html).not.toContain(hidden);
+    expect($(".endpoint-capabilities")).toHaveLength(0);
+    expect($(".conflict-mark")).toHaveLength(0);
+
+    const empty = await inspector({ capability_details: [] });
     expect(empty).toContain("No capability information published");
     const loading = await renderComponent(ModelDetails, {
-      ...props,
+      model: inspectorModel,
+      providerName: "Test",
+      provider: undefined,
+      dataVersion: "a".repeat(64),
       detail: undefined,
       loading: true,
+      error: undefined,
+      pricingTarget: undefined,
     });
     expect(loading).toContain("Loading details");
     expect(loading).not.toContain("No capability information published");
-    const conflict = load(
-      await renderComponent(ModelDetails, {
-        ...props,
-        detail: {
-          ...props.detail,
-          capability_details: [
-            group,
-            {
-              ...group,
-              claim: "alternate",
-              statements: [{ kind: "prompt_cache", scope, mode: "explicit", supported: true }],
-            },
-          ],
-        },
-      }),
-    );
-    const conflictingRow = conflict(".capability-list > li > details").last();
-    expect(conflictingRow.attr("open")).toBeUndefined();
-    expect(conflictingRow.children("summary").text()).toContain("Unresolved source conflict");
-    expect(conflictingRow.find(".claim-sources")).toHaveLength(2);
-    expect(conflict(".capability-list > li > details").first().text()).not.toContain(
-      "Unresolved source conflict",
-    );
   });
-  it("groups only the same structured effort conclusion within its owning claim", async () => {
-    const rejection: CapabilityStatement = {
-      kind: "reasoning_effort",
-      scope: "Example Chat. Request field settings.effort.",
-      unsupported_values: ["none"],
-      applicability: { interface: "Example Chat", parameter: "settings.effort" },
-    };
-    const group: CapabilityDetailGroup = {
-      source_ref: "example-docs",
-      claim: "effort",
-      evidence: [
-        {
-          document_url: "https://docs.example.net/effort",
-          locator: "Request options",
-          observed_at: "2026-11-17T00:00:00.000Z",
-          content_hash: "1".repeat(64),
-          excerpt: "Some request options reject none.",
-        },
-      ],
-      statements: [
-        rejection,
-        {
-          ...rejection,
-          scope: "Example Generate. Request field level.",
-          applicability: { interface: "Example Generate", parameter: "level" },
-        },
-        {
-          ...rejection,
-          scope: "Example Generate, Canada only. Request field level.",
-          applicability: {
-            interface: "Example Generate",
-            parameter: "level",
-            condition: "Canada only",
-          },
-        },
-        {
-          kind: "reasoning_effort",
-          scope: "Example Generate, Japan. Default in adaptive mode.",
-          applicability: {
-            interface: "Example Generate",
-            parameter: "level",
-            condition: "Japan, in adaptive mode",
-          },
-          default_value: "XHigh",
-        },
-      ],
-    };
-    const cache: CapabilityDetailGroup = {
-      ...group,
-      claim: "cache_modes",
-      statements: [
-        {
-          kind: "prompt_cache",
-          mode: "implicit",
-          supported: true,
-          scope: "Example Generate. Eligible messages.",
-          applicability: { interface: "Example Generate", condition: "Eligible messages" },
-        },
-        {
-          kind: "prompt_cache",
-          mode: "explicit",
-          supported: true,
-          scope: "Example Generate (cache.mode). Marked prefixes.",
-          applicability: {
-            interface: "Example Generate",
-            parameter: "cache.mode",
-            condition: "Marked prefixes",
-          },
-        },
-      ],
-    };
+
+  it("shows values that differ by API on their published endpoint", async () => {
     const $ = load(
-      await renderComponent(ModelCapabilityDetails, {
-        capabilities: {
-          ...unknownCapabilities(),
-          reasoning: false,
-          effort_control: true,
-          prompt_cache: true,
-        },
-        groups: [group, { ...group, claim: "separate", statements: [rejection] }, cache],
+      await inspector({
+        capability_details: [
+          {
+            source_ref: "test-models",
+            claim: "effort",
+            statements: [
+              effortOn("/chat", ["low", "high"], "high"),
+              effortOn("/responses", ["none", "low", "high"], "none"),
+            ],
+            evidence: [sourceOf("https://example.com/effort")],
+          },
+          {
+            source_ref: "test-models",
+            claim: "disputed",
+            statements: [effortOn("/chat", ["low", "high"], "low")],
+            evidence: [sourceOf("https://example.com/other")],
+          },
+        ],
       }),
     );
-    expect($(".capability-row").first().text()).toMatch(/Reasoning\s*Model-wide unsupported/);
-    expect($(".capability-effort-control").text()).toMatch(/Effort control\s+Supported model-wide/);
-    const behaviors = $(".capability-group").first().children(".capability-behavior");
-    expect(behaviors).toHaveLength(3);
-    expect(behaviors.first().find("dt").text()).toBe("Unsupported values");
+    expect($(".capability-details .varies").text()).toBe("Varies by endpoint");
+    expect($(".conflict-mark").attr("aria-label")).toBe("Sources disagree");
+    const [chat, responses] = [0, 1].map((index) => $(".endpoint-list > li").eq(index));
+    expect(chat?.find(".endpoint-capabilities dt").text()).toBe("Reasoning effort");
     expect(
-      behaviors
-        .first()
-        .find(".capability-bindings li")
-        .map((_, el) => `${$(el).find("span").text()} ${$(el).find("code").text()}`)
+      chat
+        ?.find(".capability-value")
+        .map((_, el) => $(el).text())
         .get(),
-    ).toEqual(["Example Chat settings.effort", "Example Generate level"]);
-    expect(behaviors.eq(1).text()).toContain("Canada only");
-    expect(behaviors.eq(2).text()).toContain("Japan, in adaptive mode");
-    expect(behaviors.eq(2).find(".effort-values code").text()).toBe("XHigh");
-    expect($(".capability-list > li").first().find(".claim-sources")).toHaveLength(2);
-    const caching = $(".capability-list > li").last();
-    expect(caching.find(".capability-interface").text()).toBe("Example Generate");
-    expect(caching.find(".capability-bindings").first().text()).toBe("Eligible messages");
-    expect(caching.find(".capability-bindings").last().find("code").text()).toBe("cache.mode");
-    expect(caching.find(".capability-bindings").last().find("span").text()).toBe("Marked prefixes");
-    expect(caching.find(".claim-sources")).toHaveLength(1);
+    ).toEqual(["low", "high"]);
+    // The disputed /chat default stays unknown.
+    expect(chat?.find("[data-default]")).toHaveLength(0);
+    expect(responses?.find("[data-default]").text()).toBe("none");
   });
-  it("counts source documents, stacks distinct sites and preserves every citation", async () => {
+  it("cites each document once with its locators and latest check", async () => {
     const urls = [
       "https://models.example.net:8443/model",
       "https://models.example.net:8443/guide?q=api#limits",
       "http://docs.example.org/reference",
     ] as const;
+    // Canonical evidence may still carry audit fields; the citation renders none of them.
     const documents = [...urls, urls[0]].map((document_url, index) => ({
       document_url,
       locator: `Section ${index + 1}`,
       excerpt: "Quoted evidence <script>alert(1)</script>",
       content_hash: "a".repeat(64),
-      observed_at: "2026-11-19T05:03:39.290Z",
+      observed_at: `2026-11-1${index}T05:03:39.290Z`,
     }));
-    const $ = load(await renderComponent(ModelClaimEvidence, { documents }));
-    expect($("summary").text()).toContain("3 sources");
-    expect($("summary .source-mark")).toHaveLength(2);
-    expect($("summary img")).toHaveLength(1);
-    expect($("summary img").attr("src")).toBe("https://models.example.net:8443/favicon.ico");
-    expect($("summary .source-mark").last().text()).toBe("D");
+    const html = await renderComponent(ModelClaimEvidence, { documents });
+    const $ = load(html);
+    const links = $(".claim-sources a");
+    expect(links.map((_, el) => $(el).attr("href")).get()).toEqual(urls);
     expect(
-      $("a")
-        .map((_, el) => $(el).attr("href"))
+      links
+        .find(".source-label")
+        .map((_, el) => $(el).text())
         .get(),
-    ).toEqual([...urls, urls[0]]);
-    expect($("a").text()).toContain("Section 4");
-    expect($(".claim-evidence").text()).toContain("Quoted evidence <script>alert(1)</script>");
+    ).toEqual([
+      "models.example.net:8443/model",
+      "models.example.net:8443/guide",
+      "docs.example.org",
+    ]);
+    expect(links.first().attr("aria-label")).toMatch(
+      /^models\.example\.net:8443\/model: Section 1; Section 4 · Checked /,
+    );
+    expect($("img")).toHaveLength(2);
+    expect($("img").first().attr("src")).toBe("https://models.example.net:8443/favicon.ico");
+    expect($(".source-mark").last().text()).toBe("D");
+    expect(html).not.toContain("Quoted evidence");
+    expect(html).not.toContain("a".repeat(64));
     expect($("script")).toHaveLength(0);
-    expect($("body").text()).not.toContain("https://");
   });
   it("renders qualified limits, scope, evidence and conflicts without choosing a request maximum", async () => {
     const model: WebsiteModel = {
@@ -435,11 +307,11 @@ describe("model details", () => {
     expect(html).not.toContain("Combined input, thinking and output budget");
     expect(html).toContain("Input and output share one budget; not a separate output grant.");
     expect(html).toContain("Unresolved source conflict");
-    expect(html.indexOf("requires beta header")).toBeLessThan(html.indexOf("1 source"));
+    expect(html.indexOf("requires beta header")).toBeLessThan(html.indexOf("claim-sources"));
     expect(html).toContain('href="https://example.com/limits"');
-    expect(html).toContain("2026-11-17T12:00:00.000Z");
+    expect(html).not.toContain("Native output evidence");
     expect(html).toContain("At a glance / output");
-    expect(html).toContain("a".repeat(64));
+    expect(html).not.toContain("a".repeat(64));
     expect(html).toContain("&lt;img");
     expect(load(html)('img[src="x"], [onerror]')).toHaveLength(0);
     expect(html).not.toContain("<script>");

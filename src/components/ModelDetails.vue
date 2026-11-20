@@ -18,6 +18,8 @@ import PricingDetails from "./PricingDetails.vue";
 import ModelMetadata from "./ModelMetadata.vue";
 import ModelLimitDetails from "./ModelLimitDetails.vue";
 import ModelCapabilityDetails from "./ModelCapabilityDetails.vue";
+import CapabilityValues from "./CapabilityValues.vue";
+import { capabilityRows } from "../catalog/capability-presentation.ts";
 import UiIcon from "./UiIcon.vue";
 
 const props = defineProps<{
@@ -64,6 +66,22 @@ const availability = computed(() => {
     : `${count} observed deployment${count === 1 ? "" : "s"}`;
 });
 const apiEndpoints = computed(() => props.detail?.api_endpoints ?? []);
+const capabilities = computed(() =>
+  props.detail === undefined
+    ? []
+    : capabilityRows(
+        props.detail.capabilities,
+        props.detail.capability_details ?? [],
+        new Set(apiEndpoints.value.map(({ path }) => path)),
+      ),
+);
+/** Capability values that differ between endpoints, shown on the endpoint they apply to. */
+function endpointCapabilities(path: string) {
+  return capabilities.value.flatMap(({ key, label, byEndpoint }) => {
+    const values = byEndpoint.get(path);
+    return values === undefined ? [] : [{ key, label, values }];
+  });
+}
 const availabilitySummary = computed(() => {
   const regionCount = new Set(deploymentAvailability.value.flatMap(({ regions }) => regions)).size;
   const deploymentCount = deploymentAvailability.value.length;
@@ -321,21 +339,10 @@ onUnmounted(() => {
 
             <section v-if="detail" class="detail-section" aria-labelledby="modalities-heading">
               <h3 id="modalities-heading">Modalities & capabilities</h3>
-              <div class="modality-flow">
-                <div>
-                  <small>Input</small>
-                  {{ detail.modalities.input.join(", ") || "Unknown" }}
-                </div>
-                <UiIcon name="arrow-right" aria-hidden="true" />
-                <div>
-                  <small>Output</small>
-                  {{ detail.modalities.output.join(", ") || "Unknown" }}
-                </div>
-              </div>
               <ModelCapabilityDetails
                 :key="detail.model_ref"
-                :capabilities="detail.capabilities"
-                :groups="detail.capability_details ?? []"
+                :modalities="detail.modalities"
+                :rows="capabilities"
               />
             </section>
 
@@ -349,6 +356,15 @@ onUnmounted(() => {
                 <li v-for="endpoint in apiEndpoints" :key="`${endpoint.name}:${endpoint.path}`">
                   <span>{{ endpoint.name }}</span>
                   <code>{{ endpoint.path }}</code>
+                  <dl
+                    v-if="endpointCapabilities(endpoint.path).length"
+                    class="endpoint-capabilities"
+                  >
+                    <div v-for="{ key, label, values } in endpointCapabilities(endpoint.path)" :key>
+                      <dt>{{ label }}</dt>
+                      <dd><CapabilityValues :values /></dd>
+                    </div>
+                  </dl>
                 </li>
               </ul>
             </section>

@@ -120,10 +120,12 @@ The international and China OpenAPI documents each own scoped reasoning effort f
 Chat Completions, Responses and Anthropic Messages requests. Preserve the native enum and the
 explicit default separately. The Chat discriminator and component Model IDs must agree.
 Responses and Messages use their independent operation model declarations. An older model's
-thinking toggle does not provide native effort values.
+thinking toggle does not provide native effort values. Effort and cache statements bind to the
+operation's exact endpoint path, with the document's market as the residual condition.
 
 The same market's cache guide owns its exact Cache Write model list, default placement, and the
-implicit-only Chat Completions and Responses request mode. Those two APIs share one cache claim
+implicit-only Chat Completions and Responses request mode, recorded as the implicit mode alone.
+Those two APIs share one cache claim
 because the guide states a common mode contract. Messages has a separate claim because it uses
 a distinct top-level cache setting and does not document an explicit cache-object exclusion.
 The OpenAPI request and the guide must agree. Missing evidence for one cache claim does not

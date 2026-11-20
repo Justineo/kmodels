@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { modelClaimGroupSchema, modelClaimGroupsSchema } from "./model-claim-details.ts";
+import {
+  modelClaimGroupSchema,
+  modelClaimGroupsSchema,
+  websiteClaimGroupSchema,
+} from "./model-claim-details.ts";
 
 const scope = z
   .string()
@@ -25,6 +29,11 @@ const applicability = z
       .refine((value) => value.trim() === value)
       .optional(),
     condition: scope.optional(),
+    /** Native route path in the provider's `api_endpoints` format, from the claim's own source. */
+    endpoint: scope
+      .max(256)
+      .refine((value) => value.trim() === value)
+      .optional(),
   })
   .optional();
 
@@ -34,51 +43,38 @@ const reasoningEffortSchema = z
     scope,
     applicability,
     supported_values: nativeValues.optional(),
-    unsupported_values: nativeValues.optional(),
     default_value: nativeValue.optional(),
   })
-  .superRefine(({ supported_values, unsupported_values, default_value }, context) => {
-    if (
-      supported_values === undefined &&
-      unsupported_values === undefined &&
-      default_value === undefined
-    )
-      context.addIssue({
-        code: "custom",
-        message: "An effort statement must report a documented fact",
-      });
-    if (
-      unsupported_values?.some(
-        (value) => supported_values?.includes(value) || default_value === value,
-      )
-    )
-      context.addIssue({ code: "custom", message: "Contradictory native effort values" });
-  });
+  .refine(
+    ({ supported_values, default_value }) =>
+      supported_values !== undefined || default_value !== undefined,
+    "An effort statement must report documented levels or a default",
+  );
 
 export const capabilityStatementSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("prompt_cache"),
     scope,
     applicability,
+    // Only a documented, usable mode is recorded; an unsupported mode stays absent.
     mode: z.enum(["implicit", "explicit"]),
-    supported: z.boolean(),
   }),
   reasoningEffortSchema,
 ]);
-
 export const capabilityDetailGroupSchema = modelClaimGroupSchema(capabilityStatementSchema);
 export const capabilityDetailsSchema = modelClaimGroupsSchema(capabilityDetailGroupSchema, 10);
+const websiteCapabilityDetailGroupSchema = websiteClaimGroupSchema(capabilityStatementSchema);
+export const websiteCapabilityDetailsSchema = modelClaimGroupsSchema(
+  websiteCapabilityDetailGroupSchema,
+  10,
+);
 
 export type CapabilityStatement = z.infer<typeof capabilityStatementSchema>;
 export type CapabilityDetailGroup = z.infer<typeof capabilityDetailGroupSchema>;
-
-export const capabilityByStatement = {
-  reasoning_effort: "reasoning",
-  prompt_cache: "prompt_cache",
-} satisfies Record<CapabilityStatement["kind"], string>;
+export type WebsiteCapabilityDetailGroup = z.infer<typeof websiteCapabilityDetailGroupSchema>;
 
 export function hasStructuredCapabilityDetails(
-  groups: readonly CapabilityDetailGroup[] | undefined,
+  groups: readonly Pick<CapabilityDetailGroup, "statements">[] | undefined,
 ): boolean {
   return (
     groups?.some(({ statements }) => statements.some((s) => s.applicability !== undefined)) ?? false
@@ -90,18 +86,10 @@ export function capabilityStatementsConflict(
   right: CapabilityStatement,
 ): boolean {
   if (left.scope !== right.scope) return false;
-  if (left.kind === "prompt_cache" && right.kind === "prompt_cache")
-    return left.mode === right.mode && left.supported !== right.supported;
   if (left.kind !== "reasoning_effort" || right.kind !== "reasoning_effort") return false;
-  const contradicts = (positive: typeof left, exclusions: readonly string[] | undefined) =>
-    exclusions?.some(
-      (value) => positive.default_value === value || positive.supported_values?.includes(value),
-    ) ?? false;
   return (
-    (left.default_value !== undefined &&
-      right.default_value !== undefined &&
-      left.default_value !== right.default_value) ||
-    contradicts(left, right.unsupported_values) ||
-    contradicts(right, left.unsupported_values)
+    left.default_value !== undefined &&
+    right.default_value !== undefined &&
+    left.default_value !== right.default_value
   );
 }

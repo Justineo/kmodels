@@ -87,22 +87,22 @@ export function addOpenAiCacheModes(
         {
           kind: "prompt_cache",
           mode: "implicit",
-          supported: true,
           scope: "OpenAI Responses API • provider-selected eligible prefix breakpoints",
           applicability: {
             interface: "OpenAI Responses API",
             condition: "Provider-selected eligible prefix breakpoints",
+            endpoint: "v1/responses",
           },
         },
         {
           kind: "prompt_cache",
           mode: "explicit",
-          supported: true,
           scope: "OpenAI Responses API • caller-selected prefix breakpoints",
           applicability: {
             interface: "OpenAI Responses API",
             parameter: "prompt_cache_options.mode",
             condition: "Caller-selected prefix breakpoints",
+            endpoint: "v1/responses",
           },
         },
       ],

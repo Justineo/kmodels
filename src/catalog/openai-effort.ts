@@ -7,58 +7,18 @@ import {
 } from "./source-model-details.ts";
 import type { SourceParseInput } from "./source-parse.ts";
 
-const responseEffort = { interface: "OpenAI Responses API", parameter: "reasoning.effort" };
-const chatEffort = { interface: "OpenAI Chat Completions API", parameter: "reasoning_effort" };
+const responsesPath = "v1/responses";
+const responseEffort = {
+  interface: "OpenAI Responses API",
+  parameter: "reasoning.effort",
+  endpoint: responsesPath,
+};
 
-function effortScope({ interface: api, parameter }: typeof responseEffort): string {
-  return `${api} (${parameter})`;
-}
-
-/** The dotted Responses parameter and the underscored Chat parameter have separate API scopes. */
 export function addOpenAiEffort(
   input: SourceParseInput,
   { model, document }: OpenAiModelCard,
 ): void {
   const intro = markdownProse(document.body).split(/^## /m, 1)[0] ?? "";
-  const rejections = [
-    ...intro.matchAll(
-      /^The API rejects requests that set reasoning effort to `([a-z][a-z0-9_-]*)`\.$/gim,
-    ),
-  ];
-  const unsupported = rejections.flatMap((match) => match[1] ?? []);
-  if (unsupported.length) {
-    const statements = (model.api_endpoints ?? []).flatMap(({ path }) => {
-      const applicability =
-        path === "v1/responses"
-          ? responseEffort
-          : path === "v1/chat/completions"
-            ? chatEffort
-            : undefined;
-      return applicability
-        ? [
-            {
-              kind: "reasoning_effort" as const,
-              scope: effortScope(applicability),
-              applicability,
-              unsupported_values: unsupported,
-            },
-          ]
-        : [];
-    });
-    if (statements.length)
-      addCapabilityDetailGroup(input, model, {
-        claim: "api_effort_exclusions",
-        statements,
-        evidence: [
-          modelDocumentEvidence(
-            input,
-            document,
-            "Model ID, unconditional API effort rejection and Endpoints table",
-            rejections.map((match) => match[0]).join("\n"),
-          ),
-        ],
-      });
-  }
   const declarations = [
     ...intro.matchAll(/(?:^|[.!?]\s+|\n)(reasoning\.effort supports: ([^\n]+))$/gim),
   ];
@@ -76,7 +36,7 @@ export function addOpenAiEffort(
     !values?.length ||
     supported.length !== values.length ||
     defaults.length > 1 ||
-    !model.api_endpoints?.some(({ path }) => path === "v1/responses")
+    !model.api_endpoints?.some(({ path }) => path === responsesPath)
   ) {
     capabilityDetailFinding(input, "responses_effort");
     return;
@@ -86,7 +46,7 @@ export function addOpenAiEffort(
     statements: [
       {
         kind: "reasoning_effort",
-        scope: effortScope(responseEffort),
+        scope: `${responseEffort.interface} (${responseEffort.parameter})`,
         applicability: responseEffort,
         supported_values: supported,
         ...(defaults[0] === undefined ? {} : { default_value: defaults[0] }),

@@ -89,24 +89,14 @@ it("keeps native Gemini cache modes and thinking defaults separate by exact API 
   const { models } = parse("gemini", "gemini-models", bundle);
   const carbon = models.find(({ model_id }) => model_id === "gemini-4-carbon");
   const flash = models.find(({ model_id }) => model_id === "gemini-3.8-flash");
-  expect(
-    carbon?.capability_details?.find(({ claim }) => claim === "generate_content_cache_modes")
-      ?.statements,
-  ).toContainEqual(
-    expect.objectContaining({ kind: "prompt_cache", mode: "explicit", supported: false }),
-  );
-  expect(
-    flash?.capability_details?.find(({ claim }) => claim === "interactions_cache_modes")
-      ?.statements,
-  ).toContainEqual(
-    expect.objectContaining({ kind: "prompt_cache", mode: "explicit", supported: false }),
-  );
-  expect(
-    flash?.capability_details?.find(({ claim }) => claim === "generate_content_cache_modes")
-      ?.statements,
-  ).toContainEqual(
-    expect.objectContaining({ kind: "prompt_cache", mode: "explicit", supported: true }),
-  );
+  const cacheModes = (model: typeof flash, claim: string) =>
+    model?.capability_details
+      ?.find((group) => group.claim === claim)
+      ?.statements.map((statement) => (statement.kind === "prompt_cache" ? statement.mode : ""));
+  // A documented exclusion leaves the explicit mode absent rather than stored as unsupported.
+  expect(cacheModes(carbon, "generate_content_cache_modes")).toEqual(["implicit"]);
+  expect(cacheModes(flash, "interactions_cache_modes")).toEqual(["implicit"]);
+  expect(cacheModes(flash, "generate_content_cache_modes")).toEqual(["implicit", "explicit"]);
   expect(
     flash?.capability_details?.find(({ claim }) => claim === "interactions_thinking_levels")
       ?.statements,
@@ -114,8 +104,20 @@ it("keeps native Gemini cache modes and thinking defaults separate by exact API 
     expect.objectContaining({
       supported_values: ["low", "medium", "high"],
       default_value: "medium",
-      unsupported_values: ["minimal"],
+      applicability: {
+        interface: "Gemini Interactions API",
+        parameter: "thinking_level",
+        endpoint: "/v1beta/interactions",
+      },
     }),
+  ]);
+  expect(
+    flash?.capability_details
+      ?.find(({ claim }) => claim === "generate_content_cache_modes")
+      ?.statements.map(({ applicability }) => applicability?.endpoint),
+  ).toEqual([
+    "/v1beta/models/gemini-3.8-flash:generateContent",
+    "/v1beta/models/gemini-3.8-flash:generateContent",
   ]);
   expect(
     models.find(({ model_id }) => model_id === "gemini-2.5-flash-lite")?.capability_details?.[0]
@@ -237,13 +239,11 @@ it("joins xAI automatic caching to exact Chat and Responses requests independent
     expect.objectContaining({
       kind: "prompt_cache",
       mode: "implicit",
-      supported: true,
       scope: expect.stringContaining("Chat Completions"),
     }),
     expect.objectContaining({
       kind: "prompt_cache",
       mode: "implicit",
-      supported: true,
       scope: expect.stringContaining("Responses"),
     }),
   ]);
@@ -264,6 +264,12 @@ it("uses Kimi native enum and default without copying effort into an older model
     expect.objectContaining({
       supported_values: ["low", "high", "max", "adaptive"],
       default_value: "adaptive",
+      applicability: {
+        interface: "Kimi Chat Completions API",
+        condition: "International",
+        endpoint: "/v1/chat/completions",
+        parameter: "reasoning_effort",
+      },
     }),
   ]);
   expect(
@@ -551,4 +557,17 @@ it("inspects the owned DeepSeek effort by operation and leaves a missing Respons
     expect.objectContaining({ supported_values: ["none", "low", "high", "max"] }),
   );
   expect(responses?.statements[0]).not.toHaveProperty("default_value");
+  expect(model?.capability_details?.map(({ statements }) => statements[0]?.applicability)).toEqual([
+    {
+      interface: "DeepSeek Chat Completions API",
+      parameter: "reasoning_effort",
+      endpoint: "/chat/completions",
+    },
+    { interface: "DeepSeek Responses API", parameter: "reasoning.effort", endpoint: "/responses" },
+    {
+      interface: "DeepSeek Anthropic Messages API",
+      parameter: "output_config.effort",
+      endpoint: "/anthropic/v1/messages",
+    },
+  ]);
 });

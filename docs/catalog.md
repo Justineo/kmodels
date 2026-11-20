@@ -152,18 +152,22 @@ snapshot is merged atomically to avoid combining different package versions.
   remote MCP, or account entitlement. Those claims require evidence at their own scope.
   The pricing meter named `tool_call` describes a billed quantity independently of this flag.
 - Optional `capability_details` records separately evidenced prompt-cache modes and native
-  reasoning-effort values for an exact model and API. A documented implicit cache and an explicit
-  cache exclusion can coexist in one scope. Effort options retain native spelling and display
-  separately from a documented default or explicit exclusions. Omitted values remain unknown.
-  A scoped fact leaves the independently collected model-wide flag intact. Effort control is a
-  separate flag within the reasoning capability. Neither a reasoning flag nor one scoped
-  rejection establishes an effort control, option list or default. A cache mode supplies no
+  reasoning-effort configuration for an exact model and documented scope. Cache statements record
+  only modes documented as usable; an unsupported or excluded mode is omitted rather than stored as
+  a negative fact, so absence never distinguishes "excluded" from "unknown". Effort statements record supported
+  values, an independently documented default, or both. Preserve native spelling and leave omitted
+  facts unknown. A list of documented values alone does not establish that the list is exhaustive.
+  Model-wide reasoning and effort control remain independent flags. A cache mode supplies no
   cache-hit or tariff evidence.
-  Each statement keeps its complete `scope`. Producers can also record bounded `applicability`
-  with an evidenced interface identity, optional native parameter and optional residual condition.
-  This is presentation metadata. Existing conflict detection compares the original scope.
-  Where an interface, parameter or residual condition cannot be bound from source evidence, the
-  complete scope text remains the presentation contract.
+  Each statement keeps its complete `scope` as audit text and the conflict-detection key.
+  Producers also record bounded `applicability`: an evidenced interface identity, optional native
+  parameter, optional residual condition such as a market, and an optional `endpoint`. The
+  endpoint is the native route path, in the provider's `api_endpoints` format, of the API the
+  claim's own source documents; it is never inferred from another provider or from scope prose.
+  Endpoints can be merged from another source, so collection does not require the path to be
+  present when the claim is parsed; consumers join on it and fall back to the interface when no
+  published endpoint matches. Applicability is the presentation contract; scope prose is not
+  displayed.
 - `status` describes availability/support: `active`, `legacy`, `deprecated`, `retired`, or `unknown`.
 - `release_stage` independently describes maturity: `stable`, `preview`, `experimental`, or `unknown`.
 - `legacy` means callable but superseded or restricted. `deprecated` means migration is announced while some use remains. `retired` requires evidence that requests or deployments are unavailable.

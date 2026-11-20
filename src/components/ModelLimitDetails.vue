@@ -2,12 +2,12 @@
 import { computed } from "vue";
 import {
   limitStatementsConflict,
-  type LimitDetailGroup,
+  type WebsiteLimitDetailGroup,
   type LimitStatement,
 } from "../catalog/model-limit-details.ts";
 import ModelClaimEvidence from "./ModelClaimEvidence.vue";
 
-const props = defineProps<{ groups: LimitDetailGroup[] }>();
+const props = defineProps<{ groups: WebsiteLimitDetailGroup[] }>();
 const statements = computed(() => props.groups.flatMap(({ statements }) => statements));
 const hasConflict = computed(() =>
   statements.value.some((left) =>

@@ -3,8 +3,7 @@ import { storeInferencePrices } from "./website-inference-storage.ts";
 import { canonicalJsonKey, compareUtf8, uniqueCanonicalValues } from "./canonical-value.ts";
 import { modelLifecycles, modelReleaseStages, modelTasks } from "./catalog-vocabulary.ts";
 import { manifests, type ProviderManifest } from "./manifests.ts";
-import { hasStructuredCapabilityDetails } from "./model-capability-details.ts";
-import { hasClaimStatements } from "./model-claim-details.ts";
+import { claimSources, hasClaimStatements } from "./model-claim-details.ts";
 import { formatDecimal, formatSentenceCase } from "./presentation.ts";
 import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
 import {
@@ -362,15 +361,12 @@ function websiteDeferredAssets(
         storedDetails,
         (values, chunk) =>
           websiteDetailChunkSchema.parse({
-            schema_version: values.some(({ capability_details }) =>
-              hasStructuredCapabilityDetails(capability_details),
+            schema_version: values.some(
+              ({ limit_details, capability_details }) =>
+                hasClaimStatements(limit_details) || hasClaimStatements(capability_details),
             )
-              ? 10
-              : values.some(({ capability_details }) => hasClaimStatements(capability_details))
-                ? 9
-                : values.some(({ limit_details }) => hasClaimStatements(limit_details))
-                  ? 8
-                  : 7,
+              ? 11
+              : 7,
             data_version: dataVersion,
             provider_id: provider.id,
             chunk,
@@ -667,9 +663,11 @@ function websiteModelDetailFromView(
 ): WebsiteModelDetail {
   const pricingDetail = websitePricingDetail(view, model.uid, labels, atoms);
   const deploymentAvailability = groupedDeploymentAvailability(model);
-  const limitDetails = model.limit_details?.filter(({ statements }) => statements.length > 0);
-  const capabilityDetails = model.capability_details?.filter(
-    ({ statements }) => statements.length > 0,
+  const limitDetails = model.limit_details?.flatMap(({ evidence, ...group }) =>
+    group.statements.length ? [{ ...group, evidence: claimSources(evidence) }] : [],
+  );
+  const capabilityDetails = model.capability_details?.flatMap(({ evidence, ...group }) =>
+    group.statements.length ? [{ ...group, evidence: claimSources(evidence) }] : [],
   );
   return {
     model_ref: model.uid,

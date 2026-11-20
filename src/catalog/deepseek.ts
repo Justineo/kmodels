@@ -277,6 +277,11 @@ function applyDeepseekEffort(input: Input, bundle: Bundle, models: readonly Prov
             {
               kind: "reasoning_effort",
               scope: `DeepSeek ${endpoint.name} API (POST ${endpoint.path}, ${name}).${precedence}${aliases === undefined ? "" : " " + aliases}`,
+              applicability: {
+                interface: `DeepSeek ${endpoint.name} API`,
+                parameter: name,
+                endpoint: endpoint.path,
+              },
               supported_values: options,
               ...(defaultValue === undefined ? {} : { default_value: defaultValue }),
             },

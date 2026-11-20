@@ -519,14 +519,16 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   the exact schema 7 shape. A publication may contain both explicit versions. Statement-bearing
   publications add the `model-limit-details-v8` salt to `data_version`, independently of producer
   catalog-version changes. No-detail publication bytes and cache identity remain unchanged.
-  Chunks with visible `capability_details` use strict schema 9 for statements with scope text only
-  and strict schema 10 when at least one statement carries structured applicability. Both can
-  also carry qualified limits. The corresponding conditional capability salt is
-  `model-capability-details-v9` or `model-capability-applicability-v10`, selected for the
-  publication using the same statement checks as the writer and accepted-pack validator.
-  A publication can mix compatible chunks from schemas 7 through 10. Withdrawals stay in
-  canonical storage and do not change the chunk schema or cache identity. Existing publications
-  remain readable under their original identities.
+  Chunks with visible capability details use the conditional `model-capability-details-v9` or
+  `model-capability-applicability-v10` salt, selected with the same statement checks as the
+  accepted-pack validator. The writer emits strict schema 11 for every chunk that carries
+  limit or capability statements. Schema 11 cites each claim source by document URL, locator and
+  observation time only; excerpts and document hashes stay audit evidence in canonical storage.
+  Statement-bearing publications add the `model-claim-sources-v11` salt. Schemas 8, 9 and 10
+  stay in the reader for accepted chunks whose statements still fit the current statement schema;
+  chunks with fields since removed from canonical storage are republished as schema 11 rather than
+  read through a legacy shape. Withdrawals stay in canonical storage and do not change the chunk
+  schema or cache identity.
   Cache completed and in-flight chunks by data version, and retain parsed model
   details after either path. Failed preloads stay silent and are evicted so an
   explicit open can retry.
@@ -547,31 +549,40 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
 - Qualified limits appear in the existing model inspector, with the quantity, maximum/default/no
   separate cap, measurement and complete scope always visible together. The shared-context label
   does not invent which token categories participate; the source-owned scope supplies them.
-  Ordinary scalar limits remain visible as unqualified catalog summaries. Each claim has a
-  compact source disclosure. Its pill counts distinct document URLs and stacks one icon per
-  source origin. Load each HTTPS site's own `/favicon.ico` as an image without a referrer.
-  Use the hostname initial for HTTP sources and unavailable icons. Expanded citations link the source
-  host and document locator to the original URL, alongside the excerpt and revision hash.
-  A clock beside each link shows when that document was checked in a local-time tooltip.
+  Ordinary scalar limits remain visible as unqualified catalog summaries. Each claim or
+  capability finding ends with one compact citation link per distinct document: its site icon
+  and host, plus the path when two cited documents share a host. Load each HTTPS site's own
+  `/favicon.ico` as an image without a referrer; use the hostname initial for HTTP sources and
+  unavailable icons. The link's tooltip and accessible name carry that document's locators and
+  its latest check in local time. Readers verify a claim at its source rather than in a quoted
+  excerpt.
   The inspector never evaluates scope text or computes a request maximum.
   Equal quantity/measurement/scope with unequal finite maxima, or a maximum versus no separate
   cap, is an unresolved source conflict. Defaults are independent of maxima; disagreeing defaults
   conflict only with each other. Different scope text is shown separately without inferring
   equivalence or disjoint applicability. Missing details do not manufacture a negative claim.
-- Modalities & capabilities shows labeled input and output once, followed by a stable list with
-  one row for each capability with model-wide or scoped evidence. Flag-only rows are plain.
-  Expandable rows start collapsed and operate independently. Explicit model-wide negatives carry
-  an unsupported label. Scoped-only rows identify their API-specific reach. Unknown flags and
-  withdrawn detail groups contribute no facts. Delivery modes remain in Overview.
-  Reasoning owns effort behavior and the independently evidenced effort-control flag. Prompt
-  caching owns automatic and caller-defined modes, each with its own documented support state.
-  Keep native options, quoted exclusions and defaults next to the applicable conditions.
-  Show the complete scope text for old or unstructured observations. Use the evidenced interface,
-  native parameter and residual condition when a producer supplies structured applicability.
-  One claim can present an identical effort conclusion once with its individual request
-  bindings when their structured conditions agree. Cache modes can share the same documented
-  interface within a claim. Keep each claim's sources with its findings. A same-scope conflict is
-  visible on the collapsed capability row, and expansion retains both observations and sources.
+- Modalities & capabilities answers only what goes in, what comes out and what the model can do.
+  Input and output appear once as modality tags joined by a direction arrow. Supported
+  capabilities follow; unsupported and unknown capabilities are not shown. A model with no
+  supported capability shows one "No capability information published" note. Delivery modes
+  remain in Overview.
+- Capabilities without native options are one row of tags. Capabilities with structured options,
+  currently reasoning effort and prompt caching modes, become label/value rows of option tags.
+  The default option has a distinct tag style and a "Default" tooltip, never inline text; when
+  only some APIs state the default, the tooltip reads "Default where documented". Scope prose is
+  not displayed. Options that every evidenced API shares appear once. An unstated default is
+  unknown, not a difference, while disagreeing defaults for the same API leave that default
+  unknown and mark the row with a "Sources disagree" indicator.
+- Option values that differ between APIs belong to endpoints, not to the capability. The row
+  reads "Varies by endpoint" and each Published endpoints row lists its own values, joined by the
+  statement's `applicability.endpoint` path. A binding without a matching published endpoint
+  stays under the capability, labelled by its evidenced interface. Each capability row ends with
+  compact site icons linking its sources; the tooltip carries host, locators and check time.
+- `src/catalog/capability-presentation.ts` owns this presentation. Each capability statement kind
+  registers the capability it evidences and a function returning its supported option values with
+  an optional default. A new statement kind adds a schema member, a registry entry and its
+  dispatch case; the type checker rejects a missing one. Grouping, merging and endpoint placement
+  are shared, so a new kind needs no presentation rule of its own.
 - Use one `data_version` derived from the accepted catalog/pricing pair and core
   transport version on the manifest, core chunks, model-detail, shared-offer,
   and provider-detail projections. Reject mismatched core chunks before mounting
@@ -600,8 +611,9 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   reactive detail state.
 - UI projections exclude audit source records, observations, locators, undigested source
   fragments, derivations, evidence arrays, and canonical audit-envelope metadata. Versioned
-  model detail chunks carry bounded document evidence for scoped limit and capability claims,
-  including each document locator under its claim's `evidence`. Raw commercial facts may
+  model detail chunks cite the documents behind scoped limit and capability claims by URL,
+  locator and observation time under each claim's `evidence`, without excerpts or document
+  hashes. Raw commercial facts may
   retain only display-safe structured parameters such as amount, denomination, unit, meter,
   validity, formula, and
   conditions. They retain displayed commercial semantics—including reviewed usage-signal

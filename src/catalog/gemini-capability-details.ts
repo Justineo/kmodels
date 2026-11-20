@@ -17,13 +17,32 @@ export interface GeminiCapabilityPage {
 }
 type Markup = (body: string) => string | undefined;
 const apis = [
-  { scope: "Gemini Interactions API", key: "interactions", query: "" },
+  {
+    scope: "Gemini Interactions API",
+    key: "interactions",
+    query: "",
+    endpoint: () => "/v1beta/interactions",
+  },
   {
     scope: "Gemini GenerateContent API",
     key: "generate_content",
     query: "?generate-content=true",
+    endpoint: (id: string) => `/v1beta/models/${id}:generateContent`,
   },
 ] as const;
+
+/** Binds a statement to the native route of the guide variant that evidenced it. */
+function applicability(
+  page: GeminiCapabilityPage,
+  api: (typeof apis)[number],
+  parameter?: string,
+): NonNullable<CapabilityStatement["applicability"]> {
+  return {
+    interface: api.scope,
+    ...(parameter === undefined ? {} : { parameter }),
+    endpoint: api.endpoint(page.model.model_id),
+  };
+}
 
 function scopedMarkdown(body: string): string {
   return body.replace(/[ \t]+\{% id="[^"]+" %\}(?=\r?$)/gm, "");
@@ -156,8 +175,8 @@ function cacheModes(
       {
         kind: "prompt_cache",
         mode: "implicit",
-        supported: true,
         scope: api.scope + ". Enabled by default.",
+        applicability: applicability(page, api),
       },
     ];
     const excerpt = [apiScope, enabled, `| ${page.model.name} | ${minimum} |`];
@@ -172,19 +191,14 @@ function cacheModes(
       capabilityDetailFinding(input, claim);
       continue;
     }
-    if (api.key === "interactions" || ownMode?.length === 1)
+    // The Interactions guide and an implicit-only model page exclude cache objects; only a
+    // model-specific GenerateContent workflow establishes the explicit mode.
+    if (api.key !== "interactions" && ownMode?.length !== 1 && positive !== undefined) {
       statements.push({
         kind: "prompt_cache",
         mode: "explicit",
-        supported: false,
-        scope: api.scope + ". Creating and managing cache objects is unavailable.",
-      });
-    else if (positive !== undefined) {
-      statements.push({
-        kind: "prompt_cache",
-        mode: "explicit",
-        supported: true,
         scope: api.scope + ". Create and reference a cache object through the v1beta API.",
+        applicability: applicability(page, api),
       });
       excerpt.push(positive);
     }
@@ -230,7 +244,6 @@ function thinkingLevels(
   document: Document,
   body: string,
   pages: readonly GeminiCapabilityPage[],
-  markdown: Markup,
   api: (typeof apis)[number],
   claim: string,
 ): void {
@@ -273,20 +286,8 @@ function thinkingLevels(
       return [id, { state, options, values, enabled: mode[1] === "On", defaultValue: mode[2] }];
     }),
   );
-  const exclusions = [
-    ...section.matchAll(/Not supported on [^.\n]*?\x60([a-z][a-z0-9._-]+)\x60\./g),
-  ];
-  const minimalLine = section
-    .split("\n")
-    .find((line) => line.startsWith("| \x60minimal\x60 |") && line.includes("Not supported on"));
   for (const [page, row] of matchingPages(pages, facts, (model) => model.model_id)) {
     const id = page.model.model_id;
-    const familyTitle = /^# Gemini 4 [^\r\n]+$/m.exec(pageProse(page, markdown))?.[0];
-    const familyExcluded =
-      familyTitle !== undefined &&
-      minimalLine?.includes("Not supported on Gemini 4 models") === true;
-    const minimalExcluded =
-      familyExcluded || (minimalLine !== undefined && exclusions.some((match) => match[1] === id));
     addCapabilityDetailGroup(input, page.model, {
       claim,
       statements: [
@@ -295,9 +296,9 @@ function thinkingLevels(
           scope:
             api.scope +
             `. ${parameter} controls dynamic thinking. Thinking is ${row.enabled ? "on" : "off"} when omitted.`,
+          applicability: applicability(page, api, parameter),
           supported_values: row.values,
           ...(row.defaultValue === undefined ? {} : { default_value: row.defaultValue }),
-          ...(minimalExcluded ? { unsupported_values: ["minimal"] } : {}),
         },
       ],
       evidence: [
@@ -305,20 +306,8 @@ function thinkingLevels(
           input,
           document,
           "Controlling thinking; model options and default",
-          [`${id} | ${row.state} | ${row.options}`, minimalExcluded ? minimalLine : undefined]
-            .filter(Boolean)
-            .join("\n"),
+          `${id} | ${row.state} | ${row.options}`,
         ),
-        ...(familyExcluded
-          ? [
-              modelDocumentEvidence(
-                input,
-                page.document,
-                "Model title and Model code",
-                `${familyTitle}\n${id}`,
-              ),
-            ]
-          : []),
       ],
     });
   }
@@ -348,7 +337,7 @@ export function applyGeminiCapabilityDetails(
         const body = markdown(document.body);
         if (body === undefined) throw new Error("Unrecognized Gemini guide format");
         if (topic === "caching") cacheModes(input, document, body, eligible, markdown, api, claim);
-        else thinkingLevels(input, document, body, eligible, markdown, api, claim);
+        else thinkingLevels(input, document, body, eligible, api, claim);
       } catch {
         capabilityDetailFinding(input, claim);
       }

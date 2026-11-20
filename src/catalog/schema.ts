@@ -258,9 +258,10 @@ export function migrateCatalogStorage(value: unknown): unknown {
       ? {
           models: value.models.map((model) => {
             if (model === null || typeof model !== "object" || Array.isArray(model)) return model;
-            if ("tasks" in model || !("operations" in model)) return model;
+            const current = migrateCapabilityStatements(model);
+            if ("tasks" in current || !("operations" in current)) return current;
             return Object.fromEntries(
-              Object.entries({ ...model, tasks: model.operations }).filter(
+              Object.entries({ ...current, tasks: current.operations }).filter(
                 ([field]) => field !== "operations",
               ),
             );
@@ -280,6 +281,42 @@ export function migrateCatalogStorage(value: unknown): unknown {
       return Object.fromEntries(entries);
     }),
   };
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/**
+ * Capability statements once recorded unsupported options: a cache support flag and effort
+ * `unsupported_values`. Only usable options are stored now. Drop unsupported cache modes and effort
+ * statements left without a documented fact, strip the flags, and drop a group left without
+ * statements so it does not become a withdrawal receipt.
+ */
+function migrateCapabilityStatement(statement: unknown): unknown[] {
+  if (!isRecord(statement)) return [statement];
+  if (statement.kind === "prompt_cache" && "supported" in statement) {
+    if (statement.supported === false) return [];
+    const { supported: _supported, ...current } = statement;
+    return [current];
+  }
+  if (statement.kind === "reasoning_effort" && "unsupported_values" in statement) {
+    const { unsupported_values: _excluded, ...current } = statement;
+    return "supported_values" in current || "default_value" in current ? [current] : [];
+  }
+  return [statement];
+}
+
+function migrateCapabilityStatements(model: object): object {
+  if (!("capability_details" in model) || !Array.isArray(model.capability_details)) return model;
+  const groups = model.capability_details.flatMap((group: unknown) => {
+    if (!isRecord(group) || !Array.isArray(group.statements)) return [group];
+    const statements = group.statements.flatMap(migrateCapabilityStatement);
+    return group.statements.length > 0 && statements.length === 0 ? [] : [{ ...group, statements }];
+  });
+  if (groups.length > 0 || model.capability_details.length === 0)
+    return { ...model, capability_details: groups };
+  const { capability_details: _details, ...rest } = model;
+  return rest;
 }
 
 export function unknownCapabilities(): ProviderModel["capabilities"] {

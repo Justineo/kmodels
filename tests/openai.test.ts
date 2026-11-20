@@ -163,7 +163,7 @@ async function openAiModelPricing(
   }).models;
 }
 describe("OpenAI adapters", () => {
-  it("retains a card's explicit effort rejection on each supported text API", async () => {
+  it("keeps supported endpoints when a card publishes only an effort rejection", async () => {
     const models = await parsed("openai", "openai/catalog.json", "openai-models", (body) => {
       const bundle = linkedBundle(body);
       for (const document of bundle.documents)
@@ -173,18 +173,11 @@ describe("OpenAI adapters", () => {
         );
       return JSON.stringify(bundle);
     });
-    const groups = models.find((m) => m.model_id === "gpt-5.4")?.capability_details;
-    expect(groups?.[0]?.statements).toEqual(
-      [
-        { interface: "OpenAI Chat Completions API", parameter: "reasoning_effort" },
-        { interface: "OpenAI Responses API", parameter: "reasoning.effort" },
-      ].map((applicability) => ({
-        kind: "reasoning_effort",
-        scope: `${applicability.interface} (${applicability.parameter})`,
-        applicability,
-        unsupported_values: ["brief"],
-      })),
+    const model = models.find((m) => m.model_id === "gpt-5.4");
+    expect(model?.api_endpoints?.map(({ path }) => path)).toEqual(
+      expect.arrayContaining(["v1/chat/completions", "v1/responses"]),
     );
+    expect(model?.capability_details).toBeUndefined();
   });
   it("joins cache mode semantics only to the exact documented Responses example", async () => {
     const guide = await fixture("openai/cache-modes.md");
@@ -202,7 +195,7 @@ describe("OpenAI adapters", () => {
         (model.capability_details ?? []).flatMap((group) =>
           group.statements.flatMap((statement) =>
             statement.kind === "prompt_cache"
-              ? [[model.model_id, statement.mode, statement.supported, statement.applicability]]
+              ? [[model.model_id, statement.mode, statement.applicability]]
               : [],
           ),
         ),
@@ -211,20 +204,20 @@ describe("OpenAI adapters", () => {
       [
         "gpt-5.4",
         "implicit",
-        true,
         {
           interface: "OpenAI Responses API",
           condition: "Provider-selected eligible prefix breakpoints",
+          endpoint: "v1/responses",
         },
       ],
       [
         "gpt-5.4",
         "explicit",
-        true,
         {
           interface: "OpenAI Responses API",
           parameter: "prompt_cache_options.mode",
           condition: "Caller-selected prefix breakpoints",
+          endpoint: "v1/responses",
         },
       ],
     ]);
@@ -258,7 +251,11 @@ describe("OpenAI adapters", () => {
       {
         kind: "reasoning_effort",
         scope: "OpenAI Responses API (reasoning.effort)",
-        applicability: { interface: "OpenAI Responses API", parameter: "reasoning.effort" },
+        applicability: {
+          interface: "OpenAI Responses API",
+          parameter: "reasoning.effort",
+          endpoint: "v1/responses",
+        },
         supported_values: ["brief", "balanced", "deep"],
         default_value: "balanced",
       },

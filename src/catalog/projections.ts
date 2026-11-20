@@ -43,6 +43,8 @@ export function websiteDataVersion(
   if (scopedLimitDetails) identity.push("model-limit-details-v8");
   if (structuredCapabilityDetails) identity.push("model-capability-applicability-v10");
   else if (scopedCapabilityDetails) identity.push("model-capability-details-v9");
+  // Schema 11 detail chunks cite sources without audit excerpts or document hashes.
+  if (scopedLimitDetails || scopedCapabilityDetails) identity.push("model-claim-sources-v11");
   return sha256(identity.join("\0"));
 }
 

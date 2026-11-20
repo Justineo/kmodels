@@ -89,7 +89,8 @@ explicit native model declaration and retains the catalog's independent Messages
 Compatibility aliases that map to a documented mode are qualified in the scope, rather than
 appearing as additional effort levels. An explicit thinking setting can take precedence over the
 effort toggle. A default-on thinking statement without a named level leaves the native default
-absent. Legacy redirects, cache accounting counters, and the separate caching guide do not
+absent. Each detail binds to its operation's exact endpoint path and native request field.
+Legacy redirects, cache accounting counters, and the separate caching guide do not
 establish API-scoped model cache modes.
 
 ## Rate-book boundary

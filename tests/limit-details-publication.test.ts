@@ -36,6 +36,7 @@ import {
   providerModelSchema,
   type Catalog,
 } from "../src/catalog/schema.ts";
+import { foundAuditFields } from "./website-audit-fields.ts";
 import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
 
 const observedAt = "2026-07-28T00:00:00.000Z";
@@ -99,8 +100,8 @@ function catalog(tokens?: number, capability?: boolean | "withdrawn"): Catalog {
                   : [
                       {
                         kind: "prompt_cache",
-                        mode: "implicit",
-                        supported: capability,
+                        // The flag only varies the stored claim between documented modes.
+                        mode: capability ? "implicit" : "explicit",
                         scope: "Example Responses API",
                       },
                     ],
@@ -481,11 +482,11 @@ describe("scoped capability publication compatibility", () => {
 
   it.each([
     { tokens: undefined, capability: undefined, wire: 7, manifest: 1 },
-    { tokens: 300, capability: undefined, wire: 8, manifest: 2 },
+    { tokens: 300, capability: undefined, wire: 11, manifest: 2 },
     { tokens: undefined, capability: "withdrawn", wire: 7, manifest: 2 },
-    { tokens: 300, capability: "withdrawn", wire: 8, manifest: 2 },
-    { tokens: undefined, capability: true, wire: 9, manifest: 2 },
-    { tokens: 300, capability: false, wire: 9, manifest: 2 },
+    { tokens: 300, capability: "withdrawn", wire: 11, manifest: 2 },
+    { tokens: undefined, capability: true, wire: 11, manifest: 2 },
+    { tokens: 300, capability: false, wire: 11, manifest: 2 },
   ] as const)(
     "recovers v$wire assets with capability receipt $capability and private manifest v$manifest",
     async ({ tokens, capability, wire, manifest }) => {
@@ -507,21 +508,33 @@ describe("scoped capability publication compatibility", () => {
         JSON.parse(gunzipSync(source).toString("utf8")),
       );
       expect(schema_version).toBe(wire);
+      const scopedCapability = capability === true || capability === false;
       const salt =
         (tokens === undefined ? "" : "\0model-limit-details-v8") +
-        (wire === 9 ? "\0model-capability-details-v9" : "");
+        (scopedCapability ? "\0model-capability-details-v9" : "") +
+        (wire === 11 ? "\0model-claim-sources-v11" : "");
       expect(data_version).toBe(
         sha256(
           `website-core-v7\0${full.catalog_version}\0${candidate.pricing.pricing_data_version}${salt}`,
         ),
       );
-      if (wire === 9) {
-        expect(details[0]).toHaveProperty("capability_details", full.models[0]?.capability_details);
+      expect(foundAuditFields(details, "model-details")).toEqual([]);
+      const citedDetails = (field: "limit_details" | "capability_details") =>
+        full.models[0]?.[field]?.map(({ evidence, ...group }) => ({
+          ...group,
+          evidence: evidence.map(({ document_url, locator, observed_at }) => ({
+            document_url,
+            locator,
+            observed_at,
+          })),
+        }));
+      if (scopedCapability) {
+        expect(details[0]).toHaveProperty("capability_details", citedDetails("capability_details"));
       } else {
         expect(details[0]).not.toHaveProperty("capability_details");
       }
       if (tokens !== undefined)
-        expect(details[0]).toHaveProperty("limit_details", full.models[0]?.limit_details);
+        expect(details[0]).toHaveProperty("limit_details", citedDetails("limit_details"));
 
       const rebuild = vi.spyOn(projections, "projectCatalogPair");
       expect(await recoverCatalogPair(output)).toEqual(candidate);

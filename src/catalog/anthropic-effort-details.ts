@@ -288,6 +288,12 @@ export function applyAnthropicEffortDetails(
           kind: "reasoning_effort",
           scope:
             "Direct Claude API Messages. Top-level effort with the model’s default thinking configuration.",
+          // The effort guide's Messages usage line evidences the route and request field.
+          applicability: {
+            interface: "Claude Messages API",
+            parameter: "output_config.effort",
+            endpoint: "v1/messages",
+          },
           supported_values: values,
           default_value: defaultValue,
         } satisfies CapabilityStatement;

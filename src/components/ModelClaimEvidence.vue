@@ -1,153 +1,130 @@
 <script setup lang="ts" vapor>
 import { computed, ref } from "vue";
-import type { ModelDetailEvidence } from "../catalog/model-claim-details.ts";
+import type { ModelClaimSource } from "../catalog/model-claim-details.ts";
 import { formatLocalDateTime } from "../catalog/presentation.ts";
 import UiIcon from "./UiIcon.vue";
 import UiTooltip from "./UiTooltip.vue";
 
-const props = defineProps<{ documents: ModelDetailEvidence[] }>();
-const sources = computed(() =>
-  props.documents.map((evidence) => ({ evidence, url: new URL(evidence.document_url) })),
-);
-const sites = computed(() => [
-  ...new Map(sources.value.map(({ url }) => [url.origin, url])).values(),
-]);
+const props = defineProps<{
+  documents: readonly ModelClaimSource[];
+  /** Site icons only; the host joins the tooltip. */
+  compact?: boolean;
+}>();
+
+/**
+ * One link per cited document, or per site when compact; locators and the latest check move into
+ * the tooltip.
+ */
+const sources = computed(() => {
+  const byDocument = new Map<string, { url: URL; locators: string[]; observedAt: string }>();
+  for (const { document_url, locator, observed_at } of props.documents) {
+    const url = new URL(document_url);
+    const key = props.compact ? url.origin : document_url;
+    const source = byDocument.get(key) ?? { url, locators: [], observedAt: observed_at };
+    byDocument.set(key, source);
+    if (!source.locators.includes(locator)) source.locators.push(locator);
+    if (observed_at > source.observedAt) source.observedAt = observed_at;
+  }
+  const hosts = [...byDocument.values()].map(({ url }) => url.host);
+  return [...byDocument.values()].map((source) => ({
+    ...source,
+    label:
+      hosts.filter((host) => host === source.url.host).length > 1
+        ? `${source.url.host}${source.url.pathname}`
+        : source.url.host,
+    tooltip: `${props.compact ? source.url.host + " · " : ""}${source.locators.join("; ")} · Checked ${formatLocalDateTime(source.observedAt)}`,
+  }));
+});
 const failedIcons = ref(new Set<string>());
-const sourceCount = computed(() => new Set(props.documents.map((e) => e.document_url)).size);
 </script>
 
 <template>
-  <details class="claim-sources">
-    <summary>
-      <span class="source-stack" aria-hidden="true">
-        <span v-for="site in sites" :key="site.origin" class="source-mark">
+  <ul class="claim-sources" :data-compact="compact || undefined" role="list" aria-label="Sources">
+    <li v-for="{ url, label, tooltip } in sources" :key="url.href">
+      <UiTooltip
+        as="a"
+        :href="url.href"
+        target="_blank"
+        rel="noopener noreferrer"
+        :aria-label="`${label}: ${tooltip}`"
+        :content="tooltip"
+      >
+        <span class="source-mark" aria-hidden="true">
           <img
-            v-if="site.protocol === 'https:' && !failedIcons.has(site.origin)"
-            :src="`${site.origin}/favicon.ico`"
+            v-if="url.protocol === 'https:' && !failedIcons.has(url.origin)"
+            :src="`${url.origin}/favicon.ico`"
             alt=""
             loading="lazy"
             referrerpolicy="no-referrer"
-            @error="failedIcons.add(site.origin)"
+            @error="failedIcons.add(url.origin)"
           />
-          <span v-else>{{ site.hostname.charAt(0).toUpperCase() }}</span>
+          <span v-else>{{ url.hostname.charAt(0).toUpperCase() }}</span>
         </span>
-      </span>
-      <span>{{ sourceCount }} {{ sourceCount === 1 ? "source" : "sources" }}</span>
-    </summary>
-    <div class="detail-disclosure-body claim-evidence">
-      <div v-for="({ evidence, url }, index) in sources" :key="index">
-        <div class="evidence-source">
-          <a :href="evidence.document_url" target="_blank" rel="noopener noreferrer">
-            <small>{{ url.host }}</small>
-            {{ evidence.locator }}
-            <UiIcon name="external-link" />
-          </a>
-          <UiTooltip
-            as="button"
-            type="button"
-            class="icon-button"
-            aria-label="When this source was checked"
-            :content="`Source checked ${formatLocalDateTime(evidence.observed_at)}`"
-          >
-            <time :datetime="evidence.observed_at"><UiIcon name="calendar-clock" /></time>
-          </UiTooltip>
-        </div>
-        <dl class="availability-list">
-          <div>
-            <dt>Evidence</dt>
-            <dd>{{ evidence.excerpt }}</dd>
-          </div>
-          <div>
-            <dt>Document SHA-256</dt>
-            <dd>
-              <code>{{ evidence.content_hash }}</code>
-            </dd>
-          </div>
-        </dl>
-      </div>
-    </div>
-  </details>
+        <template v-if="!compact">
+          <span class="source-label">{{ label }}</span>
+          <UiIcon name="external-link" />
+        </template>
+      </UiTooltip>
+    </li>
+  </ul>
 </template>
 
 <style scoped>
-.claim-sources > summary {
+.claim-sources {
   display: flex;
-  width: fit-content;
-  align-items: center;
-  gap: var(--space-1-5);
-  min-height: var(--control-height-default);
-  padding-inline: var(--space-2);
-  border-radius: var(--radius-full);
-  color: var(--color-text-secondary);
-  background: var(--color-surface-subtle);
-  cursor: pointer;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding: 0;
   font-size: var(--font-size-meta);
+  line-height: var(--line-height-body);
   list-style: none;
 }
-.claim-sources > summary::-webkit-details-marker {
-  display: none;
+.claim-sources li {
+  min-width: 0;
 }
-.claim-sources > summary:hover,
-.claim-sources[open] > summary {
-  background: var(--color-surface-hover);
+.claim-sources[data-compact] {
+  gap: var(--space-1);
+  margin-inline-start: auto;
 }
-.source-stack,
-.source-mark {
-  box-sizing: content-box;
-  height: var(--icon-size-md);
-  justify-content: center;
+
+.claim-sources :deep(a) {
   display: inline-flex;
+  max-width: 100%;
   align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+}
+.claim-sources :deep(a:hover) .source-label {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-decoration-color: var(--color-link-underline);
+  text-underline-offset: 2px;
+}
+.source-mark {
+  display: inline-grid;
+  width: var(--icon-size-xs);
+  height: var(--icon-size-xs);
+  flex: none;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  font-weight: var(--font-weight-semibold);
 }
 .source-mark img {
   width: 100%;
   height: 100%;
   object-fit: contain;
 }
-.source-mark {
-  width: var(--icon-size-md);
-  flex: none;
-  padding: var(--space-0-5);
-  border-radius: var(--radius-full);
-  background: var(--color-surface);
-  overflow: hidden;
-}
-.source-mark + .source-mark {
-  margin-inline-start: calc(-1 * var(--space-1));
-}
-.claim-evidence {
-  display: grid;
-  gap: var(--space-3);
-  overflow-wrap: anywhere;
-}
-.claim-evidence .availability-list dd {
-  font-family: inherit;
-  white-space: pre-wrap;
-}
-.evidence-source {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-  font-size: var(--font-size-meta);
-}
-.evidence-source time {
-  display: flex;
-}
-.evidence-source a {
+.source-label {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.evidence-source a small {
-  display: block;
-  color: var(--color-text-muted);
-}
-.evidence-source .ui-icon {
+.claim-sources .ui-icon {
   width: var(--icon-size-xs);
   height: var(--icon-size-xs);
-  vertical-align: middle;
-}
-.evidence-source :deep(.icon-button) {
-  min-width: var(--control-height-default);
+  flex: none;
 }
 </style>

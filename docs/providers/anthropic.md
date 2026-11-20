@@ -136,7 +136,8 @@ The effort guide's direct Messages availability, named option cohorts and defaul
 must agree with the exact card title, Claude API ID and native default. These values describe
 top-level effort with the model's default thinking configuration. The separate Managed Agents
 and seller scopes require their own evidence. Missing or conflicting effort evidence withholds
-that claim independently of the card's limit and identity facts.
+that claim independently of the card's limit and identity facts. The guide's Messages usage line
+binds the claim to endpoint `v1/messages` and request field `output_config.effort`.
 
 Messages API automatic breakpoint placement and block-level breakpoints both require opt-in.
 The cache-mode contract describes implicit caching and explicit cache management, so Anthropic

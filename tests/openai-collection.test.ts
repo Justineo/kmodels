@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { claimSources } from "../src/catalog/model-claim-details.ts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { linkedBundleSchema } from "../src/catalog/bundle.ts";
@@ -46,7 +47,11 @@ it("projects reviewed API bindings and retains legacy cache scope when its guide
   if (model === undefined || cache === undefined)
     throw new Error("Missing exact model cache claim");
   const projected = websiteModelDetail(emptyPricingCatalog(), model);
-  expect(projected.capability_details).toContainEqual(cache);
+  // Website details cite sources; excerpts and document hashes stay in canonical storage.
+  expect(projected.capability_details).toContainEqual({
+    ...cache,
+    evidence: claimSources(cache.evidence),
+  });
   expect(cache.statements).toContainEqual(
     expect.objectContaining({
       mode: "explicit",
@@ -54,6 +59,7 @@ it("projects reviewed API bindings and retains legacy cache scope when its guide
         interface: "OpenAI Responses API",
         parameter: "prompt_cache_options.mode",
         condition: "Caller-selected prefix breakpoints",
+        endpoint: "v1/responses",
       },
     }),
   );
@@ -95,10 +101,14 @@ it("projects reviewed API bindings and retains legacy cache scope when its guide
   const refreshed = next.models.find(({ uid }) => uid === model.uid);
   if (refreshed === undefined) throw new Error("Missing refreshed exact model");
   const retained = websiteModelDetail(emptyPricingCatalog(), refreshed).capability_details;
-  expect(retained).toContainEqual(legacyCache);
+  expect(retained).toContainEqual({ ...legacyCache, evidence: claimSources(legacyCache.evidence) });
   expect(retained?.find(({ claim }) => claim === "responses_effort")?.statements).toContainEqual(
     expect.objectContaining({
-      applicability: { interface: "OpenAI Responses API", parameter: "reasoning.effort" },
+      applicability: {
+        interface: "OpenAI Responses API",
+        parameter: "reasoning.effort",
+        endpoint: "v1/responses",
+      },
     }),
   );
   expect(next.coverage.status).toBe("fresh");

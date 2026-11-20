@@ -73,6 +73,11 @@ describe("Anthropic Messages effort details", () => {
           {
             kind: "reasoning_effort",
             scope: expect.stringContaining("Direct Claude API Messages"),
+            applicability: {
+              interface: "Claude Messages API",
+              parameter: "output_config.effort",
+              endpoint: "v1/messages",
+            },
             supported_values: extended
               ? ["max", "xhigh", "high", "medium", "low"]
               : ["max", "high", "medium", "low"],
@@ -80,7 +85,6 @@ describe("Anthropic Messages effort details", () => {
           },
         ],
       });
-      expect(group?.statements[0]).not.toHaveProperty("unsupported_values");
       expect(group?.evidence).toHaveLength(2);
       for (const evidence of group?.evidence ?? []) {
         const matched = value.documents.find(({ url }) => url === evidence.document_url);

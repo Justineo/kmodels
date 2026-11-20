@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { limitDetailsSchema } from "./model-limit-details.ts";
+import { limitDetailsSchema, websiteLimitDetailsSchema } from "./model-limit-details.ts";
 import {
   capabilityDetailsSchema,
   hasStructuredCapabilityDetails,
+  websiteCapabilityDetailsSchema,
 } from "./model-capability-details.ts";
 import { selectorSchema } from "../pricing/schema.ts";
 import { inferencePriceReasonSchema } from "../pricing/inference-schema.ts";
@@ -616,8 +617,8 @@ const websiteModelDetailShape = {
 
 export const websiteModelDetailSchema = z.strictObject({
   ...websiteModelDetailShape,
-  limit_details: limitDetailsSchema.optional(),
-  capability_details: capabilityDetailsSchema.optional(),
+  limit_details: websiteLimitDetailsSchema.optional(),
+  capability_details: websiteCapabilityDetailsSchema.optional(),
   pricing: websitePricingDetailSchema.optional(),
 });
 
@@ -636,8 +637,14 @@ const websiteStoredModelDetailSchemaV8 = websiteStoredModelDetailSchemaV7.extend
   limit_details: limitDetailsSchema.optional(),
 });
 
-const websiteStoredModelDetailSchema = websiteStoredModelDetailSchemaV8.extend({
+const websiteStoredModelDetailSchemaV10 = websiteStoredModelDetailSchemaV8.extend({
   capability_details: capabilityDetailsSchema.optional(),
+});
+
+// Schema 11 cites claim sources without audit excerpts or document hashes.
+const websiteStoredModelDetailSchema = websiteStoredModelDetailSchemaV7.extend({
+  limit_details: websiteLimitDetailsSchema.optional(),
+  capability_details: websiteCapabilityDetailsSchema.optional(),
 });
 
 const websiteDetailChunkSchemaV7 = z.strictObject({
@@ -658,7 +665,7 @@ export const websiteDetailChunkSchema = z.discriminatedUnion("schema_version", [
   websiteDetailChunkSchemaV7.extend({
     schema_version: z.literal(9),
     details: z.array(
-      websiteStoredModelDetailSchema.refine(
+      websiteStoredModelDetailSchemaV10.refine(
         ({ capability_details }) => !hasStructuredCapabilityDetails(capability_details),
         "Structured capability applicability requires schema 10",
       ),
@@ -666,6 +673,10 @@ export const websiteDetailChunkSchema = z.discriminatedUnion("schema_version", [
   }),
   websiteDetailChunkSchemaV7.extend({
     schema_version: z.literal(10),
+    details: z.array(websiteStoredModelDetailSchemaV10),
+  }),
+  websiteDetailChunkSchemaV7.extend({
+    schema_version: z.literal(11),
     details: z.array(websiteStoredModelDetailSchema),
   }),
 ]);

@@ -975,7 +975,6 @@ function applyXaiCacheDetails(
               {
                 kind: "prompt_cache",
                 mode: "implicit",
-                supported: true,
                 scope: `xAI ${api.name} API. Prefix caching is automatic. Cache hits are conditional.`,
               },
             ],
