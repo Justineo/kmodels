@@ -546,21 +546,17 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   the table's model-wide context limit. These facts live only in the existing byte-bounded detail
   chunks; inventory growth and richer details do not inflate the core rows or create aggregate-size
   warnings. Provider strings are rendered as text.
-- Qualified limits appear in the existing model inspector, with the quantity, maximum/default/no
-  separate cap, measurement and complete scope always visible together. The shared-context label
-  does not invent which token categories participate; the source-owned scope supplies them.
-  Ordinary scalar limits remain visible as unqualified catalog summaries. Each claim or
-  capability finding ends with one compact citation link per distinct document: its site icon
-  and host, plus the path when two cited documents share a host. Load each HTTPS site's own
-  `/favicon.ico` as an image without a referrer; use the hostname initial for HTTP sources and
-  unavailable icons. The link's tooltip and accessible name carry that document's locators and
-  its latest check in local time. Readers verify a claim at its source rather than in a quoted
-  excerpt.
-  The inspector never evaluates scope text or computes a request maximum.
-  Equal quantity/measurement/scope with unequal finite maxima, or a maximum versus no separate
-  cap, is an unresolved source conflict. Defaults are independent of maxima; disagreeing defaults
-  conflict only with each other. Different scope text is shown separately without inferring
-  equivalence or disjoint applicability. Missing details do not manufacture a negative claim.
+- Keep Context window and Maximum output in Overview. Place meaningful scoped values directly
+  under the corresponding value as compact notes with an endpoint, amount or explicit cap state,
+  and source links. Generate note text from
+  [structured applicability](catalog-schema-upgrade.md#scoped-limit-details). Show the known
+  endpoint label when available, and otherwise its evidenced path. Describe a beta exception
+  briefly and use the citation for request setup. Suppress a duplicate summary of the same
+  quantity. If the same structured scope has incompatible maxima or cap states, show
+  “Sources disagree” with citations for that scope.
+- Claim citations link to owned documents. Load the site's HTTPS `/favicon.ico` without a
+  referrer and use the hostname initial as a fallback. A link's tooltip and accessible name
+  include the document locator and check time. Compact citations use one icon per site.
 - Modalities & capabilities answers only what goes in, what comes out and what the model can do.
   Input and output appear once as modality tags joined by a direction arrow. Supported
   capabilities follow; unsupported and unknown capabilities are not shown. A model with no

@@ -6,9 +6,27 @@ import {
 } from "./model-claim-details.ts";
 
 const statementShape = {
-  quantity: z.enum(["context_tokens", "output_tokens"]),
+  quantity: z.enum(["context_tokens", "output_tokens", "text_output_tokens"]),
   measurement: z.enum(["per_response", "per_hop", "per_interaction", "shared_context"]),
   scope: z.string().min(1).max(768),
+  applicability: z
+    .strictObject({
+      endpoint: z.string().min(1).max(256),
+      beta_header: z
+        .strictObject({
+          name: z
+            .string()
+            .regex(/^[a-z0-9-]+$/)
+            .max(64),
+          value: z
+            .string()
+            .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/)
+            .max(128),
+          present: z.boolean(),
+        })
+        .optional(),
+    })
+    .optional(),
 };
 const tokens = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 
@@ -27,11 +45,17 @@ export type LimitStatement = z.infer<typeof limitStatementSchema>;
 export type LimitDetailGroup = z.infer<typeof limitDetailGroupSchema>;
 export type WebsiteLimitDetailGroup = z.infer<typeof websiteLimitDetailGroupSchema>;
 
+export function limitScopeKey({ applicability, scope }: LimitStatement): string {
+  if (applicability === undefined) return scope;
+  const { endpoint, beta_header: beta } = applicability;
+  return JSON.stringify([endpoint, beta?.name, beta?.value, beta?.present]);
+}
+
 export function limitStatementsConflict(left: LimitStatement, right: LimitStatement): boolean {
   if (
     left.quantity !== right.quantity ||
     left.measurement !== right.measurement ||
-    left.scope !== right.scope
+    limitScopeKey(left) !== limitScopeKey(right)
   )
     return false;
   if (left.kind === "default" || right.kind === "default")

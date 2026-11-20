@@ -40,6 +40,7 @@ export function applyAnthropicLimitDetails(
   input: SourceParseInput,
   cards: readonly Card[],
   bundle: LinkedBundle,
+  batchEndpoint: string,
 ): void {
   for (const card of cards) {
     const { model, document, prose: body } = card;
@@ -158,6 +159,7 @@ export function applyAnthropicLimitDetails(
         limitDetailFinding(input, "batch_output_beta/conflict");
         continue;
       }
+      const betaHeader = { name: "anthropic-beta", value: header };
       addLimitDetailGroup(input, card.model, {
         claim: "batch_output_beta",
         statements: [
@@ -166,6 +168,10 @@ export function applyAnthropicLimitDetails(
             kind: "maximum",
             tokens,
             measurement: "per_response",
+            applicability: {
+              endpoint: batchEndpoint,
+              beta_header: { ...betaHeader, present: true },
+            },
             scope: `Claude API Message Batches only; requires anthropic-beta: ${header}. max_tokens ceiling per generated turn; excludes synchronous Messages.`,
           },
           {
@@ -173,6 +179,10 @@ export function applyAnthropicLimitDetails(
             kind: "maximum",
             tokens: standard,
             measurement: "per_response",
+            applicability: {
+              endpoint: batchEndpoint,
+              beta_header: { ...betaHeader, present: false },
+            },
             scope: `Claude API standard Message Batches max_tokens ceiling per generated turn without the ${header} extended-output beta.`,
           },
         ],

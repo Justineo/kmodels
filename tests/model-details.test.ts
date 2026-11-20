@@ -209,7 +209,7 @@ describe("model details", () => {
     expect(html).not.toContain("a".repeat(64));
     expect($("script")).toHaveLength(0);
   });
-  it("renders qualified limits, scope, evidence and conflicts without choosing a request maximum", async () => {
+  it("annotates limit fields from structured applicability and cites their sources", async () => {
     const model: WebsiteModel = {
       provider_id: "test",
       model_id: "model",
@@ -225,6 +225,7 @@ describe("model details", () => {
     };
     const scope =
       "Responses API visible text only; requires beta header. <img src=x onerror=alert(1)>";
+    const betaHeader = { name: "api-beta", value: "extended-output" };
     const groups: LimitDetailGroup[] = [
       {
         source_ref: "test-models",
@@ -236,12 +237,43 @@ describe("model details", () => {
             tokens: 300000,
             measurement: "per_response",
             scope,
+            applicability: {
+              endpoint: "/batch",
+              beta_header: { ...betaHeader, present: true },
+            },
+          },
+          {
+            quantity: "output_tokens",
+            kind: "maximum",
+            tokens: 131072,
+            measurement: "per_response",
+            scope: "Standard batch limit",
+            applicability: {
+              endpoint: "/batch",
+              beta_header: { ...betaHeader, present: false },
+            },
+          },
+          {
+            quantity: "text_output_tokens",
+            kind: "no_separate_cap",
+            measurement: "per_response",
+            scope,
+            applicability: { endpoint: "/responses" },
           },
           {
             quantity: "output_tokens",
             kind: "no_separate_cap",
             measurement: "per_response",
-            scope,
+            scope: "First source for a conflicting endpoint.",
+            applicability: { endpoint: "/conflict" },
+          },
+          {
+            quantity: "output_tokens",
+            kind: "maximum",
+            tokens: 96000,
+            measurement: "per_response",
+            scope: "Second source for a conflicting endpoint.",
+            applicability: { endpoint: "/conflict" },
           },
           {
             quantity: "output_tokens",
@@ -260,9 +292,10 @@ describe("model details", () => {
           {
             quantity: "context_tokens",
             kind: "maximum",
-            tokens: 1048576,
+            tokens: 2000000,
             measurement: "shared_context",
             scope: "Input and output share one budget; not a separate output grant.",
+            applicability: { endpoint: "/responses" },
           },
         ],
         evidence: [
@@ -282,6 +315,10 @@ describe("model details", () => {
       capabilities: unknownCapabilities(),
       scope: "global_catalog",
       max_output_tokens: 131072,
+      api_endpoints: [
+        { path: "/batch", name: "Create Batch" },
+        { path: "/responses", name: "Responses" },
+      ],
       limit_details: groups,
     };
     const props = {
@@ -295,32 +332,40 @@ describe("model details", () => {
       pricingTarget: undefined,
     };
     const html = await renderComponent(ModelDetails, props);
-    expect(html).toContain("Qualified limits");
-    expect(html).toContain("Output (catalog summary)");
-    expect(html).toContain("Context window (catalog summary)");
-    expect(html).toContain("Maximum: 300,000 tokens");
-    expect(html).toContain("Default: 65,536 tokens");
-    expect(html).toContain("No separate provider output cap");
-    expect(html).toContain("Per hop");
-    expect(html).toContain("Per interaction");
-    expect(html).toContain("Shared context budget");
-    expect(html).not.toContain("Combined input, thinking and output budget");
-    expect(html).toContain("Input and output share one budget; not a separate output grant.");
-    expect(html).toContain("Unresolved source conflict");
-    expect(html.indexOf("requires beta header")).toBeLessThan(html.indexOf("claim-sources"));
+    const $ = load(html);
+    const output = $(".fact-grid dt").filter((_, node) => $(node).text() === "Maximum output");
+    const context = $(".fact-grid dt").filter((_, node) => $(node).text() === "Context window");
+    expect(output.next("dd").text()).toContain("Create Batch (beta) · 300K per response");
+    expect(output.next("dd").text()).toContain("Responses · No separate text output cap");
+    expect(output.next("dd").text()).toContain("/conflict · Sources disagree");
+    expect(output.next("dd").text()).not.toContain("96K");
+    expect(output.next("dd").text()).not.toContain("standard");
+    expect(context.next("dd").text()).toContain("Responses · 2M shared budget");
+    expect(context.next("dd").text()).not.toContain("300K");
+    expect(html).not.toContain("Qualified limits");
+    expect(html).not.toContain("catalog summary");
+    expect(html).not.toContain("requires beta header");
+    expect(html).not.toContain("extended-output");
+    expect(html).not.toContain("65,536");
+    expect(html).not.toContain("32,768");
     expect(html).toContain('href="https://example.com/limits"');
     expect(html).not.toContain("Native output evidence");
     expect(html).toContain("At a glance / output");
     expect(html).not.toContain("a".repeat(64));
-    expect(html).toContain("&lt;img");
-    expect(load(html)('img[src="x"], [onerror]')).toHaveLength(0);
+    expect($('img[src="x"], [onerror]')).toHaveLength(0);
     expect(html).not.toContain("<script>");
     expect(html).not.toContain("Unlimited");
-    const { limit_details: _groups, ...legacyDetail } = detail;
+    const legacyDetail = {
+      ...detail,
+      limit_details: groups.map(({ statements, ...group }) => ({
+        ...group,
+        statements: statements.map(({ applicability: _binding, ...statement }) => statement),
+      })),
+    };
     const legacy = await renderComponent(ModelDetails, { ...props, detail: legacyDetail });
     expect(legacy).toContain("Maximum output");
     expect(legacy).not.toContain("Qualified limits");
-    expect(legacy).not.toContain("catalog summary");
+    expect(legacy).not.toContain("limit-annotations");
   });
   it("keeps lifecycle and catalog scope in the content", async () => {
     const model = {

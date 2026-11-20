@@ -93,10 +93,14 @@ Only each guide's literal model list can qualify already admitted exact catalog 
 Preserve the combined input/thinking/output context budget, API-specific omitted-parameter defaults
 and per-hop bounds separately. The GenerateContent combined budget also includes function calls.
 Foreground/background, streaming/non-streaming, SDK/manual continuation and required storage
-qualifiers remain visible scope text. The SDK and REST defaults differ on explicitly named model
+qualifiers remain in the stored scope text. The SDK and REST defaults differ on explicitly named model
 branches; Interactions and GenerateContent have different SDK continuation requirements. A workload
 recommendation or code-sample quantity is not a maximum, and remaining context is never emitted as
 an independently granted output maximum.
+
+These guide observations retain source scope for replay. A visible limit annotation requires the
+[field's structured applicability](../catalog-schema-upgrade.md#scoped-limit-details), so the
+inspector leaves the long-decode mode matrix and SDK defaults to the guides.
 
 Each guide's prose, numeric values, model branches and consumed mode-table cells must agree.
 Unknown syntax or contradiction withholds its complete group with a local diagnostic; the other

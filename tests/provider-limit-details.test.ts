@@ -80,10 +80,23 @@ it("preserves ordinary Anthropic output and the separately qualified Batch beta"
       kind: "maximum",
       tokens: 300000,
       measurement: "per_response",
+      applicability: {
+        endpoint: "v1/messages/batches",
+        beta_header: { name: "anthropic-beta", value: "output-300k-2026-03-24", present: true },
+      },
       scope: expect.stringContaining("output-300k-2026-03-24"),
     }),
   );
   const beta = model?.limit_details?.find((g) => g.claim === "batch_output_beta");
+  expect(beta?.statements).toContainEqual(
+    expect.objectContaining({
+      tokens: 128000,
+      applicability: {
+        endpoint: "v1/messages/batches",
+        beta_header: { name: "anthropic-beta", value: "output-300k-2026-03-24", present: false },
+      },
+    }),
+  );
   expect(beta?.statements.every((s) => s.scope.includes("Message Batches"))).toBe(true);
   expect(beta?.evidence).toContainEqual(
     expect.objectContaining({
@@ -125,8 +138,9 @@ it("publishes the owned xAI no-cap state with exact document evidence and finite
   expect(model?.limit_details?.[0]?.statements).toContainEqual(
     expect.objectContaining({
       kind: "no_separate_cap",
-      quantity: "output_tokens",
+      quantity: "text_output_tokens",
       measurement: "per_response",
+      applicability: { endpoint: "/v1/responses" },
       scope: expect.stringContaining("Responses"),
     }),
   );
@@ -353,6 +367,14 @@ it("reads the Anthropic header, bounds and exact support identity from the owned
   ).toContainEqual(
     expect.objectContaining({
       tokens: 400000,
+      applicability: {
+        endpoint: "v1/messages/batches",
+        beta_header: {
+          name: "anthropic-beta",
+          value: "extended-generation-2099-01-01",
+          present: true,
+        },
+      },
       scope: expect.stringContaining("extended-generation-2099-01-01"),
     }),
   );

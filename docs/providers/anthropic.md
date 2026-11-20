@@ -124,8 +124,11 @@ platform scope and complete support list. Support names must resolve uniquely th
 card title and its agreed Claude API ID; names are never converted into IDs. The card's separate
 beta row and any beta declaration in its caption must agree with the guide. A contradiction
 withholds only the beta observation, preserving the independently known synchronous bound.
-Missing or malformed companions are not withdrawal receipts. No output default is inferred from
-these maxima, and no hosted seller inherits the direct API scope.
+The two documented Batch maxima carry the native Batch path and complementary structured
+`anthropic-beta` conditions. The inspector can annotate Maximum output with the differing cap
+and link to the source for request setup. Missing or malformed companions are not withdrawal
+receipts. No output default is inferred from these maxima, and no hosted seller inherits the
+direct API scope.
 
 Each group carries the actual supporting document URLs, individual body hashes, native fragments
 and source observation time. Retention preserves that complete revision. Neither a bundle hash

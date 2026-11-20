@@ -105,9 +105,9 @@ Optional `limit_details` uses `card_limits` from a unique owned `At a glance` ta
 sectioned companion. Its literal Model name must match one admitted public identity or unique
 owned alias, and the table's API links must resolve to reviewed operation references. A missing
 unqualified `api_endpoints` summary does not erase that independent, explicitly scoped declaration.
-`No text output limit` becomes `no_separate_cap` for the stated text-output scope; finite context
-remains independent. It never becomes zero, Infinity, an unlimited reasoning budget or a guaranteed
-response length. Ordinary request defaults, including the Responses reference's visible-output
+`No text output limit` becomes `no_separate_cap` for `text_output_tokens` with the exact bound
+endpoint. The inspector can annotate Maximum output while the finite context window remains
+independent. Ordinary request defaults, including the Responses reference's visible-output
 default, are not emitted as model maxima. Changelog prose and version-prefix inheritance do not
 extend this table grammar to other models or sellers.
 

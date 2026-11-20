@@ -18,12 +18,19 @@ that a mapping has been adopted in stored data or deployed.
 
 ## Scoped limit details
 
-The internal model schema permits optional `limit_details`, independently of legacy scalar
+The internal model schema permits optional `limit_details` to qualify existing fields in
 `limits`. Each strict group identifies its owning `source_ref` and adapter-owned `claim`, with
-bounded statements and one to three document revisions. A statement distinguishes a finite
-maximum, a default, or no separate provider cap; it always names its quantity, measurement and
-complete display scope. Scope text is evidence for readers, not executable request conditions.
-Shared context describes one combined budget, never an independent output grant.
+bounded statements and one to three document revisions. Statements preserve their quantity,
+measurement, and finite maximum, default, or explicit absence of a separate cap. The source's
+`scope` is retained with the claim for audit and replay.
+
+A visible annotation needs a complete structured `applicability`: a provider-owned endpoint
+and, when required, the presence or absence of an exact beta value in a named request header.
+Use the endpoint spelling from the provider adapter. Output annotations distinguish text-only
+from general output and measure each response. Context annotations describe a shared budget.
+Finite maxima and explicitly absent caps can annotate a field. Defaults, per-hop measurements,
+and richer request conditions stay outside this presentation. The existing detail envelope
+accepts older observations without the optional binding, which cannot supply visible notes.
 
 The optional field has no default so existing records remain unchanged. Empty statements are
 an evidenced withdrawal receipt; an absent group is unobserved. Claims are independently owned

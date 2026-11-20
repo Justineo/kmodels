@@ -96,9 +96,10 @@ export function applyXaiLimitDetails(
     addLimitDetailGroup(input, model, {
       claim: "card_limits",
       statements: endpoints.map(({ name, path }) => ({
-        quantity: "output_tokens",
+        quantity: "text_output_tokens",
         kind: "no_separate_cap",
         measurement: "per_response",
+        applicability: { endpoint: path },
         scope: `${name} (${path}): no separate provider text-output cap. Context remains independently bounded; this does not guarantee arbitrary output length or an unbounded reasoning/function-call budget.`,
       })),
       evidence: [

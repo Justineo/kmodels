@@ -90,6 +90,13 @@ resolutions and remaining evidence limits in the provider guide.
 
 ## Extract and prove the result
 
+- For model metadata, apply the [field annotation policy](catalog.md#field-annotations).
+  Name the existing field and the comparison or consumer decision the qualifier changes before
+  adding a source dependency. Require first-party evidence for the exact model, operation,
+  quantity and every condition needed to read the value correctly. Use an existing typed
+  applicability field only when it preserves those semantics. Leave account, SDK and request
+  recipes in their source. Review each new annotation from fixture extraction through the field
+  that displays it, including a missing binding, duplicate summary and contradictory evidence.
 - Classify new pricing semantics before choosing a patch. A new amount, categorical value,
   numerical boundary or option count is data within an existing contract; it does not justify
   a new shared enum, model-specific UI branch or separate agreement. A new charge, dimension

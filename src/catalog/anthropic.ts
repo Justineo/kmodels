@@ -2155,7 +2155,7 @@ export function parseAnthropicModelCards(input: Input): SourceParseResult {
     cards.push({ model: item, document, prose: body });
   }
   if (cards.length === 0) throw new Error("Anthropic model cards contained no owned identities");
-  applyAnthropicLimitDetails(input, cards, bundle);
+  applyAnthropicLimitDetails(input, cards, bundle, batchEndpoint.path);
   const effort = bundle.documents.filter(({ url }) => url === anthropicEffortUrl);
   if (effort.length > 0) {
     const guide = effort.length === 1 ? effort[0] : undefined;

@@ -33,6 +33,19 @@ independent providers. The rule must be refreshable without model IDs, Top-N
 cuts, popularity scores, workload exclusions, or an LLM. Price availability is
 commercial coverage after admission and never an admission requirement.
 
+### Field annotations
+
+Start with the field people discover, compare, or consume. A conditional value for the same
+quantity belongs to that field as an optional annotation. Admit it when the distinction affects a
+catalog decision, an authoritative source binds it to the exact subject, and the existing typed
+fields can express its value and complete applicability. Keep a citation with the annotation.
+Leave request recipes and unsupported applicability in the provider documentation. Add another
+structured dimension when an identified consumer needs that distinction.
+
+The model-level `limits` remain the comparable token and embedding facts. The
+[limit annotation contract](catalog-schema-upgrade.md#scoped-limit-details) describes how an
+endpoint-specific budget can qualify an existing token field in the inspector.
+
 ## Publication profiles
 
 Every consumer profile is a deterministic projection of the same accepted

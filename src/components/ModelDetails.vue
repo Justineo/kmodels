@@ -16,7 +16,7 @@ import { useOverlayScrollbars } from "../composables/useOverlayScrollbars.ts";
 import ProviderIcon from "./ProviderIcon.vue";
 import PricingDetails from "./PricingDetails.vue";
 import ModelMetadata from "./ModelMetadata.vue";
-import ModelLimitDetails from "./ModelLimitDetails.vue";
+import ModelLimitAnnotations from "./ModelLimitAnnotations.vue";
 import ModelCapabilityDetails from "./ModelCapabilityDetails.vue";
 import CapabilityValues from "./CapabilityValues.vue";
 import { capabilityRows } from "../catalog/capability-presentation.ts";
@@ -55,9 +55,7 @@ const deliveryModes = computed(
   () => props.detail?.delivery_modes?.map(formatSnakeCase).join(", ") || "Not published",
 );
 const deploymentAvailability = computed(() => props.detail?.deployment_availability ?? []);
-const limitDetails = computed(
-  () => props.detail?.limit_details?.filter(({ statements }) => statements.length > 0) ?? [],
-);
+const limitDetails = computed(() => props.detail?.limit_details ?? []);
 const availability = computed(() => {
   const groups = props.detail?.deployment_availability;
   const count = groups?.reduce((total, { regions }) => total + regions.length, 0);
@@ -288,16 +286,30 @@ onUnmounted(() => {
                   <dd>{{ deliveryModes }}</dd>
                 </div>
                 <div>
-                  <dt>
-                    {{
-                      limitDetails.length ? "Context window (catalog summary)" : "Context window"
-                    }}
-                  </dt>
-                  <dd>{{ formatTokenCount(model.context_tokens) }}</dd>
+                  <dt>Context window</dt>
+                  <dd>
+                    {{ formatTokenCount(model.context_tokens) }}
+                    <ModelLimitAnnotations
+                      v-if="limitDetails.length"
+                      :groups="limitDetails"
+                      field="context_tokens"
+                      :summary="model.context_tokens"
+                      :endpoints="apiEndpoints"
+                    />
+                  </dd>
                 </div>
                 <div>
-                  <dt>{{ limitDetails.length ? "Output (catalog summary)" : "Maximum output" }}</dt>
-                  <dd>{{ formatTokenCount(detail?.max_output_tokens) }}</dd>
+                  <dt>Maximum output</dt>
+                  <dd>
+                    {{ formatTokenCount(detail?.max_output_tokens) }}
+                    <ModelLimitAnnotations
+                      v-if="limitDetails.length"
+                      :groups="limitDetails"
+                      field="output_tokens"
+                      :summary="detail?.max_output_tokens"
+                      :endpoints="apiEndpoints"
+                    />
+                  </dd>
                 </div>
                 <div>
                   <dt>Released</dt>
@@ -314,7 +326,6 @@ onUnmounted(() => {
               </dl>
             </section>
 
-            <ModelLimitDetails v-if="limitDetails.length" :groups="limitDetails" />
             <ModelMetadata v-if="detail" :detail="detail" />
 
             <details v-if="deploymentAvailability.length" class="detail-section detail-disclosure">
