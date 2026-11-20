@@ -2971,7 +2971,10 @@ function parsePrices(
         );
         const locator = {
           kind: "sku" as const,
-          value: `${list.offerCode}:${sku}:${dimension.rateCode ?? dimension.description}`,
+          // Native rate codes already contain the complete SKU as their first component.
+          value: dimension.rateCode?.startsWith(sku + ".")
+            ? `${list.offerCode}:${dimension.rateCode}`
+            : `${list.offerCode}:${sku}:${dimension.rateCode ?? dimension.description}`,
         };
         const parsed =
           context === undefined

@@ -15,6 +15,7 @@ import { afterEach, expect, it, vi } from "vite-plus/test";
 import {
   adoptionReady,
   candidateKey,
+  canTakeOver,
   recordAttempt,
   chooseProvider,
   difficulty,
@@ -32,6 +33,7 @@ import {
 import { askOpenAI, assistanceModel, assistanceRequest } from "../scripts/repair/openai.ts";
 import { recordDiscovery } from "../scripts/repair/discovery.ts";
 import { readSharedFile } from "../scripts/repair/files.ts";
+import { takeoverFindings } from "../scripts/repair/takeover.ts";
 import { boundedEvidence } from "../scripts/repair/broker.ts";
 import { captureRepairSource } from "../src/catalog/catalog-repair-capture.ts";
 import { researchPublicSource, reviewedPublicSource } from "../src/catalog/public-evidence.ts";
@@ -71,6 +73,78 @@ function taskState() {
   if (!task) throw new Error("Missing fixture task");
   return { state, task, item };
 }
+
+it("spends a takeover once for each distinct verified case and reads legacy ledgers", () => {
+  const { task } = taskState();
+  const a = digest("case-a"),
+    b = digest("case-b");
+  task.takeover_fingerprint = task.fingerprint;
+  expect(canTakeOver(task, a)).toBe(true);
+  task.takeover_keys = [a];
+  expect(canTakeOver(task, a)).toBe(false);
+  expect(canTakeOver(task, b)).toBe(true);
+  task.takeover_keys.push(b);
+  expect(canTakeOver(task, digest("third case"))).toBe(true);
+  expect(canTakeOver(task, a)).toBe(false);
+  expect(canTakeOver({ ...task, fingerprint: digest("fresh source") }, a)).toBe(true);
+});
+
+it("keys a rejection on the patch and cited reproducer, independently of receipt names", async () => {
+  async function finding(
+    patch: string,
+    uuid: string,
+    assertion: string,
+    sourceHash = digest("source"),
+  ) {
+    const receiptPath = "/tmp/gh-aw/agent/check.json";
+    const probePath = "/tmp/gh-aw/agent/probes/case.test.ts";
+    const sourcePath = "/tmp/gh-aw/agent/independent-sources/" + uuid + ".json";
+    const raw = JSON.stringify({
+      command: '"vp" "test" "--run" "repair-probes/case.test.ts"',
+      exit_code: 1,
+    });
+    const files = new Map([
+      [receiptPath, raw],
+      [probePath, `read("${sourcePath}");${assertion}`],
+      [
+        sourcePath,
+        JSON.stringify({ source_url: "https://provider.test/catalog", source_hash: sourceHash }),
+      ],
+    ]);
+    const [item] = await takeoverFindings(
+      {
+        candidates: [
+          {
+            id: "pricing",
+            verdict: "concrete_error",
+            expected: "expected price",
+            actual: "observed price",
+            reason: "incorrect result",
+            evidence: [],
+            checks: [
+              { kind: "counterexample", output: { path: receiptPath, sha256: digest(raw) } },
+            ],
+          },
+        ],
+      },
+      patch,
+      async (path) => {
+        const value = files.get(path);
+        if (!value) throw new Error("unexpected path");
+        return value;
+      },
+    );
+    expect(item?.checks[0]?.probes).toEqual(["repair-probes/case.test.ts"]);
+    return item?.key;
+  }
+  const a = "00000000-0000-4000-a000-000000000001",
+    b = "00000000-0000-4000-a000-000000000002";
+  const original = await finding("patch", a, "assertPrice()");
+  expect(await finding("patch", b, "assertPrice()")).toBe(original);
+  expect(await finding("new patch", b, "assertPrice()")).not.toBe(original);
+  expect(await finding("patch", b, "assertScope()")).not.toBe(original);
+  expect(await finding("patch", b, "assertPrice()", digest("changed source"))).not.toBe(original);
+});
 
 it("accepts a finish only once for the prepared fingerprint and in run order", () => {
   const { state, task } = taskState();

@@ -2233,7 +2233,26 @@ function retailPriceFact(
     price.unitOfMeasure === "1 Hour";
   const unit = session ? "hour" : retailUnit(price.unitOfMeasure, label);
   if (unit === undefined) return;
-  const meter = session ? "session_runtime" : (retailMeter(label, unit) ?? defaultMeter);
+  // Embedding SKUs distinguish the modality of the billed input tokens.
+  const embeddingSku =
+    defaultMeter === "embedding" &&
+    price.productName === "Cohere Models" &&
+    price.meterName === price.skuName + " Tokens" &&
+    ["token", "thousand_tokens", "million_tokens"].includes(unit)
+      ? /^Embed .+ (Img|Txt) (?:Glbl|DZ)$/i.exec(price.skuName)?.[1]?.toLowerCase()
+      : undefined;
+  const modality = embeddingSku === "img" ? "image" : embeddingSku === "txt" ? "text" : undefined;
+  // Microsoft's Decision 1 price table places this exact SKU's tariff in the input column.
+  const decisionInput =
+    price.productName === "Microsoft Decision Models" &&
+    price.skuName === "Microsoft Decision 1" &&
+    price.meterName === "Microsoft Decision 1 1M Tokens" &&
+    price.unitOfMeasure === "1M";
+  const meter = modality
+    ? "embedding"
+    : session
+      ? "session_runtime"
+      : (retailMeter(label, unit) ?? (decisionInput ? "input_text" : defaultMeter));
   if (meter === undefined) return;
   const rawValidity = retailValidity(price);
   return {
@@ -2243,6 +2262,7 @@ function retailPriceFact(
     unit,
     conditions: {
       ...conditions,
+      ...(modality && { modality }),
       ...(price.effectiveStartDate === undefined
         ? {}
         : { effective_from: price.effectiveStartDate }),
@@ -2314,6 +2334,26 @@ export function parseAzureRetailPrices(input: Input): SourceParseResult {
     currentCatalog.flatMap(({ model_id, aliases }) => [model_id, ...aliases]),
   );
   const previousCatalog = input.previousCatalogModels ?? [];
+  const previousVersions = new Set(previousCatalog.map(({ uid }) => uid));
+  // A missing unversioned tuple and a newly introduced version have different implications.
+  // Keep the verified family owner for unqualified SKUs if the current versions were already known.
+  const stableFamilies = new Set(currentCatalog.map((model) => model.model_id));
+  for (const model of currentCatalog) {
+    if (model.version === undefined || !previousVersions.has(model.uid))
+      stableFamilies.delete(model.model_id);
+    for (const alias of model.aliases) stableFamilies.delete(alias);
+  }
+  const priorFamilies = new Map(
+    previousCatalog
+      .filter(
+        (m) =>
+          m.version === undefined &&
+          stableFamilies.has(m.model_id) &&
+          !m.aliases.some((a) => currentIds.has(a)) &&
+          !azureRetailModelRetired(m, input.observedAt),
+      )
+      .map((m) => [m.model_id, m.uid]),
+  );
   const catalogModels = [
     ...currentCatalog,
     ...previousCatalog.filter(
@@ -2323,7 +2363,6 @@ export function parseAzureRetailPrices(input: Input): SourceParseResult {
         !azureRetailModelRetired(model, input.observedAt),
     ),
   ];
-  const previousVersions = new Set(previousCatalog.map(({ uid }) => uid));
   const previousIds = new Set(
     previousCatalog.flatMap(({ model_id, aliases }) => [model_id, ...aliases]),
   );
@@ -2382,7 +2421,15 @@ export function parseAzureRetailPrices(input: Input): SourceParseResult {
       });
       continue;
     }
-    const identity = bindRetailModelIdentity(parsedIdentity, catalogModels);
+    const family =
+      parsedIdentity.version === undefined ? priorFamilies.get(parsedIdentity.id) : undefined;
+    const identity =
+      family &&
+      input.previousRetailMeters?.has(
+        azureRetailMeterKey(family, price.meterId, price.armRegionName),
+      )
+        ? parsedIdentity
+        : bindRetailModelIdentity(parsedIdentity, catalogModels);
     if (
       identity === undefined ||
       (parsedIdentity.version === undefined &&

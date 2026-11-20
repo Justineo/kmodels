@@ -51,6 +51,43 @@ const usdServerToolChange =
   "Starting 12:00 on November 18, 2026 (Beijing Time, UTC+8), server-side search and web fetch triggered when calling the model are no longer billed; only model token usage is billed.";
 const cnyServerToolChange =
   "自北京时间 2026 年 11 月 18 日 12:00 起，调用模型时触发的服务端搜索、网页抓取不再计费，仅按模型 Token 用量计费。";
+const serviceNotices = {
+  USD: {
+    intro:
+      "The Search and Fetch APIs are billed per use. For the billing rules, see Search & Fetch.",
+    notices: [
+      usdServerToolChange,
+      "Starting 12:00 on November 18, 2026 (Beijing Time, UTC+8), the server-side search and web fetch tool calls triggered when calling the model are no longer billed; the results they return are appended to the model context and billed as model token usage.",
+    ],
+    scope:
+      "Server-side search is triggered when you use the web tools, the web_search tool in the Anthropic API or the web_search tool in the Responses API.",
+  },
+  CNY: {
+    intro: "Search 与 Fetch API 按次计费。 计费规则见 网页搜索与抓取。",
+    notices: [
+      cnyServerToolChange,
+      "自北京时间 2026 年 11 月 18 日 12:00 起，调用模型时触发的服务端搜索、网页抓取，其工具调用本身不再计费；工具返回的结果会拼接到模型上下文中参与推理，按模型 Token 用量计费。",
+    ],
+    scope:
+      "使用以下接口时会触发服务端搜索：联网工具、Anthropic API 的 web_search 工具、Responses API 的 web_search 工具。",
+  },
+};
+
+// Compare the whole owned policy. A matching sentence can be qualified or revoked later.
+export function billingProse(body: string): string {
+  const $ = load(body);
+  $("table").remove();
+  $("p,li").append(" ");
+  return htmlText($.text());
+}
+
+function serviceNotice(body: string, currency: DeepseekCurrency) {
+  const text = billingProse(body);
+  const { intro, notices, scope } = serviceNotices[currency];
+  return notices.find(
+    (notice) => text === intro + " " + notice + (currency === "USD" ? " " : "") + scope,
+  );
+}
 // Both reviewed price pages specify noon in Beijing (UTC+8).
 const freeFrom = "2026-11-18T04:00:00.000Z";
 
@@ -144,16 +181,20 @@ export function deepseekServicePricing(
     if (cny === undefined) throw new Error("Missing owned CNY service prices");
     dependencyUrl = guideUrl;
     if (billing === undefined) throw new Error("Missing owned billing companion");
-    const prose = htmlText(load(billing).text());
-    if (!prose.includes(standaloneBillingRule))
-      throw new Error("Service request qualification changed");
-    if (!prose.includes(serverToolFreeRule) || !prose.includes(clientDirectRule))
+    const expectedBilling = [
+      "The Search and Fetch APIs are billed per successful request, not by tokens or by the number of returned results:",
+      standaloneBillingRule,
+      serverToolFreeRule,
+      "Server-side tools include the web tools, the web_search tool in the Responses API, Web Search in Claude Code, and search in DeepSeek Harness when Web search provider is set to DeepSeek server-side search or Auto (the default).",
+      clientDirectRule,
+    ].join(" ");
+    if (billingProse(billing) !== expectedBilling)
       throw new Error("Server-tool billing qualification changed");
     dependencyUrl = bundle.index.url;
-    if (!htmlText(load(usd).text()).includes(usdServerToolChange))
-      throw new Error("Missing USD server-tool exemption instant");
+    const usdNotice = serviceNotice(usd, "USD");
+    if (!usdNotice) throw new Error("Missing USD server-tool exemption instant");
     dependencyUrl = cnyUrl;
-    if (!htmlText(load(cny).text()).includes(cnyServerToolChange))
+    if (!serviceNotice(cny, "CNY"))
       throw new Error("Missing matching CNY server-tool exemption instant");
     const evidence: RawPriceObservation = {
       source_ref: input.source.id,
@@ -215,7 +256,7 @@ export function deepseekServicePricing(
             raw: {
               label: "Model-triggered server-side " + service.api.toLowerCase(),
               validity: freeFrom,
-              fragment: usdServerToolChange,
+              fragment: usdNotice,
             },
           },
         ],

@@ -1492,7 +1492,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v54",
+        extractorVersion: "bedrock-catalog-v55",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -2311,7 +2311,7 @@ export const manifests = [
           minModels: 20,
           maxModels: 200,
         },
-        extractorVersion: "azure-retail-prices-v12",
+        extractorVersion: "azure-retail-prices-v13",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -4616,7 +4616,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "deepseek-catalog", minModels: 1, maxModels: 100 },
-        extractorVersion: "deepseek-catalog-v31",
+        extractorVersion: "deepseek-catalog-v32",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",

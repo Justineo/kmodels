@@ -532,6 +532,10 @@ source as their rate. A missing accounting field withholds only its acquisition 
 Grounding is a source-owned service with its exact compatible model reference; it is not recovered
 by interpreting a model-local raw marker during assembly.
 
+Model price locators pair the AWS offer code with the complete native rate code. A rate code
+starting with the SKU and a dot already identifies that SKU. When this prefix is absent, the
+locator retains the SKU separately alongside the rate code or description.
+
 The machine `pricePerUnit.USD` amount applies to the Price List `unit` field. Descriptive prose is
 audit evidence and cannot change that denominator. For example, AWS can describe a TextUnit SKU as
 `$0.15 per 1K` while its machine amount is already `0.0001500000` per TextUnit; that amount must not
@@ -655,8 +659,9 @@ outside Kmodels.
 
 Regional Price List quotes can repeat the same commercial selection binding across many AWS
 Regions. Within one offer, claims with identical bindings, validity, coverage and non-region
-predicates share a union of their original clauses when every observation names its own Region.
-Each source locator and raw quote remains attributable to its clause. Other claims remain
+predicates share one Region condition when every observation names its own Region.
+Its values are the distinct observed Regions. The common predicates are stored once, and
+each source locator and raw quote remains attributable to its Region. Other claims remain
 separate. Rates, states, accounting and source contexts keep their independent evidence.
 The atomic working budget is 256 MiB and the published provider partition is limited to 128 MiB.
 

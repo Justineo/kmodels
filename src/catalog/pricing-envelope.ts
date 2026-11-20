@@ -10,7 +10,7 @@ import {
 import { validatePricingCatalog } from "./pricing-validation.ts";
 import type { Catalog } from "./schema.ts";
 
-function catalogCoreData(catalog: Catalog) {
+export function catalogCoreData(catalog: Catalog) {
   return {
     providers: catalog.providers,
     models: catalog.models,

@@ -3,7 +3,10 @@ import { join } from "node:path";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { z } from "zod";
 import { canonicalJson, compareUtf8 } from "./canonical-value.ts";
-import { parseIJson } from "./canonical-json.ts";
+import { canonicalJsonHash, parseIJson } from "./canonical-json.ts";
+import { catalogCoreData } from "./pricing-envelope.ts";
+import { readStoredPricingCompilation } from "./pricing-compilation.ts";
+import { azureRetailSourceId } from "./azure-retail-publication.ts";
 import { collectProviders } from "./collector.ts";
 import {
   collectionBatchSchema,
@@ -224,7 +227,7 @@ export async function collectShard(
   directory: string,
 ): Promise<CollectionShard> {
   const ids = providerIds(plan, id);
-  // Shards need the accepted model catalog and fetch history, not the complete price graph.
+  // Only Azure also needs the accepted Retail source observations to preserve exact quote owners.
   const previous = catalogSchema.parse(
     migrateCatalogStorage(
       parseIJson(await readFile(join(directory, "catalog.json")), pricingLimits.coreInputBytes),
@@ -239,12 +242,25 @@ export async function collectShard(
       }),
     ),
   };
+  const replay = ids.includes("azure")
+    ? await readStoredPricingCompilation(join(directory, "pricing-inputs.json.gz")).catch(
+        () => undefined,
+      )
+    : undefined;
+  const retail =
+    replay?.core_catalog_version === previous.catalog_version &&
+    replay.core_data_sha256 === canonicalJsonHash(catalogCoreData(previous))
+      ? replay.providers
+          .find((p) => p.provider_id === "azure")
+          ?.sources.find((s) => s.source_id === azureRetailSourceId)
+      : undefined;
   const batch = await collectProviders(
     previous,
     state,
     plan.observed_at,
     undefined,
     manifests.filter(({ provider }) => ids.includes(provider.id)),
+    retail,
   );
   return { schema_version: 1, plan_id: collectionPlanId(plan), shard_id: id, batch, state };
 }

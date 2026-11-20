@@ -258,6 +258,14 @@ export async function readPricingCompilationSnapshot(
   candidate: Pick<CatalogPairData, "pricing">,
   path = pricingCompilationPath,
 ): Promise<PricingCompilationSnapshot | undefined> {
+  const snapshot = await readStoredPricingCompilation(path);
+  if (snapshot) validateCompilationBinding(snapshot, candidate);
+  return snapshot;
+}
+
+export async function readStoredPricingCompilation(
+  path: string,
+): Promise<PricingCompilationSnapshot | undefined> {
   let compressed: Uint8Array;
   try {
     compressed = await readFile(path);
@@ -268,11 +276,9 @@ export async function readPricingCompilationSnapshot(
   if (compressed.byteLength > pricingLimits.pricingInputBytes)
     throw new Error("Compressed pricing compilation input exceeds its byte limit");
   const decoded = gunzipSync(compressed, { maxOutputLength: pricingLimits.pricingInputBytes });
-  const snapshot = pricingCompilationSnapshotSchema.parse(
+  return pricingCompilationSnapshotSchema.parse(
     assertCanonicalJson(decoded, pricingLimits.pricingInputBytes),
   );
-  validateCompilationBinding(snapshot, candidate);
-  return snapshot;
 }
 
 export async function writePricingCompilationSnapshot(

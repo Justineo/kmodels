@@ -35,6 +35,7 @@ export interface SourceParseInput {
       Pick<ProviderModel, "price_facts" | "pricing_state" | "modalities" | "openai_responses_tools">
     >)[];
   previousCatalogModels?: SourceParseInput["catalogModels"];
+  previousRetailMeters?: ReadonlySet<string>;
   // Scoped observations remain separate from public catalog admission.
   inventoryModels?: readonly Pick<
     ProviderModel,

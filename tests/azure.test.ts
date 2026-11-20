@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { applySupplementGroups } from "../src/catalog/collector.ts";
+import { azureRetailMeterKey } from "../src/catalog/azure-retail-publication.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
@@ -1207,7 +1208,7 @@ describe("Azure adapters", () => {
   });
   it("prices GPT-Live session hours as runtime duration instead of generic capacity", async () => {
     const value = manifest("azure");
-    const source = azureRetailSource(1, 1);
+    const source = azureRetailSource(2, 2);
     const reconciliation: PricingReconciliationItem[] = [];
     const parsed = parseSource({
       provider: provider(value),
@@ -1246,15 +1247,20 @@ describe("Azure adapters", () => {
         }),
       }),
     ]);
-    expect(parsed.models).toHaveLength(1);
+    const decision = parsed.models.find((model) => model.model_id === "Microsoft-Decision-1");
+    expect(decision?.price_facts).toEqual([
+      expect.objectContaining({
+        meter: "input_text",
+        unit: "million_tokens",
+        price: "0.042",
+        conditions: expect.objectContaining({ region: "eastus" }),
+      }),
+    ]);
     expect(
       reconciliation
         .filter(({ disposition }) => disposition === "unsupported")
         .map(({ sample }) => sample),
-    ).toEqual([
-      "Azure OpenAI Media / gpt-live-transcribe Gl / gpt-live-transcribe Gl Unit",
-      "Microsoft Decision Models / Microsoft Decision 1 / Microsoft Decision 1 1M Tokens",
-    ]);
+    ).toEqual(["Azure OpenAI Media / gpt-live-transcribe Gl / gpt-live-transcribe Gl Unit"]);
     const partition = assembleParsedProviderPricing(
       "azure",
       observedAt,
@@ -1265,13 +1271,15 @@ describe("Azure adapters", () => {
       kind: "models",
       model_refs: ["azure/gpt-live-1@2026-09-10"],
     });
-    expect(partition?.books.flatMap(({ offers }) => offers)).toEqual([
+    const liveBook = partition?.books.find(
+      (book) => book.book_key === "model:azure/gpt-live-1@2026-09-10",
+    );
+    expect(liveBook?.offers).toEqual([
       expect.objectContaining({
         billing_mode: { namespace: "kmodels", value: "usage" },
       }),
     ]);
-    const rates =
-      partition?.books.flatMap(({ offers }) => offers.flatMap(({ terms }) => terms)) ?? [];
+    const rates = liveBook?.offers.flatMap(({ terms }) => terms) ?? [];
     expect(rates).toHaveLength(1);
     const rate = rates[0];
     if (rate?.kind !== "rate") throw new Error("Missing GPT-Live session rate");
@@ -1788,6 +1796,7 @@ describe("Azure adapters", () => {
         prices: [
           row("Cohere Models", "Rerank v4 Pro Glbl", "Rerank v4 Pro Glbl Search", "1", 1),
           row("Cohere Models", "Embed v4 Txt Glbl", "Embed v4 Txt Glbl Tokens", "1M", 2),
+          row("Cohere Models", "Embed v4 Img Glbl", "Embed v4 Img Glbl Tokens", "1K", 6),
           row("Azure Mistral Models", "OCR 4 glbl", "OCR 4 glbl Pages", "1", 3),
           row("Azure Deepseek Models", "V3.2 SP Inp DZ", "V3.2 SP Inp DZ Tokens", "1M", 4),
           row("Azure BFL Flux Models", "Flux 2 Pro Dzone", "Flux 2 Pro Dzone Megapixel", "1", 5),
@@ -1810,10 +1819,21 @@ describe("Azure adapters", () => {
     ).toEqual([
       ["azure/Cohere-rerank-v4.0-pro@1", [["rerank_request", "search_unit"]]],
       ["azure/DeepSeek-V3.2-Speciale@1", [["input_text", "million_tokens"]]],
-      ["azure/embed-v-4-0@1", [["embedding", "million_tokens"]]],
+      [
+        "azure/embed-v-4-0@1",
+        [
+          ["embedding", "million_tokens"],
+          ["embedding", "thousand_tokens"],
+        ],
+      ],
       ["azure/FLUX.2-pro@1", [["image_generation", "million_pixels"]]],
       ["azure/mistral-ocr-4-0", [["input_image", "page"]]],
     ]);
+    expect(
+      models
+        .find((model) => model.model_id === "embed-v-4-0")
+        ?.price_facts.map((fact) => fact.conditions.modality),
+    ).toEqual(["text", "image"]);
   });
   it.each([true, false])("preserves an owned public Standard header (explicit=%s)", (explicit) => {
     const source = azurePublicPricingSource(1, 1);
@@ -2368,19 +2388,33 @@ describe("Azure adapters", () => {
       tasks: ["video_generation" as const],
     };
     const newVersion = { ...azurePricingModel("sora-2", "2025-12-08"), tasks: old.tasks };
-    const parse = (catalogModels: ProviderModel[], previousCatalogModels: ProviderModel[]) =>
+    const parse = (
+      catalogModels: ProviderModel[],
+      previousCatalogModels: ProviderModel[],
+      previousRetailMeters = new Set<string>(),
+    ) =>
       parseSource({
         provider: provider(manifest("azure")),
         source: azureRetailSource(0, 2),
         observedAt,
         catalogModels,
         previousCatalogModels,
+        previousRetailMeters,
         body: JSON.stringify({ prices: [row] }),
       }).models;
     expect(parse([unrelated], [old]).map(({ uid }) => uid)).toEqual([old.uid]);
     expect(parse([unrelated], [{ ...old, status: "retired" }])).toEqual([]);
     expect(parse([unrelated], [{ ...old, retired_at: "2026-02-01" }])).toEqual([]);
     expect(parse([unrelated, newVersion], [old])).toEqual([]);
+    const family = { ...azurePricingModel("sora-2"), tasks: old.tasks };
+    const receipt = new Set([
+      azureRetailMeterKey(family.uid, "10000000-0000-0000-0000-000000000007", ""),
+    ]);
+    expect(parse([newVersion], [family, newVersion], receipt).map((m) => m.uid)).toEqual([
+      family.uid,
+    ]);
+    expect(parse([newVersion], [family, newVersion]).map((m) => m.uid)).toEqual([newVersion.uid]);
+    expect(parse([newVersion], [family, old])).toEqual([]);
     const alias = {
       ...azurePricingModel("sora-new", "2025-12-08"),
       aliases: [old.model_id],

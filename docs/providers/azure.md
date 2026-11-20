@@ -299,6 +299,14 @@ Retail matching is deterministic:
    version when no differently versioned tuple is already known; and
 4. infer a meter only when the native unit and a unique task/meter interpretation agree.
 
+Cohere Retail `Embed` token SKUs explicitly distinguish `Img` and `Txt`. On a uniquely
+matched embedding model these are embedding-token rates with separate image and text input
+modalities. A native meter ID alone cannot transfer a price between catalog subjects.
+For the exact `Microsoft Decision 1 1M Tokens` Retail meter, Microsoft's
+[Foundry price table](https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/microsoft/)
+places the Decision 1 tariff under input tokens and marks cached input and output unavailable.
+Retail supplies each region, amount, start and meter ID. This mapping is specific to Decision 1.
+
 Azure OpenAI Media's `Live 1 Gl` and `Live 1 DZ` consumption SKUs publish the exact
 `<SKU> Unit` meter per `1 Hour`. The [GPT-Live cost model](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/gpt-live#cost-model)
 identifies the billed duration as the voice session, including silence. These rates use
@@ -310,6 +318,15 @@ Unmatched version markers cannot qualify an older version or a versionless model
 verified, non-retired public identities when the nonexhaustive catalog omits an entire model ID.
 The prior identity must have provenance from a current, unchanged public catalog or supplement
 extractor. A current identity, version or documented alias takes precedence over this fallback.
+An unversioned SKU can keep its previously verified family owner when a nonexhaustive source
+omits that tuple but still lists the same known versions. This requires the accepted Retail
+source to establish the same native meter, Region and exact model ID. A new version, alias,
+retirement or competing ID prevents this fallback. Independently versioned SKUs retain their
+explicit binding.
+When retained and current model IDs differ in case, the Retail model join still requires
+unique ownership. For example, the native V5 Fast image SKU and meter name identify Embed V5,
+but its ARM SKU name says `Embed V6 Glbl`. Neither that identifier nor the native meter ID
+establishes that a previously priced case-sensitive catalog subject is the current versioned one.
 Rates for a retained identity still come from the current Retail response and are published only
 when the final core contains that exact identity.
 

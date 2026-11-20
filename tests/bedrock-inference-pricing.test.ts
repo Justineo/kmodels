@@ -195,6 +195,11 @@ function lookup(candidate: CatalogPairCandidate) {
   );
 }
 
+let baseline: CatalogPairCandidate;
+beforeAll(async () => {
+  baseline = await collect();
+}, 20_000);
+
 it("collects Sol 6.1 card rates through lookup and the website without inventing global Regions", async () => {
   const body = await fixture("bedrock/model-card-gpt61-sol.md");
   const regional = await fixture("bedrock/model-regions-gpt61-sol.md");
@@ -717,7 +722,13 @@ it("retains Nova Pro optimized tariffs in all three evidenced source Regions thr
   expect(
     speeds.some(
       (claim) =>
-        claim.applicability.any_of.length === 3 &&
+        claim.applicability.any_of.length === 1 &&
+        claim.applicability.any_of[0]?.all_of.some(
+          (c) =>
+            c.kind === "categorical" &&
+            c.dimension.value === "region" &&
+            c.values.map((v) => v.value).join(",") === "us-east-1,us-east-2,us-west-2",
+        ) &&
         new Set(
           claim.observations.flatMap(
             ({ raw }) =>
@@ -784,7 +795,7 @@ it("retains Nova Pro optimized tariffs in all three evidenced source Regions thr
 }, 20_000);
 
 it("collects actual IDs through static output and uses the same commercial conditions in the UI", async () => {
-  const candidate = await collect();
+  const candidate = baseline;
   const query = lookup(candidate);
   for (const [prefix, numerator, denominator] of [
     ["us", "33", "500000"],
@@ -920,8 +931,8 @@ it("keeps Nova Global Standard, Priority and Flex token tariffs disjoint through
   }
 }, 20_000);
 
-it("does not infer private resource IDs, regional prefixes, or reranker ARNs", async () => {
-  const candidate = await collect();
+it("does not infer private resource IDs, regional prefixes, or reranker ARNs", () => {
+  const candidate = baseline;
   const query = lookup(candidate);
   const literal = "arn:aws:bedrock:us-east-1::foundation-model/cohere.rerank-v3-5:0";
   expect(candidate.inference?.mapping.rules.some(({ model_id }) => model_id === literal)).toBe(
@@ -1079,7 +1090,7 @@ it("publishes residual Geo prices without borrowing commercial, Mantle, or Globa
 it.each(["geography", "source billing", "request meaning"])(
   "withdraws an association when %s evidence changes, keeping canonical prices",
   async (kind) => {
-    const previous = await collect();
+    const previous = baseline;
     const candidate = await collect((bundle) => {
       for (const doc of bundle.documents) {
         if (kind === "geography")
@@ -1105,7 +1116,7 @@ it.each(["geography", "source billing", "request meaning"])(
   15000,
 );
 it("does not require separate API syntax or account-profile configuration documents", async () => {
-  const previous = await collect();
+  const previous = baseline;
   const candidate = await collect((bundle) => {
     bundle.documents = bundle.documents.filter(
       ({ url }) => !/API_runtime_.*\.md|inference-profiles|userguide\/endpoints\.md/.test(url),

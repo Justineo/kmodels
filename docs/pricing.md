@@ -1034,8 +1034,10 @@ derived from those changing fields.
 Compaction groups equal semantic values and unions their applicability while
 retaining all observations. Canonical output must be maximally compact for the
 declared grouping keys. When the union itself exceeds one applicability's clause
-or byte budget, assembly deterministically shards the equal-value group into the
-fewest recursively bounded applicability variants it can publish; it does not
+or byte budget, assembly deterministically shards the equal-value group into
+bounded variants and merges any remaining pair that fits, including shards from
+different halves. Repeated canonical clauses count once toward the selector limit;
+their distinct source observations remain attributable. Assembly does not
 downgrade otherwise normalized rates or states merely because their selector
 domain is large. Two shards with the same grouping key are valid only when
 combining them would exceed an applicability bound. Unequal overlapping normalized values are not allowed;

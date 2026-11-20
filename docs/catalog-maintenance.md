@@ -95,7 +95,11 @@ Trusted settlement releases unused funds. The inference job has no ledger write 
 A hash-bound concrete-error checkpoint authorizes takeover on the same lease. Takeover requires
 at least USD 2 remaining and leaves USD 1 available for fresh final verification. Final verification
 can use the entire remaining balance. Charges from earlier sessions count toward the USD 10 total.
-Unchanged evidence fingerprints cannot repeatedly trigger takeover. A separate publication-validation
+For each candidate and source fingerprint, the controller records the rejected patch and its
+cited executable checks. Repeated receipts for the same case do not spend another attempt.
+A changed proposal or reproducer can receive a new revision under the ordinary scheduling,
+call and budget limits. Older ledger entries without a case key allow the first identifiable
+case. A spent candidate cannot block a new case for a sibling. A separate publication-validation
 continuation still requires all ordinary gates.
 
 The Codex gateway accepts at most 60 serial Responses calls per stage, each bounded to 160 KB
@@ -166,7 +170,9 @@ not a guarantee of semantic completeness.
 
 Only concrete errors trigger Sol high takeover. It starts from the proposed tree, may edit only
 the existing repair allowlist and must regenerate the ordinary review/regression proof for its
-exact final patch. The takeover allowance applies to the candidates with concrete errors.
+exact final patch. Its handoff includes the eligible contradictions, affected files, receipts
+and the offline replay of any preserved verifier tests on the rejected proposal. The reviser
+can act on that evidence immediately and must still prove the changed behavior.
 A fresh comparison checks the revised patch. Within the same run it can reuse the blinded
 assessment and its frozen evidence files when the original admission (including base revision)
 and the entire set of candidates under review match. Different scope requires a fresh blinded

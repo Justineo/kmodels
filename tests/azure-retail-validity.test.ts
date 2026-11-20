@@ -193,6 +193,7 @@ function retailLoss(
     retired?: boolean;
     legacy?: boolean;
     unmatchedMeters?: string[];
+    currentOwner?: string;
   } = {},
 ) {
   const prior: PricingReplaySource = {
@@ -216,8 +217,22 @@ function retailLoss(
     ],
   };
   const result = {
-    models: [{ ...model, ...(options.retired ? { status: "retired" as const } : {}) }],
-    pricingReplaySources: [{ ...prior, models: parse(currentRows).models }],
+    models: [
+      { ...model, ...(options.retired ? { status: "retired" as const } : {}) },
+      ...(options.currentOwner
+        ? [{ ...model, uid: "azure/" + options.currentOwner, model_id: options.currentOwner }]
+        : []),
+    ],
+    pricingReplaySources: [
+      {
+        ...prior,
+        models: parse(currentRows).models.map((row) =>
+          options.currentOwner
+            ? { ...row, uid: "azure/" + options.currentOwner, model_id: options.currentOwner }
+            : row,
+        ),
+      },
+    ],
     coverage: {
       provider_id: "azure",
       status: "fresh" as const,
@@ -241,6 +256,12 @@ it("publishes a later effective amount in the same scoped Retail meter once it i
   const { data, lookup } = assemble([updated]);
   expect(query(lookup, at).status).toBe("matched");
   expect(rates(data)[0]?.price.value).toEqual({ numerator: "1", denominator: "4000" });
+});
+
+it("keeps the accepted price when the same native meter moves to a disjoint active model", () => {
+  expect(retailLoss([native], [native], { currentOwner: "unrelated-model" })).toContain(
+    "lost 1 previously supported scoped quotes",
+  );
 });
 
 it("withholds a candidate missing a current region, a previously announced future rate or an exact tier", () => {

@@ -188,13 +188,16 @@ it("preserves an unknown speech quote locally without substituting its list pric
   expect(ocr?.price_facts.map(({ currency }) => currency)).toEqual(["USD", "CNY"]);
 });
 
-it("rejects changed web-tool billing without weakening standalone prices", async () => {
+it.each([
+  "These server tools are billed per query at the Search and Fetch API prices.",
+  "These server tools are not billed (text search, image search and page fetch). A surcharge applies to each search call.",
+])("rejects changed web-tool billing without weakening standalone prices (%s)", async (billing) => {
   const { result, failures } = await parse((bundle) => {
     const doc = bundle.documents.find(({ url }) => url.endsWith("/guides/web_tools"));
     if (!doc) throw Error("Missing billing guide");
     doc.body = doc.body.replace(
       "These server tools are not billed (text search, image search and page fetch).",
-      "These server tools are billed per query at the Search and Fetch API prices.",
+      billing,
     );
   });
   expect(failures).toContain("https://api-docs.deepseek.com/guides/web_tools");
