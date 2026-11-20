@@ -22,7 +22,7 @@ import { InferenceAllowanceExhausted, startCodexGateway } from "./codex-gateway.
 import { reviewRoute } from "./flow.ts";
 import { catalogRepairModel } from "./openai.ts";
 import {
-  checkVerification,
+  checkSessionVerification,
   checkTakeoverCheckpoint,
   type Verification,
   closedCandidates,
@@ -656,21 +656,41 @@ async function main(): Promise<void> {
       });
       await writeFile(join(output, `${label}-probe-replay.json`), comparison);
       await cp(effectiveProofRoot, join(evidence, "proposer"), { recursive: true });
+      const verificationInputs = {
+        "assessment.txt": assessment,
+        "proposal.json": reviewText,
+        "patch.diff": patch,
+        "probe-replay.json": comparison,
+      };
       const text = await run(
         "verify",
         work,
         `Independently decide every proposed closed conclusion in /input/proposal.json, using /input/assessment.txt and original sources. The candidate patch is applied in this checkout. Read /input/probe-replay.json for the blinded tests, exit codes and output from both trees. Explain which observations distinguish the claimed fix from the control. An absent or failing probe may require a focused follow-up. Inspect /input/patch.diff; original proposer artifacts are under /tmp/gh-aw/agent/proposer. Reacquire or read full sources as needed, including contrary context. Cover exactly ${JSON.stringify(expected)}. Return the required JSON. supported requires successful actual-consumer and counterexample receipts, not just existing green tests. concrete_error requires a specific expected/actual contradiction tied to original evidence; otherwise use insufficient_evidence.`,
-        {
-          "assessment.txt": assessment,
-          "proposal.json": reviewText,
-          "patch.diff": patch,
-          "probe-replay.json": comparison,
-        },
+        verificationInputs,
         verificationOutputSchema,
       );
-      const report = await checkVerification(JSON.parse(text), expected, (path) => {
+      const inputs = new Map(
+        Object.entries({ "admission.json": admissionText, ...verificationInputs }).map(
+          ([name, content]) => [`/input/${name}`, content] as const,
+        ),
+      );
+      const report = await checkSessionVerification(text, expected, inputs, (path) => {
         const mapped = join(evidence, relative("/tmp/gh-aw/agent", path));
         return readSharedFile(mapped, evidence, 128 * 1024 * 1024);
+      }).catch((error: unknown) => {
+        // An invalid model answer cannot authorize a repair or a takeover.
+        if (error instanceof Error && "code" in error && error.code !== "ENOENT") throw error;
+        return {
+          candidates: expected.map((id) => ({
+            id,
+            verdict: "insufficient_evidence" as const,
+            reason: `Unable to verify report: ${(error instanceof Error ? error.message : String(error)).slice(0, 2000)}`,
+            expected: "",
+            actual: "",
+            evidence: [],
+            checks: [],
+          })),
+        };
       });
       await writePrivateJson(join(output, `${label}-verification.json`), report);
       return report;

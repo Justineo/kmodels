@@ -31,6 +31,7 @@ import {
   fireworksBundle,
   fireworksDocs,
   fireworksRoot,
+  flexRouterId,
   index,
   rerankerAlias,
   rerankerId,
@@ -700,7 +701,7 @@ describe("Fireworks AI Serverless", () => {
         return consoleProfile(decisionId, [
           consoleMode(decisionId, "default", decision, "", [42000000, 8400000, 0]),
         ]);
-      return { ...document, body: document.body.replace("$2 / $0.4 / $6", "—") };
+      return { ...document, body: document.body.replace(/^\| \[Example\]\([^\n]+\n/mu, "") };
     });
     return { bundle, spot, decision };
   }
@@ -793,6 +794,29 @@ describe("Fireworks AI Serverless", () => {
     ).toBe("unknown");
   });
 
+  it("honors an explicit Priority exclusion even when the console lists a Priority SKU", () => {
+    const { bundle } = consoleBundle();
+    bundle.documents = bundle.documents.map((doc) =>
+      doc.url.endsWith("/serverless/pricing.md")
+        ? {
+            ...doc,
+            body: doc.body.replace(
+              "| [Example Fast]",
+              "| [Example](https://app.fireworks.ai/models/fireworks/example) | $1 / $0.2 / $3 | — |\n| [Example Fast]",
+            ),
+          }
+        : doc,
+    );
+    const model = parse("fireworks", JSON.stringify(bundle)).models.find(
+      (m) => m.model_id === chatId,
+    );
+    expect(model?.price_facts.map((f) => f.conditions.service_tier)).toEqual([
+      "standard",
+      "standard",
+      "standard",
+    ]);
+  });
+
   it.each([
     "foreign owner",
     "wrong request ID",
@@ -868,6 +892,7 @@ describe("Fireworks AI Serverless", () => {
       rerankerId,
       routerId,
       "accounts/fireworks/routers/another-ultrafast",
+      flexRouterId,
       "accounts/fireworks/routers/another-us",
       `${chatId}-spot`,
       "Example/Small-Embed",
@@ -876,6 +901,13 @@ describe("Fireworks AI Serverless", () => {
     expect(models[4]?.pricing_state).toBe("numeric");
     expect(models[5]?.price_facts).toEqual([]);
     expect(models[5]?.pricing_state).toBe("unknown");
+    expect(models[6]?.model_id).toBe(flexRouterId);
+    expect(models[6]?.price_facts.map(({ meter, price }) => [meter, price])).toEqual([
+      ["input_text", "0.5"],
+      ["cache_read_text", "0.1"],
+      ["output_text", "1.5"],
+    ]);
+    expect(models[6]?.pricing_state).toBe("numeric");
     expect(models[0]?.price_facts).toContainEqual(
       expect.objectContaining({
         meter: "input_text",
@@ -902,13 +934,75 @@ describe("Fireworks AI Serverless", () => {
       expect.objectContaining({ model_id: rerankerAlias, model_ref: `fireworks/${rerankerId}` }),
     );
     expect(models[0]?.modalities.input).toEqual(["text", "image", "video"]);
-    expect(models[7]?.price_facts.map(({ price }) => price)).toEqual(["0.7", "0.14", "2.1"]);
-    expect(models[9]).toMatchObject({
+    expect(models[8]?.price_facts.map(({ price }) => price)).toEqual(["0.7", "0.14", "2.1"]);
+    expect(models[10]).toMatchObject({
       status: "legacy",
       limits: { embedding_dimensions: [1024] },
       price_facts: [{ price: "0.016" }],
       pricing_state: "numeric",
     });
+  });
+
+  it("binds Flex price rows to the exact Flex router instead of the base card", () => {
+    const manifest = providerManifest("fireworks");
+    const source = manifest.sources[0];
+    if (source === undefined) throw new Error("Missing Fireworks source");
+    const collect = (body: string) => {
+      const reconciliations: string[] = [];
+      const parsed = parseSource({
+        provider: { ...manifest.provider, source_ids: [source.id] },
+        source,
+        body,
+        observedAt,
+        onPricingReconciliation: ({ disposition, reason_code, sample }) =>
+          reconciliations.push(`${disposition}:${reason_code}:${sample}`),
+      });
+      return { ...parsed, reconciliations };
+    };
+    const bound = collect(JSON.stringify(fireworksBundle));
+    const flex = bound.models.find(({ model_id }) => model_id === flexRouterId);
+    const base = bound.models.find(({ model_id }) => model_id === chatId);
+    expect(flex?.price_facts.map(({ price }) => price)).toEqual(["0.5", "0.1", "1.5"]);
+    expect(bound.reconciliations).not.toContain(
+      `unbound:fireworks_price_without_exact_router:${chatId}`,
+    );
+    expect(base?.price_facts).toHaveLength(6);
+
+    const repeated = {
+      ...fireworksBundle,
+      documents: fireworksBundle.documents.map((doc) => ({
+        ...doc,
+        body: doc.body.replace(/^(\| \[Example Flex\].*)$/mu, "$1\n$1"),
+      })),
+    };
+    expect(() => collect(JSON.stringify(repeated))).toThrow("repeated a standard rate");
+
+    const modesUrl = `${fireworksDocs}/serverless-modes.md`;
+    const withoutFlexRoute = collect(
+      JSON.stringify({
+        ...fireworksBundle,
+        documents: fireworksBundle.documents.map((document) =>
+          document.url === modesUrl
+            ? {
+                ...document,
+                body: document.body.replace(
+                  /^## Flex$[\s\S]*$/mu,
+                  "## Flex\n| Model | `model` ID |\n| - | - |\n| Unrelated Model | `accounts/fireworks/routers/unrelated-flex` |",
+                ),
+              }
+            : document,
+        ),
+      }),
+    );
+    expect(
+      withoutFlexRoute.models.find(({ model_id }) => model_id === flexRouterId),
+    ).toBeUndefined();
+    expect(
+      withoutFlexRoute.models.find(({ model_id }) => model_id === chatId)?.price_facts,
+    ).toHaveLength(6);
+    expect(withoutFlexRoute.reconciliations).toContain(
+      `unbound:fireworks_price_without_exact_router:${chatId}`,
+    );
   });
 
   it("matches the preview route heading without case sensitivity", () => {

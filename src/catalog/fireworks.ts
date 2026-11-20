@@ -95,6 +95,7 @@ function addConsolePrices(
   models: Map<string, ParsedProviderModel>,
   ids: readonly string[],
   documents: LinkedBundle["documents"],
+  standardOnly: ReadonlySet<string>,
 ): void {
   for (const id of ids) {
     const url = fireworksConsoleUrl(id);
@@ -108,6 +109,7 @@ function addConsolePrices(
     const modes = fireworksConsoleModes(document.body, id);
     for (const mode of modes) {
       const target = mode.usageIdentifier || id;
+      if (standardOnly.has(target) && mode.serviceTier === "priority") continue;
       let model = models.get(target);
       if (model === undefined) {
         model = {
@@ -547,6 +549,9 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
   const routerRows = [
     ...routerTable(modes, "Fast"),
     ...routerTable(modes, "Ultra-fast (Preview)", " Ultra-fast (Preview)"),
+    ...(markdownSection(modes, 2, "Flex", { ignoreCase: true }) === undefined
+      ? []
+      : routerTable(modes, "Flex")),
     ...routerTable(docs("us-only-serverless"), "Available models", " (US)"),
   ];
   const routers = new Map(routerRows.map(({ label, id }) => [label.toLowerCase(), id]));
@@ -593,6 +598,7 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
     });
   }
 
+  const standardOnly = new Set<string>();
   for (const { label, id, standard, priority } of [
     ...pricesFromTable(pricing, "Text and vision models"),
     ...decisionRows,
@@ -607,7 +613,7 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
       });
       continue;
     }
-    const variant = / (?:Fast|Ultra-fast \(Preview\)|\(US\))$/u.test(label);
+    const variant = / (?:Fast|Ultra-fast \(Preview\)|Flex|\(US\))$/u.test(label);
     if (
       variant &&
       routedId === undefined &&
@@ -627,12 +633,13 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
       undefined,
     );
     const hasPriority = priority !== "—";
+    if (!hasPriority) standardOnly.add(model.model_id);
     model.price_facts = tokenRates(
       input,
       model.model_id,
       standard,
       "Serverless Pricing/Standard",
-      hasPriority ? { service_tier: "standard" } : {},
+      { service_tier: "standard" },
       decisionIds.has(id),
     );
     if (hasPriority)
@@ -715,6 +722,7 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
     models,
     cards.map(({ model }) => model.model_id),
     bundle.documents,
+    standardOnly,
   );
   for (const model of models.values())
     if (model.price_facts.length > 0) model.pricing_state = "numeric";
@@ -723,19 +731,24 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
     models: published,
     inference_prices: published
       .filter((model) => model.price_facts.length > 0 || model.raw_price_facts.length > 0)
-      .flatMap((model) => [
-        hostedInferencePrice(model, input.source.id, {
-          kind: "provider_key",
-          value: model.model_id,
+      .flatMap((model) =>
+        [model.model_id, ...model.aliases].map((id) => {
+          const rule = hostedInferencePrice(
+            model,
+            input.source.id,
+            id === model.model_id
+              ? { kind: "provider_key", value: id }
+              : { kind: "table", value: `Embeddings and Reranking/Qwen3/${id}` },
+          );
+          if (standardOnly.has(model.model_id))
+            rule.fixed_selectors.push({
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "service_tier" },
+              value: { namespace: "provider", provider_id: "fireworks", value: "standard" },
+            });
+          return { ...rule, model_id: id };
         }),
-        ...model.aliases.map((alias) => ({
-          ...hostedInferencePrice(model, input.source.id, {
-            kind: "table",
-            value: `Embeddings and Reranking/Qwen3/${alias}`,
-          }),
-          model_id: alias,
-        })),
-      ]),
+      ),
   };
 }
 

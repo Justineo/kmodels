@@ -623,7 +623,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "fireworks-serverless" },
-        extractorVersion: "fireworks-serverless-v5",
+        extractorVersion: "fireworks-serverless-v6",
         transport: { kind: "fireworks-serverless" },
         fields: [
           "model_id",

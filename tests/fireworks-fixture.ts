@@ -4,6 +4,7 @@ export const fireworksGuides = "https://docs.fireworks.ai/guides";
 export const chatSlug = "publisher/example";
 export const chatId = "accounts/fireworks/models/example";
 export const routerId = "accounts/fireworks/routers/example-fast";
+export const flexRouterId = "accounts/fireworks/routers/example-flex";
 export const decisionId = "accounts/fireworks/models/decide";
 export const embeddingAlias = "fireworks/example-embedding";
 export const embeddingId = "accounts/fireworks/models/example-embedding";
@@ -119,6 +120,7 @@ export const fireworksBundle = {
         "| - | - | - |",
         "| [Example](https://app.fireworks.ai/models/fireworks/example) | $1 / $0.2 / $3 | $2 / $0.4 / $6 |",
         "| [Example Fast](https://app.fireworks.ai/models/fireworks/example) | $4 / $0.8 / $12 | — |",
+        "| [Example Flex](https://app.fireworks.ai/models/fireworks/example) | $0.5 / $0.1 / $1.5 | — |",
         "## Decision models",
         "| Model | Standard | Priority |",
         "| - | - | - |",
@@ -141,6 +143,10 @@ export const fireworksBundle = {
         "| Model | `model` ID |",
         "| - | - |",
         "| Another Model | `accounts/fireworks/routers/another-ultrafast` |",
+        "## Flex",
+        "| Model | `model` ID |",
+        "| - | - |",
+        `| Example Flex | \`${flexRouterId}\` |`,
       ].join("\n"),
     },
     {

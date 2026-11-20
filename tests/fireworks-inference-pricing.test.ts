@@ -15,6 +15,8 @@ import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 import {
   embeddingId,
+  chatId,
+  flexRouterId,
   fireworksBundle,
   rerankerAlias,
   rerankerId,
@@ -86,6 +88,34 @@ function inputRate(candidate: CatalogPairCandidate, modelRef: string) {
         : [],
     );
 }
+
+it("selects Standard for the exact Flex router and rejects an explicit Priority request", async () => {
+  const candidate = await collect();
+  const query = lookup(candidate);
+  const tier = (model_id: string, value: string) =>
+    query({
+      provider_id: "fireworks",
+      model_id,
+      selectors: [
+        {
+          dimension: { namespace: "kmodels", value: "service_tier" },
+          kind: "categorical",
+          value: { namespace: "provider", provider_id: "fireworks", value },
+        },
+      ],
+    });
+  expect(query({ provider_id: "fireworks", model_id: flexRouterId }).status).toBe("matched");
+  expect(tier(flexRouterId, "standard").status).toBe("matched");
+  expect(tier(flexRouterId, "priority").candidates).toEqual([]);
+  expect(
+    query({
+      provider_id: "fireworks",
+      model_id: flexRouterId,
+      choices: [{ dimension: "service_tier", value: { namespace: "kmodels", value: "priority" } }],
+    }).candidates,
+  ).toEqual([]);
+  expect(tier(chatId, "priority").status).toBe("matched");
+});
 
 it("bills a retrieval card with a single per-token unit as its input rate", async () => {
   const candidate = await collect();
