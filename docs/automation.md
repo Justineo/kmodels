@@ -423,7 +423,8 @@ Status: implemented
   paths, including the public-only compiler input and fetch state. The refresh compares the
   uploaded asset's SHA-256 and byte count before committing only `data/catalog-snapshot.json`.
   The pointer commit records the
-  producing Actions run in a `Kmodels-Refresh-Run` trailer. Deployment checks
+  producing Actions run and attempt in `Kmodels-Refresh-Run` and `Kmodels-Refresh-Attempt` trailers.
+  Deployment checks
   out full commit/tree history with `filter: blob:none` so the website generation-time
   link can resolve the latest catalog-producing commit without downloading historical
   file contents, and prefer that run, while manually produced catalog commits fall

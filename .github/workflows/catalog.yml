@@ -307,7 +307,9 @@ jobs:
           git add data/catalog-snapshot.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore(data): refresh provider catalog" -m "Kmodels-Refresh-Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          git commit -m "chore(data): refresh provider catalog" \
+            --trailer "Kmodels-Refresh-Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --trailer "Kmodels-Refresh-Attempt: ${GITHUB_RUN_ATTEMPT}"
           if ! git push origin HEAD:refs/heads/main; then
             git fetch --no-tags origin main
             if [ "$(git rev-parse FETCH_HEAD)" != "$(git rev-parse HEAD^)" ]; then
