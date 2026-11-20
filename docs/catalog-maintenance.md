@@ -49,6 +49,11 @@ write credential for this branch. State mutations use the shared `catalog-mainte
 concurrency group and compare-and-swap writes. They never hold the main publication lock while
 waiting for investigation or inference. An unavailable or invalid ledger stops preparation.
 
+The refresh observer reconciles tasks, ingests discovery captures and dispatches repair only when
+the event identifies the attempt that published the checked-out snapshot. A successful run that
+skips publication because main advanced has no new observation to process. Older snapshot commits
+with only the run URL identify the first attempt.
+
 Tasks retain candidate identity, source/implementation fingerprint, attempts, evidence run, coverage,
 reason and next action. A changed fingerprint reopens the question and invalidates saved coverage.
 Finishing a run cannot overwrite a newer attempt or results for a changed fingerprint.

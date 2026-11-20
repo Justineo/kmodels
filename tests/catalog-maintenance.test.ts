@@ -34,6 +34,7 @@ import { askOpenAI, assistanceModel, assistanceRequest } from "../scripts/repair
 import { recordDiscovery } from "../scripts/repair/discovery.ts";
 import { readSharedFile } from "../scripts/repair/files.ts";
 import { takeoverFindings } from "../scripts/repair/takeover.ts";
+import { matchesPublishedRefresh } from "../scripts/repair/maintenance.ts";
 import { boundedEvidence } from "../scripts/repair/broker.ts";
 import { captureRepairSource } from "../src/catalog/catalog-repair-capture.ts";
 import { researchPublicSource, reviewedPublicSource } from "../src/catalog/public-evidence.ts";
@@ -52,6 +53,17 @@ async function directory() {
   return path;
 }
 const now = new Date("2026-11-17T00:00:00Z");
+it("observes only the attempt that published the current snapshot", () => {
+  const url = "https://github.com/Justineo/kmodels/actions/runs/123";
+  const legacy = `Kmodels-Refresh-Run: ${url}\n`;
+  const retried = legacy + "Kmodels-Refresh-Attempt: 2\n";
+  expect(matchesPublishedRefresh(legacy, url, 1)).toBe(true);
+  expect(matchesPublishedRefresh(legacy, url, 2)).toBe(false);
+  expect(matchesPublishedRefresh(retried, url, 2)).toBe(true);
+  expect(matchesPublishedRefresh(retried, url, 1)).toBe(false);
+  expect(matchesPublishedRefresh(retried, url.slice(0, -1), 2)).toBe(false);
+  expect(matchesPublishedRefresh("", url, 1)).toBe(false);
+});
 function candidate(
   provider = "openai",
   trigger: CatalogRepairCandidate["trigger"] = "pricing_validation",

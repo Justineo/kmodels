@@ -65,7 +65,22 @@ function fingerprints(
   );
 }
 
-async function observe(state: MaintenanceState): Promise<void> {
+export function matchesPublishedRefresh(
+  trailers: string,
+  runUrl: string,
+  attempt: number,
+): boolean {
+  const lines = trailers.trim().split("\n");
+  const attempts = lines.filter((line) => line.startsWith("Kmodels-Refresh-Attempt:"));
+  return (
+    lines.includes(`Kmodels-Refresh-Run: ${runUrl}`) &&
+    (attempts.length === 0
+      ? attempt === 1
+      : attempts.length === 1 && attempts[0] === `Kmodels-Refresh-Attempt: ${attempt}`)
+  );
+}
+
+async function observe(state: MaintenanceState, published: boolean): Promise<void> {
   const reportText = await readFile("data/refresh-summary.json", "utf8");
   const report: unknown = JSON.parse(reportText);
   const candidates = catalogRepairCandidates(report);
@@ -128,7 +143,7 @@ async function observe(state: MaintenanceState): Promise<void> {
             ),
           ),
         // Only the observer invoked after successful refresh publication may confirm consumer checks.
-        consumer_passed: process.env.MAINTENANCE_REFRESH_PUBLISHED === "true",
+        consumer_passed: published,
       })
     ) {
       task.status = "adopted";
@@ -151,7 +166,7 @@ async function main(): Promise<void> {
   const { state, sha } = readState(repo);
   const now = new Date();
   if (command === "prepare") {
-    await observe(state);
+    await observe(state, false);
     const lease = prepareBudgetLease(
       state,
       `${env("GITHUB_RUN_ID")}-${env("GITHUB_RUN_ATTEMPT")}`,
@@ -508,13 +523,19 @@ async function main(): Promise<void> {
       })
       .parse(JSON.parse(await readFile(env("GITHUB_EVENT_PATH"), "utf8")));
     const run = event.workflow_run;
-    const log = execFileSync(
+    const trailers = execFileSync(
       "git",
-      ["log", "-1", "--format=%B", "--", "data/catalog-snapshot.json"],
+      ["log", "-1", "--format=%(trailers:only,unfold)", "--", "data/catalog-snapshot.json"],
       { encoding: "utf8" },
     );
-    if (log.includes(`/actions/runs/${run.id}`)) process.env.MAINTENANCE_REFRESH_PUBLISHED = "true";
-    await observe(state);
+    const runUrl = `${env("GITHUB_SERVER_URL")}/${repo}/actions/runs/${run.id}`;
+    if (!matchesPublishedRefresh(trailers, runUrl, run.run_attempt)) {
+      console.log(
+        "Refresh attempt did not publish the current catalog snapshot. Skipping observation.",
+      );
+      return;
+    }
+    await observe(state, true);
     const artifacts = z
       .object({
         artifacts: z.array(
