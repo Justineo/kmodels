@@ -2311,7 +2311,7 @@ export const manifests = [
           minModels: 20,
           maxModels: 200,
         },
-        extractorVersion: "azure-retail-prices-v13",
+        extractorVersion: "azure-retail-prices-v14",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",

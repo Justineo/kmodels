@@ -117,15 +117,39 @@ export function azureRetailPricingLoss(
 
   // v9 observed the native validity and did not always express the Standard processing tier.
   const legacyTier = prior.extractor_version === "azure-retail-prices-v9";
+  const legacyEmbedding = /^azure-retail-prices-v(?:9|10|11|12)$/.test(prior.extractor_version);
   const models = new Map(result.models.map((model) => [model.uid, model]));
   const comparable = new Map<string, SourcePriceFact[]>();
   for (const { uid, price_facts } of current.models) {
     if (!models.has(uid)) continue;
     for (const fact of price_facts) {
-      const key = comparablePriceKey(uid, fact, legacyTier);
-      const siblings = comparable.get(key);
-      if (siblings === undefined) comparable.set(key, [fact]);
-      else siblings.push(fact);
+      const keys = [comparablePriceKey(uid, fact, legacyTier)];
+      const { modality, ...conditions } = fact.conditions;
+      if (
+        legacyEmbedding &&
+        /^azure\/cohere-embed-/i.test(uid) &&
+        fact.source_locator?.kind === "meter" &&
+        fact.meter === "embedding" &&
+        (modality === "text" || modality === "image")
+      ) {
+        // Older extractors labeled these same native text/image token meters without modality.
+        keys.push(
+          comparablePriceKey(
+            uid,
+            {
+              ...fact,
+              meter: modality === "image" ? "image_generation" : "embedding",
+              conditions,
+            },
+            legacyTier,
+          ),
+        );
+      }
+      for (const key of keys) {
+        const siblings = comparable.get(key);
+        if (siblings === undefined) comparable.set(key, [fact]);
+        else siblings.push(fact);
+      }
     }
   }
   const rejectedVersions = new Set(result.azureRetailUnmatchedVersionMeters);

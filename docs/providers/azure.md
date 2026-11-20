@@ -323,10 +323,14 @@ omits that tuple but still lists the same known versions. This requires the acce
 source to establish the same native meter, Region and exact model ID. A new version, alias,
 retirement or competing ID prevents this fallback. Independently versioned SKUs retain their
 explicit binding.
-When retained and current model IDs differ in case, the Retail model join still requires
-unique ownership. For example, the native V5 Fast image SKU and meter name identify Embed V5,
-but its ARM SKU name says `Embed V6 Glbl`. Neither that identifier nor the native meter ID
-establishes that a previously priced case-sensitive catalog subject is the current versioned one.
+Learn lists the Cohere Embed V5 families as `Cohere-embed-v5-Fast` and `Cohere-embed-v5-Pro`;
+the registry capitalizes `Embed-V5` and identifies version 1. Retail matches a unique casing
+variation of an established family when all current versions were already observed. An unversioned
+SKU with the same accepted meter and region keeps its unversioned owner and exact stored spelling.
+Competing spellings, aliases and new versions still block this join. The native product, SKU and
+meter names distinguish Fast from Pro and image from text input. The opaque ARM SKU name can
+differ (for example, `Embed V6 Glbl` for the V5 Fast image SKU). Historical pricing comparisons
+recognize the earlier image-generation and embedding labels for these same native token meters.
 Rates for a retained identity still come from the current Retail response and are published only
 when the final core contains that exact identity.
 
