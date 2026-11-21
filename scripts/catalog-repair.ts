@@ -14,8 +14,10 @@ import {
   candidateKey,
   chooseProvider,
   difficulty,
+  digest,
   boundedIncidentBatch,
   investigationMinutes,
+  idleInvestigation,
   stateSchema,
 } from "./repair/state.ts";
 import {
@@ -163,12 +165,30 @@ const level = difficulty(
   ),
 );
 const repairable = candidates.length > 0 || (!periodic && executionNeedsReview);
+// An admitted removal already has its own review row. A deferred one is covered only by
+// the same evidenced blocker until its retry date. Other acquisition gaps remain explicit.
+const accountedRemovals = new Set(
+  candidates.filter((c) => c.trigger === "source_location_change").map(candidateKey),
+);
+for (const candidate of deferred) {
+  if (candidate.trigger !== "source_location_change") continue;
+  const id = candidateKey(candidate);
+  const task = maintenance?.tasks.find((item) => item.id === id);
+  if (
+    task?.status === "blocked" &&
+    task.retry_at &&
+    Date.parse(task.retry_at) > preparedAt.getTime() &&
+    task.source_wait_reason_hash === digest(candidate.message)
+  )
+    accountedRemovals.add(id);
+}
 const sourceEvidenceIncomplete = catalogRepairEvidenceIncomplete(
   report,
   candidates.length === 0 ||
     candidates.some(({ trigger }) => trigger === "scheduled_architecture_review")
     ? undefined
     : new Set(candidates.map(({ provider_id }) => provider_id)),
+  accountedRemovals,
 );
 const admissionPath = process.env.KMODELS_REPAIR_ADMISSION;
 let reviewMarkdown = "";
@@ -346,20 +366,11 @@ if (!repairable) {
     await appendFile(
       safeOutputsPath,
       `${JSON.stringify(
-        auditIncomplete || sourceEvidenceIncomplete || executionIncomplete || deferred.length > 0
-          ? {
-              type: "report_incomplete",
-              reason:
-                execution?.verification_failure === "test_timeout"
-                  ? "Generated catalog verification timed out on both attempts; review the refresh execution logs."
-                  : deferred.length > 0 &&
-                      !auditIncomplete &&
-                      !sourceEvidenceIncomplete &&
-                      !executionIncomplete
-                    ? "Current candidates are deferred by maintenance cooldown; their saved status and next actions remain unresolved for this run."
-                    : "Source, execution or audit evidence is unavailable, invalid or partial; no conclusion about complete coverage is possible.",
-            }
-          : { type: "noop", message: "No deterministic catalog code-repair candidate was found" },
+        idleInvestigation(
+          auditIncomplete || sourceEvidenceIncomplete || executionIncomplete,
+          deferred.length,
+          execution?.verification_failure,
+        ),
       )}\n`,
     );
 }

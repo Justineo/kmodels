@@ -7,9 +7,21 @@ optimization and behavior-preserving refactoring. The [collection contract](coll
 
 ## Recurring failure checks
 
-These are current requirements, not an execution log. Apply the rows affected by the change;
-an unrelated cleanup does not require a fresh crawl of every source. Keep provider-specific
-resolutions and remaining evidence limits in the provider guide.
+1. **Trace the handoff.** For a new collector diagnostic, replay its refresh summary through
+   `catalogRepairCandidates` and assert the intended candidate and a harmless control.
+   A log warning or a retained snapshot alone cannot queue work. [Admission rules](refresh-repair-audit.md#investigation-admission)
+2. **Start with the last counterexample.** Reuse the saved source and failing assertion.
+   If the probe read the wrong schema, fix the probe and rerun it before judging the collector.
+3. **Fix the rule where it belongs.** Compact equivalent quotes in code. Normalize spelling
+   only where provider evidence establishes identity. Preserve the original ID and test a near match.
+4. **Prove the public result both ways.** Replay the real lookup or export on the same input
+   before and after. A live route must appear and a retired route must stay out. An explicit
+   charge must survive a nearby free-price sentence. Use the pair relevant to the change.
+5. **Close on evidence.** Carry the exact missing fact or failed assertion into the next attempt.
+   Track the published code, the snapshot that adopted it and the matching deployment receipt.
+
+<details>
+<summary>Checks for specific provider and consumer contracts</summary>
 
 | Failure pattern                                                                               | Required response                                                                                                                                                                                                                                                                                                                                                                  |
 | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -27,6 +39,8 @@ resolutions and remaining evidence limits in the provider guide.
 | A missing companion erases unrelated facts or a retained partition appears fresh.             | Preserve claim-local versus required-bundle failure scope, diagnostics, source revisions and retention behavior. A refactor must not change failure ordering, accepted inputs or historical replay compatibility accidentally.                                                                                                                                                     |
 | An inspector presents fixed metadata as a choice or vague additional conditions as a setting. | Use the shared pricing controls and matching semantics. Resolve fixed values internally while retaining predicates; show only necessary dynamic controls. Name affected charges and evidence gaps; keep known siblings visible. Follow the [website contract](website.md#product-shape) for dependent selectors and notes.                                                         |
 | A green parser/test, one provider commit or old board closes unfinished work.                 | Reconcile the requested provider list with manifests, inspect residual findings against current evidence, and trace changed facts through normal assembly and actual consumers. Separate verified producer behavior, stored-data adoption and delivery. Keep task progress in ignored state and continue until the requested list is closed.                                       |
+
+</details>
 
 ## Discover and judge sources
 

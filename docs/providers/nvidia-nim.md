@@ -78,6 +78,11 @@ route. Record the separate retrieval host explicitly. Published request schemas 
 modalities, maximum input sizes and supported embedding dimension ranges. An ignored or
 deprecated API compatibility parameter supplies no dimension limit. Local-only specs and
 model page slugs alone do not establish a hosted request identifier.
+Dedicated reranking paths may spell a model version with underscores while the registry and
+request selector retain dots. Match both path spellings only with the exact native selector.
+The archived Snowflake retrieval embedding operation does not establish current hosted access.
+An embedding request's explicit maximum input token count supplies its input limit, including
+the parenthetical maximum in BGE's request description.
 The registry's exact requests on its dedicated retrieval host fill Unknown as Active while
 preserving known lifecycle from the model profile. Registry operation pages for the shared
 inference host can outlast current deployment or deprecation, so those pages supply the

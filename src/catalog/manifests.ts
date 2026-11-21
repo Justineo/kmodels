@@ -745,7 +745,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "nvidia-nim-retrieval" },
-        extractorVersion: "nvidia-nim-retrieval-v2",
+        extractorVersion: "nvidia-nim-retrieval-v3",
         fields: ["model_id", "tasks", "api_endpoints", "modalities", "limits", "status"],
         fillOnly: true,
         allowedHosts: ["docs.api.nvidia.com"],

@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -9,7 +9,6 @@ import {
   checkSessionVerification,
   checkTakeoverCheckpoint,
   closedCandidates,
-  reusableBaseline,
   readTakeoverResponse,
   verificationVerdict,
 } from "../scripts/repair/verification.ts";
@@ -19,8 +18,6 @@ import {
   checkEvidenceTree,
   codexArguments,
   containerArguments,
-  saveBlindedBaseline,
-  restoreBlindedBaseline,
 } from "../scripts/repair/codex-runner.ts";
 import { digest } from "../scripts/repair/state.ts";
 import { verificationFeedback } from "../scripts/repair/verification-feedback.ts";
@@ -107,52 +104,6 @@ it("preserves an unfinished takeover and applies the existing publication constr
     body: "Checked both consumers.",
   });
   expect(() => result("commit_repair", "Unchecked patch")).toThrow();
-});
-
-it("reuses only a blinded baseline from the same admission and complete candidate set", () => {
-  const checkpoint = {
-    admission_sha256: digest("base and admission"),
-    candidate_ids: ["a", "b"],
-    assessment: "Independent baseline",
-    has_files: false,
-  };
-  expect(reusableBaseline(checkpoint, "base and admission", ["b", "a"])).toEqual(checkpoint);
-  expect(reusableBaseline(checkpoint, "new base", ["a", "b"])).toBeUndefined();
-  expect(reusableBaseline(checkpoint, "base and admission", ["a"])).toBeUndefined();
-  expect(reusableBaseline(undefined, "base and admission", ["a", "b"])).toBeUndefined();
-});
-
-it("restores only evidence frozen before the proposal was visible", async () => {
-  const root = await mkdtemp(join(tmpdir(), "repair-baseline-"));
-  try {
-    const evidence = join(root, "evidence"),
-      prior = join(root, "prior"),
-      restored = join(root, "restored");
-    await mkdir(join(evidence, "independent-sources"), { recursive: true });
-    await mkdir(prior);
-    await writeFile(join(evidence, "independent-sources", "original.json"), "gateway-owned");
-    await writeFile(join(evidence, "consumer.txt"), "blinded evidence");
-    await saveBlindedBaseline(
-      prior,
-      evidence,
-      "same base and admission",
-      ["model"],
-      "original finding",
-    );
-    await writeFile(join(evidence, "consumer.txt"), "proposer edit");
-    await writeFile(join(evidence, "proposer.txt"), "late evidence");
-    expect(
-      await restoreBlindedBaseline(prior, restored, "same base and admission", ["model"]),
-    ).toBe("original finding");
-    expect(await readFile(join(restored, "consumer.txt"), "utf8")).toBe("blinded evidence");
-    expect(await readdir(restored)).toEqual(["consumer.txt"]);
-    await rm(join(prior, "baseline-files"), { recursive: true });
-    expect(
-      await restoreBlindedBaseline(prior, restored, "same base and admission", ["model"]),
-    ).toBeUndefined();
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
 });
 
 it("keeps the initial contradiction and partial revised work available after an interruption", async () => {
@@ -491,6 +442,7 @@ it("isolates Codex from host secrets, external networks, Git metadata and public
     {
       name: "test",
       work: "/work",
+      baseline: "/unpatched",
       trusted: "/trusted-root",
       input: "/inputs",
       output: "/results",
@@ -506,6 +458,13 @@ it("isolates Codex from host secrets, external networks, Git metadata and public
   expect(args).toContain("no-new-privileges");
   expect(args).toContain("type=bind,source=/work/.git,target=/workspace/.git,readonly");
   expect(args).toContain("type=bind,source=/work,target=/workspace,readonly");
+  expect(args).toContain("type=bind,source=/unpatched,target=/baseline,readonly");
+  expect(args).toContain(
+    "type=bind,source=/evidence/probes,target=/baseline/repair-probes,readonly",
+  );
+  expect(args).toContain(
+    "type=bind,source=/trusted-root/node_modules,target=/baseline/node_modules,readonly",
+  );
   expect(args).toContain("type=bind,source=/evidence/probes,target=/workspace/repair-probes");
   expect(args).toContain(
     "type=bind,source=/private/sources,target=/tmp/gh-aw/agent/independent-sources,readonly",

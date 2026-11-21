@@ -319,6 +319,7 @@ it.each([
               {
                 source_id,
                 outcome: "unchanged",
+                message: "The retained source bytes are unchanged.",
                 pricing_reconciliation: {
                   reason_counts: { [reason]: 1 },
                   diagnostics: [{ reason_code: reason, sample }],

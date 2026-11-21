@@ -218,7 +218,8 @@ function exactRoutes(value: unknown, id: string) {
   return Object.entries(spec.data.paths).flatMap(([path, endpoint]) => {
     const isRetrieval =
       retrieval &&
-      (path === `/retrieval/${id}/reranking` || path === "/retrieval/nvidia/reranking");
+      (path === "/retrieval/nvidia/reranking" ||
+        nvidiaNimCandidateSlugs(id).some((slug) => path === `/retrieval/${slug}/reranking`));
     const route = isRetrieval
       ? { name: "Rerank", task: "reranking" as const }
       : shared
@@ -589,7 +590,9 @@ export function parseNvidiaNimRetrieval(input: SourceParseInput): ParsedProvider
         task === "embeddings"
           ? inputDescription
               .safeParse(properties.input)
-              .data?.description.match(/\bMax length is ([1-9]\d*) tokens\b/u)?.[1]
+              .data?.description.match(
+                /\b(?:Max length is |must not exceed the max input tokens for the model \()([1-9]\d*) tokens\b/u,
+              )?.[1]
           : description?.match(
               /\bmust fit within the model's context window of ([1-9]\d*) tokens\b/u,
             )?.[1];

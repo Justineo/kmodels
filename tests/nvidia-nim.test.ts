@@ -1,5 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
 import { collectProvider } from "../src/catalog/collector.ts";
+import { catalogJson } from "../src/catalog/endpoints.ts";
+import { publicCatalog } from "./catalog-export-fixture.ts";
 import { fetchSource, linkedDocumentUrls } from "../src/catalog/fetch.ts";
 import { sha256 } from "../src/catalog/io.ts";
 import { manifests } from "../src/catalog/manifests.ts";
@@ -348,7 +350,33 @@ it("keeps the hosted inventory when NVIDIA Build is unavailable", async () => {
 it("admits a retrieval-only model from an exact hosted request and rejects local or mismatched specs", async () => {
   const ref = "https://docs.api.nvidia.com/nim/reference";
   const reranker = "nvidia/rerank-3.5";
-  const entries = [
+  const versioned = [
+    "llama-3.2-nemoretriever-500m-rerank-v2",
+    "llama-3.2-nv-rerankqa-1b-v1",
+    "llama-3.2-nv-rerankqa-1b-v2",
+  ];
+  const entries: {
+    name: string;
+    host: string;
+    requestId: string;
+    publisher?: string;
+    path?: string;
+    input?: string;
+    dimensions?: { minimum: number; maximum: number; description?: string };
+  }[] = [
+    ...versioned.map((name) => ({
+      name,
+      host: "https://ai.api.nvidia.com/v1",
+      requestId: `nvidia/${name}`,
+      path: `/retrieval/nvidia/${name.replaceAll(".", "_")}/reranking`,
+    })),
+    {
+      name: "arctic-embed-l",
+      publisher: "snowflake",
+      host: "https://ai.api.nvidia.com/v1",
+      requestId: "snowflake/arctic-embed-l",
+      path: "/retrieval/snowflake/arctic-embed-l/embeddings",
+    },
     { name: "rerank-3.5", host: "https://ai.api.nvidia.com/v1", requestId: reranker },
     { name: "local-rerank", host: "http://localhost:8000", requestId: "nvidia/local-rerank" },
     { name: "other-rerank", host: "https://ai.api.nvidia.com/v1", requestId: reranker },
@@ -362,6 +390,7 @@ it("admits a retrieval-only model from an exact hosted request and rejects local
       name: "resize-embed",
       host: "https://integrate.api.nvidia.com/v1",
       requestId: "nvidia/resize-embed",
+      input: "The input must not exceed the max input tokens for the model (8192 tokens).",
       dimensions: { minimum: 1, maximum: 4096 },
     },
   ];
@@ -371,31 +400,35 @@ it("admits a retrieval-only model from an exact hosted request and rejects local
     "| Model | Endpoint |",
     "| - | - |",
     ...entries.map(
-      ({ name }) =>
-        `| [nvidia / ${name}](${ref}/nvidia-${name.replaceAll(".", "_")}) | [Rerank](${ref}/nvidia-${name.replaceAll(".", "_")}-infer) |`,
+      ({ name, publisher = "nvidia" }) =>
+        `| [${publisher} / ${name}](${ref}/${publisher}-${name.replaceAll(".", "_")}) | [Operation](${ref}/${publisher}-${name.replaceAll(".", "_")}-infer) |`,
     ),
   ].join("\n");
   const bundle = JSON.stringify({
     index: { url: `${ref}/retrieval-apis.md`, body },
-    documents: entries.map(({ name, host, requestId, dimensions }) => ({
-      url: `${ref}/nvidia-${name.replaceAll(".", "_")}-infer.md`,
-      body:
-        "# OpenAPI definition\n\n```json\n" +
-        JSON.stringify({
-          servers: [{ url: host }],
-          paths: {
-            [dimensions === undefined ? `/retrieval/nvidia/${name}/reranking` : "/embeddings"]: {
-              post: {
-                description:
-                  "Each query + passage pair must fit within the model's context window of 10240 tokens.",
-                requestBody: {
-                  content: {
-                    "application/json": {
-                      schema: {
-                        properties: {
-                          model: { default: requestId },
-                          dimensions,
-                          passages: { items: { $ref: "#/components/schemas/Passage" } },
+    documents: entries.map(
+      ({ name, publisher = "nvidia", host, requestId, dimensions, path, input }) => ({
+        url: `${ref}/${publisher}-${name.replaceAll(".", "_")}-infer.md`,
+        body:
+          "# OpenAPI definition\n\n```json\n" +
+          JSON.stringify({
+            servers: [{ url: host }],
+            paths: {
+              [path ??
+              (dimensions === undefined ? `/retrieval/nvidia/${name}/reranking` : "/embeddings")]: {
+                post: {
+                  description:
+                    "Each query + passage pair must fit within the model's context window of 10240 tokens.",
+                  requestBody: {
+                    content: {
+                      "application/json": {
+                        schema: {
+                          properties: {
+                            model: { default: requestId },
+                            input: { description: input },
+                            dimensions,
+                            passages: { items: { $ref: "#/components/schemas/Passage" } },
+                          },
                         },
                       },
                     },
@@ -403,23 +436,68 @@ it("admits a retrieval-only model from an exact hosted request and rejects local
                 },
               },
             },
-          },
-          components: { schemas: { Passage: { properties: { text: {}, image: {} } } } },
-        }) +
-        "\n```",
-    })),
+            components: { schemas: { Passage: { properties: { text: {}, image: {} } } } },
+          }) +
+          "\n```",
+      }),
+    ),
   });
   const source = manifest().sources.find(({ id }) => id === "nvidia-nim-retrieval");
   if (source === undefined) throw new Error("Missing NVIDIA retrieval source");
-  expect(linkedDocumentUrls(body, source)).toHaveLength(5);
+  expect(linkedDocumentUrls(body, source)).toHaveLength(entries.length);
+  const retired = "snowflake/arctic-embed-l";
+  const historicalInventory = JSON.stringify({
+    object: "list",
+    data: [chatId, embedId, unavailableId, unknownId, retired].map((id) => ({
+      object: "model",
+      id,
+    })),
+  });
   vi.mocked(fetchSource).mockImplementation(async ({ id }) => {
     if (id === source.id) return payload(bundle);
-    if (id === "nvidia-nim-models") return payload(inventory);
-    throw new Error("No model card fixture");
+    if (id === "nvidia-nim-models") return payload(historicalInventory);
+    if (id === "nvidia-nim-cards")
+      return payload(
+        JSON.stringify({
+          index: { url: sharedUrl, body: historicalInventory },
+          documents: [
+            card(retired, "/embeddings", retired, {
+              deprecated: true,
+              host: "https://integrate.api.nvidia.com/v1",
+            }),
+          ],
+        }),
+      );
+    throw new Error("Unexpected source");
   });
   const result = await collectProvider(manifest(), undefined, { sources: {} }, now);
   expect(result.coverage.status).toBe("fresh");
-  expect(result.models).toHaveLength(7);
+  const published = publicCatalog(
+    catalogJson({
+      catalog_version: "1".repeat(64),
+      generated_at: now,
+      providers: [result.provider],
+      models: result.models,
+      sources: result.sources,
+      coverage: [result.coverage],
+      warnings: result.warnings,
+    }),
+  ).models;
+  for (const name of versioned) {
+    expect(
+      published.find((model) => model.model_id === `nvidia/${name}`)?.api_endpoints,
+    ).toContainEqual({
+      name: "Rerank",
+      path: `https://ai.api.nvidia.com/v1/retrieval/nvidia/${name.replaceAll(".", "_")}/reranking`,
+    });
+  }
+  const historical = published.find((model) => model.model_id === retired);
+  expect(historical?.status).toBe("deprecated");
+  expect(historical?.api_endpoints ?? []).toEqual([]);
+  expect(
+    published.find((model) => model.model_id === "nvidia/resize-embed")?.limits.max_input_tokens,
+  ).toBe(8192);
+  expect(result.models).toHaveLength(8 + versioned.length);
   expect(result.models.find(({ model_id }) => model_id === reranker)).toMatchObject({
     status: "active",
     tasks: ["reranking"],

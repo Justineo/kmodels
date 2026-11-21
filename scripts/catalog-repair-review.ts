@@ -46,6 +46,7 @@ export interface ReviewSummary {
   not_a_defect: number;
   blocked: number;
   pending: number;
+  waiting_for_source: boolean;
 }
 
 /** Check investigation evidence separately from the meaning of the agent's conclusions. */
@@ -117,7 +118,14 @@ export async function validateRepairReview(
       );
     return receipt;
   };
-  const counts: ReviewSummary = { repaired: 0, not_a_defect: 0, blocked: 0, pending: 0 };
+  let evidencedOutages = 0;
+  const counts: ReviewSummary = {
+    repaired: 0,
+    not_a_defect: 0,
+    blocked: 0,
+    pending: 0,
+    waiting_for_source: false,
+  };
   for (const row of rows) {
     const id = text(row.id);
     const candidate = expected.get(id);
@@ -218,6 +226,25 @@ export async function validateRepairReview(
           if (!["source", "contract", "tooling", "scope"].includes(text(blocker.kind)))
             throw new Error(`Invalid blocker category: ${id}`);
           text(blocker.next_action);
+          const fetchCommand = ["vp", "node", "scripts/fetch-catalog-evidence.ts", id.split("/")[1]]
+            .map((arg) => JSON.stringify(arg))
+            .join(" ");
+          if (
+            candidate.trigger === "source_location_change" &&
+            blocker.kind === "source" &&
+            checks.some(
+              (check) =>
+                check.kind === "fetch" &&
+                typeof check.exit_code === "number" &&
+                check.exit_code !== 0 &&
+                typeof check.stderr === "string" &&
+                /\bHTTP (?:404|410)\b/u.test(check.stderr) &&
+                (check.command === fetchCommand ||
+                  (typeof check.command === "string" &&
+                    check.command.startsWith(fetchCommand + " "))),
+            )
+          )
+            evidencedOutages++;
           const executionReviewed = id === "workflow/refresh-execution" && has("execution");
           sourceBlocked =
             (blocker.kind === "source" || blocker.kind === "tooling") &&
@@ -260,6 +287,7 @@ export async function validateRepairReview(
     (candidates.length === 0 || counts.not_a_defect !== candidates.length)
   )
     throw new Error("A reviewed no-op requires every admitted candidate to be proven not a defect");
+  counts.waiting_for_source = evidencedOutages > 0 && evidencedOutages === candidates.length;
   return counts;
 }
 

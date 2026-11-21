@@ -25,6 +25,8 @@ export const taskSchema = z.object({
   run_id: z.string().regex(/^\d+$/).optional(),
   run_attempt: z.number().int().positive().optional(),
   evidence_run: z.string().regex(/^\d+$/).optional(),
+  source_wait_reason_hash: hash.optional(),
+  counterexample_run: z.string().regex(/^\d+$/).optional(),
   code_revision: z
     .string()
     .regex(/^[a-f0-9]{40}$/)
@@ -38,6 +40,35 @@ export const taskSchema = z.object({
     .default([]),
 });
 export type MaintenanceTask = z.infer<typeof taskSchema>;
+
+export function investigationRuns(tasks: readonly MaintenanceTask[]): string[] {
+  const runs = [
+    ...tasks.map((task) => task.counterexample_run),
+    ...tasks.map((task) => task.evidence_run),
+  ];
+  return [...new Set(runs.filter((run): run is string => run !== undefined))].slice(0, 2);
+}
+
+export function idleInvestigation(
+  incomplete: boolean,
+  deferred: number,
+  verificationFailure?: string,
+) {
+  return incomplete
+    ? {
+        type: "report_incomplete",
+        reason:
+          verificationFailure === "test_timeout"
+            ? "Generated catalog verification timed out on both attempts; review the refresh execution logs."
+            : "Source, execution or audit evidence is unavailable, invalid or partial. See the refresh evidence.",
+      }
+    : {
+        type: "noop",
+        message: deferred
+          ? `No investigation is due. ${deferred} deferred candidates retain their status and retry schedule.`
+          : "No deterministic catalog code-repair candidate was found",
+      };
+}
 
 export function priorTakeovers(task: MaintenanceTask | undefined): string[] {
   if (!task || task.takeover_fingerprint !== task.fingerprint) return [];
@@ -60,7 +91,17 @@ export const stateSchema = z.object({
   schema_version: z.literal(1),
   tasks: z.array(taskSchema).max(2000),
   leases: z.array(leaseSchema).max(3000),
-  observations: z.record(z.string(), z.object({ hash, observed_at: timestamp })).default({}),
+  observations: z
+    .record(
+      z.string(),
+      z.object({
+        hash,
+        observed_at: timestamp,
+        feature_count: z.int().nonnegative().optional(),
+        sample: z.array(z.string().max(400)).max(12).optional(),
+      }),
+    )
+    .default({}),
   last_dispatch: timestamp.optional(),
   deployments: z
     .array(
@@ -210,12 +251,15 @@ export function observeCandidates(
       if (task.fingerprint !== fingerprint) {
         task.fingerprint = fingerprint;
         task.status = "pending";
+        task.reason = candidate.message.slice(0, 8000);
+        task.trigger = candidate.trigger;
         task.next_action =
           "Recheck changed source or implementation; previous conclusions are historical leads.";
         task.coverage = [];
         delete task.adopted_snapshot;
         delete task.deployed_run;
         delete task.retry_at;
+        delete task.source_wait_reason_hash;
       }
     } else
       state.tasks.push({
@@ -326,6 +370,7 @@ export function recordOutcome(
   },
   now: Date,
 ): void {
+  delete task.source_wait_reason_hash;
   task.reason = result.reason.slice(0, 8000);
   task.next_action = (
     result.next_action ?? "Recheck evidence and continue the unfinished investigation."

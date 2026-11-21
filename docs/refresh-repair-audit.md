@@ -172,6 +172,7 @@ classifies that cell as unsupported and retains its bounded source sample in the
 the independent raw fact retains its original quote. A successful sibling rate or accepted
 publication cannot close this mapping gap. Generic unknown
 meters without this source-owned diagnostic remain insufficient to establish a parser defect.
+The repair handoff carries the native reason and sample even when the same attempt also has a generic fetch message.
 
 Repair of a new pricing option must distinguish changed parameter values from new billing
 semantics and from a limitation of the shared representation. Reuse typed conditions and provider

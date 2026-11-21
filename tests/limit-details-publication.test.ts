@@ -1,3 +1,4 @@
+import { publicCatalog } from "./catalog-export-fixture.ts";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -162,11 +163,6 @@ function catalog(tokens?: number, capability?: boolean | "withdrawn"): Catalog {
       }),
     ),
   );
-}
-
-function publicCatalog(source: string): Catalog {
-  const { data, ...metadata } = catalogEnvelopeSchema.parse(JSON.parse(source));
-  return { ...metadata, ...data };
 }
 
 async function paths(): Promise<CatalogPairPaths> {
