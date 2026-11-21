@@ -721,9 +721,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
           :open="group.notes.length === 1"
         >
           <summary>
-            <span
-              ><UiIcon name="chevron-right" /><strong>{{ group.label }}</strong></span
-            >
+            <span><UiIcon name="chevron-right" /><strong>{{ group.label }}</strong></span>
             <small v-if="group.notes.length > 1">{{ group.notes.length }} conflicting quotes</small>
           </summary>
           <div v-for="fact in group.notes" :key="fact.key" class="pricing-note">
