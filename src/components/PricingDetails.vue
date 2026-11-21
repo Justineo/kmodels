@@ -303,7 +303,6 @@ watch(hasOtherCharges, (available) => {
         @click="otherChargesOpen = !otherChargesOpen"
       >
         <span>Other charges & services</span>
-        <small>Separate from the rates above</small>
         <UiIcon name="chevron-right" />
       </button>
 
@@ -480,6 +479,7 @@ watch(hasOtherCharges, (available) => {
 }
 
 .additional-costs > .detail-disclosure-trigger {
+  grid-template-columns: minmax(0, 1fr) auto;
   width: 100%;
   min-height: var(--control-height-comfortable);
   padding: var(--space-2-5) var(--space-3);

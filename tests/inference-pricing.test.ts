@@ -1812,10 +1812,11 @@ it("uses shared lookup candidates for the website and preserves raw regional IDs
   expect(html).toContain("to see rates.");
   expect(html).not.toContain("$66");
   expect(html).not.toContain('class="exact-rate"');
-  expect(html).toContain('class="detail-disclosure"');
-  expect(html).toContain("Mapping evidence");
+  expect(html).toContain('class="source-disclosure"');
+  expect(html).toContain("Sources ·");
   expect(html).toContain("#ui-chevron-right");
-  expect(html).toContain('class="detail-disclosure-body evidence-list"');
+  expect(html).toContain('class="source-documents"');
+  expect(html.indexOf("Sources ·")).toBeLessThan(html.indexOf("to see rates."));
   expect(html).not.toContain("Inspect target");
   expect(html).not.toContain("Task and documented scope");
 });

@@ -3,7 +3,6 @@ import { computed } from "vue";
 import type { CapabilityRow } from "../catalog/capability-presentation.ts";
 import type { WebsiteModelDetail } from "../catalog/website-schema.ts";
 import CapabilityValues from "./CapabilityValues.vue";
-import ModelClaimEvidence from "./ModelClaimEvidence.vue";
 import UiIcon from "./UiIcon.vue";
 import UiTooltip from "./UiTooltip.vue";
 
@@ -13,7 +12,7 @@ const props = defineProps<{
 }>();
 
 const hasValues = (row: CapabilityRow) =>
-  row.values !== undefined || row.byEndpoint.size > 0 || row.unplaced.length > 0;
+  row.options !== undefined || row.byEndpoint.size > 0 || row.unplaced.length > 0;
 const supported = computed(() => props.rows.filter((row) => !hasValues(row)));
 const detailed = computed(() => props.rows.filter(hasValues));
 </script>
@@ -56,15 +55,14 @@ const detailed = computed(() => props.rows.filter(hasValues));
           >
         </dt>
         <dd>
-          <CapabilityValues v-if="row.values" :values="row.values" />
+          <CapabilityValues v-if="row.options" :options="row.options" />
           <span v-else-if="row.byEndpoint.size" class="varies">Varies by endpoint</span>
           <dl v-if="row.unplaced.length" class="variants">
             <div v-for="(variant, index) in row.unplaced" :key="index">
               <dt v-if="variant.label">{{ variant.label }}</dt>
-              <dd><CapabilityValues :values="variant.values" /></dd>
+              <dd><CapabilityValues :options="variant" /></dd>
             </div>
           </dl>
-          <ModelClaimEvidence v-if="row.sources.length" :documents="row.sources" compact />
         </dd>
       </div>
     </dl>

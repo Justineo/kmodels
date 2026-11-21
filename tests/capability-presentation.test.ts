@@ -50,17 +50,17 @@ describe("capability rows", () => {
       "Prompt caching",
     ]);
     expect(rows[0]).toMatchObject({
-      values: [{ value: "low" }, { value: "high", isDefault: true }],
+      options: { values: [{ value: "low" }, { value: "high", isDefault: true }] },
       byEndpoint: new Map(),
       unplaced: [],
       conflict: false,
     });
-    expect(rows[0]?.sources.map(({ document_url }) => document_url)).toEqual([
+    expect(rows[0]?.options?.sources.map(({ document_url }) => document_url)).toEqual([
       "https://docs.example.net/chat",
       "https://docs.example.org/api",
     ]);
-    expect(rows[1]).not.toHaveProperty("values");
-    expect(rows[2]?.values).toEqual([{ value: "automatic" }]);
+    expect(rows[1]?.options).toBeUndefined();
+    expect(rows[2]?.options?.values).toEqual([{ value: "automatic" }]);
   });
 
   it("treats an unstated default as unknown rather than a different value", () => {
@@ -69,7 +69,7 @@ describe("capability rows", () => {
       [group([effort("/chat", ["low", "high"], "high"), effort("/responses", ["low", "high"])])],
       endpoints,
     );
-    expect(row?.values).toEqual([
+    expect(row?.options?.values).toEqual([
       { value: "low" },
       { value: "high", isDefault: true, partialDefault: true },
     ]);
@@ -87,14 +87,32 @@ describe("capability rows", () => {
       ],
       endpoints,
     );
-    expect(row).not.toHaveProperty("values");
+    expect(row?.options).toBeUndefined();
     expect(row?.byEndpoint).toEqual(
       new Map([
-        ["/chat", [{ value: "low" }, { value: "high" }]],
-        ["/responses", [{ value: "none", isDefault: true }, { value: "low" }, { value: "high" }]],
+        [
+          "/chat",
+          {
+            values: [{ value: "low" }, { value: "high" }],
+            sources: [source("https://docs.example.net/models")],
+          },
+        ],
+        [
+          "/responses",
+          {
+            values: [{ value: "none", isDefault: true }, { value: "low" }, { value: "high" }],
+            sources: [source("https://docs.example.net/models")],
+          },
+        ],
       ]),
     );
-    expect(row?.unplaced).toEqual([{ label: "Example /legacy", values: [{ value: "low" }] }]);
+    expect(row?.unplaced).toEqual([
+      {
+        label: "Example /legacy",
+        values: [{ value: "low" }],
+        sources: [source("https://docs.example.net/models")],
+      },
+    ]);
   });
 
   it("omits unsupported and unknown flags and flags same-scope disagreement", () => {
@@ -105,6 +123,6 @@ describe("capability rows", () => {
     ]);
     expect(row?.conflict).toBe(true);
     // A disputed default stays unknown; the options both sources share remain.
-    expect(row?.values).toEqual([{ value: "low" }, { value: "high" }]);
+    expect(row?.options?.values).toEqual([{ value: "low" }, { value: "high" }]);
   });
 });

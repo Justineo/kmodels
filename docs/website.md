@@ -86,8 +86,9 @@ the selected ID no longer admits the value, a sole compatible ID replaces it as 
 singleton; with several compatible IDs the picker returns to an unselected state and rates wait
 for an explicit ID. Linking never picks among compatible IDs, because each remains a distinct
 request value with its own price. A Bedrock source Region therefore narrows Geo and Global profile
-IDs without merging Region into the ID: the ID stays explicit and copyable. Mapping evidence uses the
-shared detail disclosure and evidence link list. Unknown mappings preserve ordinary catalog prices
+IDs without merging Region into the ID: the ID stays explicit and copyable. The selected ID or ID
+group exposes its mapping sources beside its ID controls through the shared Sources disclosure.
+Unknown mappings preserve ordinary catalog prices
 with an explicit unverified-ID notice in the Inference model ID position; known exclusions do not fall back to unfiltered rates.
 Snapshots without mappings retain the
 catalog price view. Provider-specific conditions use readable English labels in controls, missing-condition
@@ -198,9 +199,10 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   pricing context on the user's behalf.
 - Mapped and catalog pricing share one detail flow: `Inference model ID (or its unverified-mapping
   notice) → [capacity charges when linked] → [Pricing offer when selectable] → dynamic Usage
-  conditions → rates or a one-line selection prompt → mapping evidence → collapsed related
-  services → refresh status`. Neither path adds its own status banner or rate-block heading. The first mechanism in
-  stable presentation order is the initial browsing focus, not a provider default,
+  conditions → rates or a one-line selection prompt → collapsed related services → refresh status`.
+  Model, capacity and service pricing use the same muted prompt after their controls while waiting
+  for input. When some choices are in place, use the remaining controls' labels in their display
+  order. The first mechanism in stable presentation order is the initial browsing focus, not a provider default,
   recommendation, or cheapest-offer choice. A sole mechanism resolves internally without a Pricing offer summary.
   The selected mechanism remains the context for its request-cost breakdown; exact mechanism
   references filter its related costs. Public running-capacity rates occupy a separate block and
@@ -209,9 +211,8 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   chooses a resource before its regional rates appear. Only books exactly linked to that model are
   offered, and the first option is not treated as a default. The model rates are primary for request pricing. Services,
   automatic charges, included features, and independently callable services are grouped behind one
-  closed disclosure by default because they do not change the base model rates. The disclosure
-  explains that these items are separate and expands them in that order. Each
-  offer keeps its price-changing options and meters. Exact rates use the same compact, bordered
+  closed disclosure by default because they do not change the base model rates. It expands them
+  in that order. Each offer keeps its price-changing options and meters. Exact rates use the same compact, bordered
   two-column definition-grid structure as Overview and collapse to one column on narrow screens.
   In one column, only the first and last rows have rounded outer edges.
   Every rate occupies one column, so an unpaired final rate remains in the left column rather than
@@ -554,10 +555,12 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   briefly and use the citation for request setup. Suppress a duplicate summary of the same
   quantity. If the same structured scope has incompatible maxima or cap states, show
   “Sources disagree” with citations for that scope.
-- Claim citations open the original evidence URL. Resolve the citation's origin through the
-  same-origin `/source-icons/index.json` index and load the cached static icon. Use the hostname
-  initial when the index or image is unavailable. A link's tooltip and accessible name include
-  the document locator and check time. Compact citations use one icon per origin.
+- Scoped limits, capability options and inference ID mappings use the same compact
+  `Sources · N` disclosure beside the fact it supports. It lists each distinct document and
+  links to its original URL. Show the host and disambiguate documents on the same host with
+  their paths and URL suffixes. Include document locators and local check times when available.
+  Resolve icons by origin through the same-origin `/source-icons/index.json` and use the
+  hostname initial when the index or image is unavailable.
 - Modalities & capabilities answers only what goes in, what comes out and what the model can do.
   Input and output appear once as modality tags joined by a direction arrow. Supported
   capabilities follow; unsupported and unknown capabilities are not shown. A model with no
@@ -573,8 +576,8 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
 - Option values that differ between APIs belong to endpoints, not to the capability. The row
   reads "Varies by endpoint" and each Published endpoints row lists its own values, joined by the
   statement's `applicability.endpoint` path. A binding without a matching published endpoint
-  stays under the capability, labelled by its evidenced interface. Each capability row ends with
-  compact site icons linking its sources; the tooltip carries host, locators and check time.
+  stays under the capability, labelled by its evidenced interface. Sources accompany the values
+  they document, including at their endpoint when that is where the values appear.
 - `src/catalog/capability-presentation.ts` owns this presentation. Each capability statement kind
   registers the capability it evidences and a function returning its supported option values with
   an optional default. A new statement kind adds a schema member, a registry entry and its

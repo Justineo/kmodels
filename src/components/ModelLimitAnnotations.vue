@@ -8,7 +8,7 @@ import {
   type WebsiteLimitDetailGroup,
 } from "../catalog/model-limit-details.ts";
 import { formatTokenCount } from "../catalog/presentation.ts";
-import ModelClaimEvidence from "./ModelClaimEvidence.vue";
+import SourceDisclosure from "./SourceDisclosure.vue";
 
 const props = defineProps<{
   groups: readonly WebsiteLimitDetailGroup[];
@@ -78,7 +78,7 @@ function annotationValue(statement: LimitStatement): string {
   <ul v-if="annotations.length" class="limit-annotations" role="list">
     <li v-for="{ key, label, value, documents } in annotations" :key="key">
       <span>{{ label }} · {{ value }}</span>
-      <ModelClaimEvidence :documents="documents" compact />
+      <SourceDisclosure :documents="documents" />
     </li>
   </ul>
 </template>

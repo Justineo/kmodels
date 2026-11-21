@@ -76,8 +76,8 @@ const capabilities = computed(() =>
 /** Capability values that differ between endpoints, shown on the endpoint they apply to. */
 function endpointCapabilities(path: string) {
   return capabilities.value.flatMap(({ key, label, byEndpoint }) => {
-    const values = byEndpoint.get(path);
-    return values === undefined ? [] : [{ key, label, values }];
+    const options = byEndpoint.get(path);
+    return options === undefined ? [] : [{ key, label, options }];
   });
 }
 const availabilitySummary = computed(() => {
@@ -371,9 +371,12 @@ onUnmounted(() => {
                     v-if="endpointCapabilities(endpoint.path).length"
                     class="endpoint-capabilities"
                   >
-                    <div v-for="{ key, label, values } in endpointCapabilities(endpoint.path)" :key>
+                    <div
+                      v-for="{ key, label, options } in endpointCapabilities(endpoint.path)"
+                      :key
+                    >
                       <dt>{{ label }}</dt>
-                      <dd><CapabilityValues :values /></dd>
+                      <dd><CapabilityValues :options /></dd>
                     </div>
                   </dl>
                 </li>

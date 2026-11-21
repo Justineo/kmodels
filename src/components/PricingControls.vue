@@ -3,15 +3,17 @@ import { computed } from "vue";
 import { canonicalJson } from "../catalog/canonical-value.ts";
 import type { CommercialChoice } from "../catalog/pricing-schema.ts";
 import type { AvailableCommercialChoice } from "../pricing/commercial-matching.ts";
-import type { WebsitePricingSelector } from "../catalog/website-schema.ts";
-import { fixedPricingSelection } from "../catalog/pricing-selector-input.ts";
+import type { WebsitePriceDimension, WebsitePricingSelector } from "../catalog/website-schema.ts";
+import { fixedPricingSelection, pricingSelection } from "../catalog/pricing-selector-input.ts";
 import {
   commercialDimensionLabels,
   commercialDefinitions,
   commercialValueLabel,
+  commercialConditionDimension,
 } from "../pricing/commercial-vocabulary.ts";
 import UiSelect from "./UiSelect.vue";
 import PricingConditions from "./PricingConditions.vue";
+import PricingSelectionPrompt from "./PricingSelectionPrompt.vue";
 
 const props = defineProps<{
   choices: AvailableCommercialChoice[];
@@ -21,6 +23,13 @@ const props = defineProps<{
   selectors: readonly WebsitePricingSelector[];
   inputs: Readonly<Record<string, string>>;
   followRegion?: { key: string; label: string } | undefined;
+  selectionPrompt?:
+    | {
+        dimensions: readonly WebsitePriceDimension[];
+        commercial?: readonly CommercialChoice["dimension"][];
+        offerSelected?: boolean | undefined;
+      }
+    | undefined;
 }>();
 const emit = defineEmits<{
   change: [choices: CommercialChoice[]];
@@ -51,21 +60,42 @@ const groups = computed(() =>
     };
   }),
 );
-const sections = computed(() =>
-  ["Plan", "Usage conditions"]
-    .map((label) => ({
-      label,
-      groups: groups.value.filter((group) => group.section === label && !group.fixed),
-    }))
-    .filter(
-      (section) =>
-        section.groups.length ||
-        (section.label === "Usage conditions" && editableSelectors.value.length),
-    ),
-);
-const editableSelectors = computed(() =>
-  props.selectors.filter((selector) => fixedPricingSelection(selector) === undefined),
-);
+const sections = computed(() => {
+  const editable = props.selectors.filter(
+    (selector) => fixedPricingSelection(selector) === undefined,
+  );
+  return ["Plan", "Usage conditions"].flatMap((label) => {
+    const choices = groups.value.filter((group) => group.section === label && !group.fixed);
+    const selectors = label === "Usage conditions" ? editable : [];
+    return choices.length || selectors.length ? [{ label, choices, selectors }] : [];
+  });
+});
+const remainingLabels = computed(() => {
+  const prompt = props.selectionPrompt;
+  if (prompt === undefined) return [];
+  const missing = new Set(prompt.dimensions.map(canonicalJson));
+  const labels = prompt.offerSelected === false ? ["a pricing offer"] : [];
+  let hasSelection = prompt.offerSelected === true;
+  for (const { choices, selectors } of sections.value) {
+    for (const { dimension, label, selected } of choices) {
+      if (selected !== undefined) hasSelection = true;
+      else if (
+        prompt.commercial?.includes(dimension) ||
+        missing.has(
+          canonicalJson({ namespace: "kmodels", value: commercialConditionDimension(dimension) }),
+        )
+      )
+        labels.push(label);
+    }
+    for (const selector of selectors) {
+      if (missing.has(canonicalJson(selector.dimension))) labels.push(selector.label);
+      hasSelection ||=
+        props.followRegion?.key === selector.key ||
+        pricingSelection(selector, props.inputs[selector.key] ?? "") !== undefined;
+    }
+  }
+  return hasSelection ? labels : [];
+});
 function choose(dimension: CommercialChoice["dimension"], key: string): void {
   const choice = props.choices.find(
     (choice) => choice.dimension === dimension && canonicalJson(choice.value) === key,
@@ -76,10 +106,10 @@ function choose(dimension: CommercialChoice["dimension"], key: string): void {
 </script>
 
 <template>
-  <div v-if="sections.length" class="pricing-controls">
+  <div v-if="sections.length || selectionPrompt" class="pricing-controls">
     <fieldset v-for="section in sections" :key="section.label">
       <legend>{{ section.label }}</legend>
-      <div v-for="group in section.groups" :key="group.dimension" class="commercial-choice">
+      <div v-for="group in section.choices" :key="group.dimension" class="commercial-choice">
         <label :for="`${prefix}-${group.dimension}`" :title="group.description">{{
           group.label
         }}</label>
@@ -92,14 +122,15 @@ function choose(dimension: CommercialChoice["dimension"], key: string): void {
         />
       </div>
       <PricingConditions
-        v-if="section.label === 'Usage conditions'"
+        v-if="section.selectors.length"
         :prefix="prefix"
-        :selectors="editableSelectors"
+        :selectors="section.selectors"
         :inputs="inputs"
         :follow-region="followRegion"
         @input="(key, value) => emit('input', key, value)"
       />
     </fieldset>
+    <PricingSelectionPrompt v-if="selectionPrompt" :labels="remainingLabels" />
   </div>
 </template>
 

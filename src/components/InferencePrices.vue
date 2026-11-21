@@ -9,6 +9,8 @@ import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
 import UiIcon from "./UiIcon.vue";
 import UiSelect from "./UiSelect.vue";
 import PricingControls from "./PricingControls.vue";
+import PricingSelectionPrompt from "./PricingSelectionPrompt.vue";
+import SourceDisclosure from "./SourceDisclosure.vue";
 import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
 import {
   fixedPricingSelection,
@@ -85,9 +87,12 @@ const selectedGroup = computed(() => {
 const idOptions = computed(() =>
   compatibleIds.value.map((model_id) => ({ value: model_id, label: model_id })),
 );
-const evidenceUrls = computed(() => [
-  ...new Set(selectedGroup.value?.flatMap(({ evidence_urls }) => evidence_urls)),
-]);
+const mappingSources = computed(
+  () =>
+    selectedGroup.value?.flatMap(({ evidence_urls }) =>
+      evidence_urls.map((document_url) => ({ document_url })),
+    ) ?? [],
+);
 const unselectedMatch = computed(() => {
   const matching = toRaw(selectedPrice.value?.matching);
   return matching === undefined ? undefined : matchInferencePrices(matching, [], evaluatedAt.value);
@@ -289,6 +294,12 @@ const hasPricingControls = computed(
     commercialOptions.value.length > 0 ||
     (selected.value?.requires_offer_choice === true && offerOptions.value.length > 1),
 );
+const showOfferChoice = computed(
+  () =>
+    offerOptions.value.length > 1 &&
+    !selected.value?.missing_choices.includes("execution") &&
+    !commercialOptions.value.some((choice) => choice.dimension === "account_plan"),
+);
 // With several ID groups, a categorical value published by any ID stays selectable and narrows the
 // ID picker to the IDs that admit it.
 const idDomains = computed(() =>
@@ -421,10 +432,12 @@ const candidates = computed(() => {
   );
 });
 const selectionPrompt = computed(() => {
-  const missing = selected.value?.missing_conditions ?? [];
-  return missing.length > 0
-    ? `Choose ${missing.join(", ")} to see rates.`
-    : "Choose the pricing options above to see rates.";
+  if (idPending.value || !needsPricingSelection.value || !hasPricingControls.value) return;
+  return {
+    dimensions: activeMatch.value?.missing_conditions ?? [],
+    commercial: selected.value?.missing_choices ?? [],
+    offerSelected: showOfferChoice.value ? selectedOffer.value !== "" : undefined,
+  };
 });
 watch(
   () => props.modelRef,
@@ -511,56 +524,56 @@ async function copyId(id: string): Promise<void> {
       <span v-else class="id-label">{{
         (selectedGroup?.length ?? 0) > 1 ? "Inference model IDs" : "Inference model ID"
       }}</span>
-      <div v-if="priceGroups.length > 1" class="id-picker">
-        <UiSelect
-          id="inference-model-id"
-          class="id-select"
-          :title="idPending ? undefined : selected.model_id"
-          :model-value="idPending ? '' : selected.model_id"
-          :options="idOptions"
-          v-bind="idPending ? { placeholder: 'Choose…' } : {}"
-          @update:model-value="selectId"
-        />
-        <button
-          v-if="!idPending"
-          class="identifier-copy id-copy"
-          type="button"
-          :data-copied="copiedId === selected.model_id || undefined"
-          :aria-label="`Copy inference model ID ${selected.model_id}`"
-          :title="copiedId === selected.model_id ? 'Copied' : 'Copy inference model ID'"
-          @click="copyId(selected.model_id)"
-        >
-          <UiIcon :name="copiedId === selected.model_id ? 'check' : 'copy'" />
-        </button>
-      </div>
-      <ul v-else class="identifier-list inference-ids">
-        <li v-for="{ model_id } in selectedGroup" :key="model_id">
+      <div class="id-value">
+        <div v-if="priceGroups.length > 1" class="id-picker">
+          <UiSelect
+            id="inference-model-id"
+            class="id-select"
+            :title="idPending ? undefined : selected.model_id"
+            :model-value="idPending ? '' : selected.model_id"
+            :options="idOptions"
+            v-bind="idPending ? { placeholder: 'Choose…' } : {}"
+            @update:model-value="selectId"
+          />
           <button
-            class="identifier-copy"
+            v-if="!idPending"
+            class="identifier-copy id-copy"
             type="button"
-            :data-copied="copiedId === model_id || undefined"
-            :aria-label="`Copy inference model ID ${model_id}`"
-            @click="copyId(model_id)"
+            :data-copied="copiedId === selected.model_id || undefined"
+            :aria-label="`Copy inference model ID ${selected.model_id}`"
+            :title="copiedId === selected.model_id ? 'Copied' : 'Copy inference model ID'"
+            @click="copyId(selected.model_id)"
           >
-            <code>{{ model_id }}</code>
-            <UiIcon :name="copiedId === model_id ? 'check' : 'copy'" />
+            <UiIcon :name="copiedId === selected.model_id ? 'check' : 'copy'" />
           </button>
-        </li>
-      </ul>
+        </div>
+        <ul v-else class="identifier-list inference-ids">
+          <li v-for="{ model_id } in selectedGroup" :key="model_id">
+            <button
+              class="identifier-copy"
+              type="button"
+              :data-copied="copiedId === model_id || undefined"
+              :aria-label="`Copy inference model ID ${model_id}`"
+              @click="copyId(model_id)"
+            >
+              <code>{{ model_id }}</code>
+              <UiIcon :name="copiedId === model_id ? 'check' : 'copy'" />
+            </button>
+          </li>
+        </ul>
+        <SourceDisclosure
+          v-if="!idPending"
+          :key="selectedGroup?.[0].model_id ?? selected.model_id"
+          :documents="mappingSources"
+        />
+      </div>
       <p class="visually-hidden" aria-live="polite">{{ copiedId ? `Copied ${copiedId}` : "" }}</p>
     </div>
     <p v-if="selected.unresolved_choices.length" class="fixed-conditions">
       Some offers have incomplete evidence for the selected commercial choices. They have not been
       treated as unsupported.
     </p>
-    <fieldset
-      v-if="
-        offerOptions.length > 1 &&
-        !selected.missing_choices.includes('execution') &&
-        !commercialOptions.some((choice) => choice.dimension === 'account_plan')
-      "
-      class="plan-control"
-    >
+    <fieldset v-if="showOfferChoice" class="plan-control">
       <legend>Pricing offer</legend>
       <div class="offer-list">
         <label v-for="option in offerOptions" :key="option.value" class="offer-choice">
@@ -582,16 +595,16 @@ async function copyId(id: string): Promise<void> {
       :selected="commercialChoices"
       :selectors="conditionOptions"
       :inputs="inputs"
+      :selection-prompt="selectionPrompt"
       @change="selectCommercial"
       @input="setInput"
     />
-    <p v-if="idPending" class="match-prompt" role="status">
-      Choose an inference model ID to see rates.
-    </p>
-    <p v-else-if="needsPricingSelection && hasPricingControls" class="match-prompt" role="status">
-      {{ selectionPrompt }}
-    </p>
-    <div v-else-if="selected.status !== 'matched'" class="match-status" role="status">
+    <PricingSelectionPrompt v-if="idPending" :labels="['an inference model ID']" />
+    <div
+      v-else-if="!selectionPrompt && selected.status !== 'matched'"
+      class="match-status"
+      role="status"
+    >
       <strong>{{
         selected.reason === "no_applicable_price" || selected.reason === "incompatible_conditions"
           ? "No applicable prices"
@@ -631,24 +644,6 @@ async function copyId(id: string): Promise<void> {
       </template>
       <p v-else>Price details are unavailable for this candidate.</p>
     </article>
-    <details v-if="evidenceUrls.length" class="detail-disclosure">
-      <summary>
-        <span>Mapping evidence</span>
-        <small
-          >{{ evidenceUrls.length }} {{ evidenceUrls.length === 1 ? "source" : "sources" }}</small
-        >
-        <UiIcon name="chevron-right" />
-      </summary>
-      <ul class="detail-disclosure-body evidence-list">
-        <li v-for="url in evidenceUrls" :key="url">
-          <a v-if="/^https?:\/\//.test(url)" :href="url" target="_blank" rel="noopener noreferrer">
-            <strong>{{ url }}</strong>
-            <UiIcon name="external-link" />
-          </a>
-          <strong v-else>{{ url }}</strong>
-        </li>
-      </ul>
-    </details>
   </div>
 </template>
 
@@ -657,6 +652,12 @@ async function copyId(id: string): Promise<void> {
 .id-control {
   display: grid;
   gap: var(--space-2);
+}
+.id-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-1) var(--space-3);
 }
 .id-control label,
 .id-label,
@@ -675,6 +676,7 @@ async function copyId(id: string): Promise<void> {
   padding: 0;
 }
 .inference-ids {
+  min-width: 0;
   margin: 0;
 }
 .fixed-conditions {
@@ -684,6 +686,7 @@ async function copyId(id: string): Promise<void> {
 }
 .id-picker {
   display: grid;
+  flex: 1 1 var(--layout-pricing-select-width);
   grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
   min-height: var(--control-height-comfortable);
@@ -711,11 +714,6 @@ async function copyId(id: string): Promise<void> {
 }
 .match-status {
   margin-block: var(--space-2);
-}
-.match-prompt {
-  margin: var(--space-2) 0;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-body);
 }
 .match-status p {
   margin: var(--space-1) 0 0;

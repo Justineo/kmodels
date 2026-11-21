@@ -589,6 +589,11 @@ function showNoteScope(scope: ScopeCopy): boolean {
       :selectors="rateSelectors"
       :inputs="inputs"
       :follow-region="followedRegion"
+      :selection-prompt="
+        visibleRates.length === 0 && unresolvedRateDimensions.length > 0
+          ? { dimensions: unresolvedRateDimensions }
+          : undefined
+      "
       @change="selectCommercial"
       @input="setInput"
     />
@@ -629,15 +634,6 @@ function showNoteScope(scope: ScopeCopy): boolean {
         No rates match the selected context.
       </p>
     </section>
-    <p
-      v-else-if="!hideConditions && unresolvedRateDimensions.length > 0"
-      class="context-prompt"
-      role="status"
-    >
-      Choose
-      {{ unresolvedRateDimensions.map((dimension) => formatDimension(dimension)).join(", ") }} to
-      see rates.
-    </p>
 
     <div v-if="showPublishedStatus" class="published-status">
       <small>Status</small>

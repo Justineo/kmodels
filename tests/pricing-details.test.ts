@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import PricingDetails from "../src/components/PricingDetails.vue";
+import PricingControls from "../src/components/PricingControls.vue";
 import PricingServiceOffer from "../src/components/PricingServiceOffer.vue";
 import { pricingSelection, retainPricingInputs } from "../src/catalog/pricing-selector-input.ts";
 import { inferencePricingContext } from "../src/catalog/website-pricing-context.ts";
@@ -345,9 +346,36 @@ describe("model pricing details", () => {
     expect(html).not.toContain('type="radio"');
     expect(html).toContain(">US<");
     expect(html).toContain(">EU<");
-    expect(html).not.toContain("Select Region to see rates");
+    expect(html).toContain('class="pricing-selection-prompt" role="status"');
+    expect(html).toContain("Choose the options above to see rates.");
     expect(html).not.toContain("$2");
     expect(html).not.toContain("$3");
+  });
+
+  it("names remaining choices in form order after the viewer makes a selection", async () => {
+    const selectors = [
+      { key: "region", label: "Source Region", value: "region" },
+      { key: "scope", label: "Deployment scope", value: "deployment_scope" },
+      { key: "cache", label: "Cache mode", value: "cache_mode" },
+    ].map(({ key, label, value }) => ({
+      key,
+      label,
+      dimension: { namespace: "kmodels", value },
+      kind: "boolean",
+    }));
+    const html = await renderComponent(PricingControls, {
+      prefix: "fixture",
+      choices: [],
+      selected: [],
+      inferred: [],
+      selectors,
+      inputs: { region: "true" },
+      selectionPrompt: {
+        dimensions: [selectors[2]?.dimension, selectors[1]?.dimension],
+      },
+    });
+
+    expect(html).toContain("Choose Deployment scope and Cache mode to see rates.");
   });
 
   it("uses published geography labels without inventing defaults or rewriting their meaning", async () => {
@@ -418,6 +446,7 @@ describe("model pricing details", () => {
     expect(html).toContain(`id="${panelId}"`);
     expect(html).toContain("#ui-chevron-right");
     expect(html).toContain("Other charges &amp; services");
+    expect(html).not.toContain("Separate from the rates above");
     expect(html).toContain("Service charge");
     expect(html).toContain("Web Search");
     expect(html).toContain("$10");

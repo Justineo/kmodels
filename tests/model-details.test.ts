@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { load } from "cheerio";
 import ModelDetails from "../src/components/ModelDetails.vue";
-import ModelClaimEvidence from "../src/components/ModelClaimEvidence.vue";
+import SourceDisclosure from "../src/components/SourceDisclosure.vue";
 import type { WebsiteModel, WebsiteModelDetail } from "../src/catalog/website-schema.ts";
 import { unknownCapabilities } from "../src/catalog/schema.ts";
 import { renderComponent } from "./render-component.ts";
@@ -117,8 +117,8 @@ describe("model details", () => {
     expect(texts($, ".capability-details > div:last-child .capability-value")).toEqual([
       "automatic",
     ]);
-    expect(effort.find(".claim-sources a").attr("href")).toBe("https://example.com/effort");
-    expect(effort.find(".source-label")).toHaveLength(0);
+    expect(effort.find(".source-disclosure summary").text()).toContain("Sources · 1");
+    expect(effort.find(".source-documents a").attr("href")).toBe("https://example.com/effort");
     for (const hidden of ["Example API", "caller-defined", "Unsupported", "Fine-tuning", "Varies"])
       expect(html).not.toContain(hidden);
     expect($(".endpoint-capabilities")).toHaveLength(0);
@@ -175,6 +175,10 @@ describe("model details", () => {
     // The disputed /chat default stays unknown.
     expect(chat?.find("[data-default]")).toHaveLength(0);
     expect(responses?.find("[data-default]").text()).toBe("none");
+    expect($(".capability-details .source-disclosure")).toHaveLength(0);
+    expect(chat?.find(".source-documents a")).toHaveLength(2);
+    expect(responses?.find(".source-documents a").attr("href")).toBe("https://example.com/effort");
+    expect(responses?.find(".source-documents a")).toHaveLength(1);
   });
   it("cites each document once with its locators and latest check", async () => {
     const urls = [
@@ -190,9 +194,12 @@ describe("model details", () => {
       content_hash: "a".repeat(64),
       observed_at: `2026-11-1${index}T05:03:39.290Z`,
     }));
-    const html = await renderComponent(ModelClaimEvidence, { documents });
+    const html = await renderComponent(SourceDisclosure, {
+      documents: [...documents, { document_url: "javascript:alert(1)" }],
+    });
     const $ = load(html);
-    const links = $(".claim-sources a");
+    expect($(".source-disclosure summary").text()).toContain("Sources · 3");
+    const links = $(".source-documents a");
     expect(links.map((_, el) => $(el).attr("href")).get()).toEqual(urls);
     expect(
       links
@@ -201,12 +208,13 @@ describe("model details", () => {
         .get(),
     ).toEqual([
       "models.example.net:8443/model.md",
-      "models.example.net:8443/guide",
+      "models.example.net:8443/guide?q=api#limits",
       "docs.example.org",
     ]);
-    expect(links.first().attr("aria-label")).toMatch(
-      /^models\.example\.net:8443\/model\.md: Section 1; Section 4 · Checked /,
+    expect($(".source-documents li").first().find("small").first().text()).toBe(
+      "Section 1 · Section 4",
     );
+    expect($(".source-documents li").first().find("small").last().text()).toMatch(/^Checked /);
     expect($("img")).toHaveLength(2);
     expect(
       $("img")
@@ -351,6 +359,9 @@ describe("model details", () => {
     expect(output.next("dd").text()).not.toContain("standard");
     expect(context.next("dd").text()).toContain("Responses · 2M shared budget");
     expect(context.next("dd").text()).not.toContain("300K");
+    expect(
+      output.next("dd").find(".source-documents a[href='https://example.com/limits']").length,
+    ).toBeGreaterThan(0);
     expect(html).not.toContain("Qualified limits");
     expect(html).not.toContain("catalog summary");
     expect(html).not.toContain("requires beta header");
