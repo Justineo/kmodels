@@ -28,10 +28,10 @@ export function sourceShape(body: string): string[] {
       );
   }
   const features = new Set<string>();
+  const relevant = /price|pricing|billing|cache|region|tier|model|token|cost/i;
   for (const text of texts) {
     const prose = markdownProse(text);
     const html = load(prose);
-    const relevant = /price|pricing|billing|cache|region|tier|model|token|cost/i;
     for (const element of html("h1,h2,h3,h4,th,a[href]").toArray()) {
       const label = html(element).text().replace(/\s+/g, " ").trim();
       if (relevant.test(label))
@@ -44,7 +44,7 @@ export function sourceShape(body: string): string[] {
     }
     for (const match of prose.matchAll(/^#{1,4}[ \t]+(.+)$/gm))
       if (match[1] && relevant.test(match[1])) features.add(match[1].slice(0, 400));
-    for (const [, label, href] of prose.matchAll(/\[([^\]\n]+)\]\(([^()\s]+)\)/gu))
+    for (const [, label, href] of prose.matchAll(/\[([^[\]\n]+)\]\(([^()\s]+)\)/gu))
       if (label && href && relevant.test(label))
         features.add(`a:${label.slice(0, 160)}:${href}`.slice(0, 400));
     for (const [, header] of prose.matchAll(
@@ -64,11 +64,32 @@ export function recordDiscovery(
   const features = sourceShape(body);
   const hash = digest(JSON.stringify(features));
   const previous = state.observations[source];
-  state.observations[source] = { hash, observed_at: now.toISOString() };
+  const sample = features.slice(0, 12);
+  state.observations[source] = {
+    hash,
+    observed_at: now.toISOString(),
+    feature_count: features.length,
+    sample,
+  };
   if (!previous || previous.hash === hash) return;
   const id = `${provider}/discovery:${source}`;
   const existing = state.tasks.find((task) => task.id === id);
-  const reason = `Official navigation, headings or tariff columns changed for ${source}. Inspect current source and compare consumed facts; this is a discovery lead, not a proven defect.`;
+  const details = [];
+  const priorSample = previous.sample;
+  if (priorSample) {
+    const removed = priorSample.filter((feature) => !features.includes(feature));
+    if (removed.length) details.push(`No longer observed: ${JSON.stringify(removed.slice(0, 3))}.`);
+    if (priorSample.length === previous.feature_count) {
+      const added = features.filter((feature) => !priorSample.includes(feature));
+      if (added.length) details.push(`Newly observed: ${JSON.stringify(added.slice(0, 3))}.`);
+    }
+  }
+  const reason = [
+    `The observed navigation, headings or tariff columns differ for ${source}. This is a discovery lead, not a proven defect.`,
+    ...details,
+  ]
+    .join(" ")
+    .slice(0, 8000);
   if (existing) {
     existing.fingerprint = hash;
     existing.status = "pending";

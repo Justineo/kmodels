@@ -349,9 +349,11 @@ it("discovers Markdown navigation and price columns without reacting to examples
   observe(table + "\n[Pricing](/metered)");
   const task = state.tasks[0];
   if (!task) throw new Error("Expected a navigation lead");
+  expect(task.reason).toContain("/metered");
   const linkChange = task.fingerprint;
   observe(table.replace("Input", "Cache storage") + "\n[Pricing](/metered)");
   expect(task.fingerprint).not.toBe(linkChange);
+  expect(task.reason).toContain("Cache storage");
 });
 
 it("keeps an unchanged missing companion on cooldown across unrelated card updates", () => {
@@ -364,7 +366,7 @@ it("keeps an unchanged missing companion on cooldown across unrelated card updat
     message: "embed-qa-4: HTTP 404",
   };
   const state = emptyState();
-  const observe = (incident: CatalogRepairCandidate, cards: string) =>
+  const observe = (incident: CatalogRepairCandidate, cards: string, tree: string) =>
     observeCandidates(
       state,
       [incident],
@@ -376,18 +378,18 @@ it("keeps an unchanged missing companion on cooldown across unrelated card updat
             "nvidia-nim-cards": { contentHash: cards },
           },
         },
-        "catalog-tree",
+        tree,
       ),
       now,
     );
-  observe(item, "first");
+  observe(item, "first", "catalog-v1");
   const task = state.tasks[0];
   if (!task) throw new Error("Expected a missing companion");
   recordOutcome(task, { status: "blocked", reason: "Waiting for the published companion." }, now);
-  observe(item, "second");
+  observe(item, "second", "catalog-v2");
   expect(chooseProvider(state, [item], now)).toBeUndefined();
   const changed = { ...item, message: "different companion: HTTP 410" };
-  observe(changed, "second");
+  observe(changed, "second", "catalog-v2");
   expect(task).toMatchObject({ status: "pending", reason: changed.message });
   expect(chooseProvider(state, [changed], now)).toBe("nvidia");
 });

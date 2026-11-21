@@ -90,7 +90,17 @@ export const stateSchema = z.object({
   schema_version: z.literal(1),
   tasks: z.array(taskSchema).max(2000),
   leases: z.array(leaseSchema).max(3000),
-  observations: z.record(z.string(), z.object({ hash, observed_at: timestamp })).default({}),
+  observations: z
+    .record(
+      z.string(),
+      z.object({
+        hash,
+        observed_at: timestamp,
+        feature_count: z.int().nonnegative().optional(),
+        sample: z.array(z.string().max(400)).max(12).optional(),
+      }),
+    )
+    .default({}),
   last_dispatch: timestamp.optional(),
   deployments: z
     .array(

@@ -55,7 +55,8 @@ skips publication because main advanced has no new observation to process. Older
 with only the run URL identify the first attempt.
 
 Tasks retain candidate identity, source/implementation fingerprint, attempts, evidence run, coverage,
-reason and next action. Relocation tasks track the affected source and failure detail so an unrelated sibling body change cannot reset their cooldown. A changed fingerprint reopens the question and invalidates saved coverage.
+reason and next action. Relocation tasks track the affected source, extractor version and failure
+detail. Unrelated catalog code and sibling source changes preserve the cooldown. A changed fingerprint reopens the question and invalidates saved coverage.
 Finishing a run cannot overwrite a newer attempt or results for a changed fingerprint.
 An investigation superseded by a new fingerprint can still supply historical evidence for the
 next run, without changing its status, cooldown or takeover allowance.
@@ -225,7 +226,8 @@ matching final patch receipt. Stored data adoption remains a later refresh decis
 The observer accepts successful main-branch refresh runs from this repository and
 executes only the trusted main checkout. Public heading, navigation and tariff-column changes
 create discovery tasks even when a parser still succeeds. HTML and Markdown observations include the loss of the last tracked feature and changes beyond the first 128 features. Fenced Markdown examples contribute no navigation. Cold start establishes a baseline;
-unchanged structure and amounts alone do not produce these leads. Discovery is deliberately
+the ledger stores a bounded sample and reports additions or removals when the observations establish them.
+Amount-only updates do not produce these leads. Discovery is deliberately
 bounded, not exhaustive web monitoring or proof of missing facts. Due tasks may dispatch repair
 at most once per six hours, with the dispatch claim persisted first.
 

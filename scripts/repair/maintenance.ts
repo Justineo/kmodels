@@ -50,8 +50,9 @@ export function fingerprints(
         JSON.stringify({
           trigger: candidate.trigger,
           diagnostics: candidate.diagnostics,
-          ...(candidate.trigger === "source_location_change" && { incident: candidate.message }),
-          tree,
+          ...(candidate.trigger === "source_location_change"
+            ? { incident: candidate.message }
+            : { tree }),
           sources: manifests
             .find((manifest) => manifest.provider.id === candidate.provider_id)
             ?.sources.filter(
