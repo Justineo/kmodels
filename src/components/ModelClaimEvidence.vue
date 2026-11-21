@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import type { ModelClaimSource } from "../catalog/model-claim-details.ts";
 import { formatLocalDateTime } from "../catalog/presentation.ts";
+import { useSourceIcons } from "../composables/useSourceIcons.ts";
 import UiIcon from "./UiIcon.vue";
 import UiTooltip from "./UiTooltip.vue";
 
@@ -10,17 +11,27 @@ const props = defineProps<{
   /** Site icons only; the host joins the tooltip. */
   compact?: boolean;
 }>();
+const icons = useSourceIcons();
+const failedIcons = ref(new Set<string>());
 
 /**
  * One link per cited document, or per site when compact; locators and the latest check move into
  * the tooltip.
  */
 const sources = computed(() => {
-  const byDocument = new Map<string, { url: URL; locators: string[]; observedAt: string }>();
+  const byDocument = new Map<
+    string,
+    { href: string; url: URL; locators: string[]; observedAt: string }
+  >();
   for (const { document_url, locator, observed_at } of props.documents) {
     const url = new URL(document_url);
     const key = props.compact ? url.origin : document_url;
-    const source = byDocument.get(key) ?? { url, locators: [], observedAt: observed_at };
+    const source = byDocument.get(key) ?? {
+      href: document_url,
+      url,
+      locators: [],
+      observedAt: observed_at,
+    };
     byDocument.set(key, source);
     if (!source.locators.includes(locator)) source.locators.push(locator);
     if (observed_at > source.observedAt) source.observedAt = observed_at;
@@ -28,6 +39,7 @@ const sources = computed(() => {
   const hosts = [...byDocument.values()].map(({ url }) => url.host);
   return [...byDocument.values()].map((source) => ({
     ...source,
+    icon: failedIcons.value.has(source.url.origin) ? undefined : icons.value.get(source.url.origin),
     label:
       hosts.filter((host) => host === source.url.host).length > 1
         ? `${source.url.host}${source.url.pathname}`
@@ -35,29 +47,21 @@ const sources = computed(() => {
     tooltip: `${props.compact ? source.url.host + " · " : ""}${source.locators.join("; ")} · Checked ${formatLocalDateTime(source.observedAt)}`,
   }));
 });
-const failedIcons = ref(new Set<string>());
 </script>
 
 <template>
   <ul class="claim-sources" :data-compact="compact || undefined" role="list" aria-label="Sources">
-    <li v-for="{ url, label, tooltip } in sources" :key="url.href">
+    <li v-for="{ href, url, label, tooltip, icon } in sources" :key="href">
       <UiTooltip
         as="a"
-        :href="url.href"
+        :href="href"
         target="_blank"
         rel="noopener noreferrer"
         :aria-label="`${label}: ${tooltip}`"
         :content="tooltip"
       >
         <span class="source-mark" aria-hidden="true">
-          <img
-            v-if="url.protocol === 'https:' && !failedIcons.has(url.origin)"
-            :src="`${url.origin}/favicon.ico`"
-            alt=""
-            loading="lazy"
-            referrerpolicy="no-referrer"
-            @error="failedIcons.add(url.origin)"
-          />
+          <img v-if="icon" :src="icon" alt="" loading="lazy" @error="failedIcons.add(url.origin)" />
           <span v-else>{{ url.hostname.charAt(0).toUpperCase() }}</span>
         </span>
         <template v-if="!compact">

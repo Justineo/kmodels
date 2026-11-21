@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { z } from "zod";
 import { atomicWrite, sha256 } from "../src/catalog/io.ts";
+import { sourceIconCacheFile } from "../src/catalog/source-icon-cache.ts";
 
 const repository = "Justineo/kmodels";
 const releaseTag = "catalog-snapshots";
@@ -12,7 +13,7 @@ const pointerFile = "catalog-snapshot.json";
 const markerFile = ".catalog-hydrated";
 const maxBytes = 128 * 1024 * 1024;
 const retentionSeconds = 7 * 24 * 60 * 60;
-export const snapshotFiles = [
+const existingSnapshotFiles = [
   "catalog.json",
   "export-assets.json",
   "export-assets.pack",
@@ -25,8 +26,10 @@ export const snapshotFiles = [
   "website-assets.json",
   "website-assets.pack",
 ] as const;
-const optionalFile = "inference-pricing.json";
-const magic = Buffer.from("KMS1");
+export const snapshotFiles = [...existingSnapshotFiles, sourceIconCacheFile] as const;
+const optionalFiles: ReadonlySet<string> = new Set(["inference-pricing.json", sourceIconCacheFile]);
+const legacyMagic = Buffer.from("KMS1");
+const magic = Buffer.from("KMS2");
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const timestamp = z.number().int().min(1_000_000_000).max(9_999_999_999);
 const pointerSchema = z.strictObject({
@@ -60,14 +63,16 @@ async function optionalRead(path: string): Promise<Buffer | undefined> {
 export async function packSnapshot(directory: string, capturedAt: number) {
   const contents = await Promise.all(
     snapshotFiles.map((name) =>
-      name === optionalFile ? optionalRead(join(directory, name)) : readFile(join(directory, name)),
+      optionalFiles.has(name)
+        ? optionalRead(join(directory, name))
+        : readFile(join(directory, name)),
     ),
   );
   const header = Buffer.alloc(magic.length + snapshotFiles.length * 4);
   magic.copy(header);
   let size = header.length;
   for (const [index, content] of contents.entries()) {
-    if (!content?.length && snapshotFiles[index] !== optionalFile)
+    if (!content?.length && !optionalFiles.has(snapshotFiles[index] ?? ""))
       throw new Error(`Empty catalog snapshot member: ${snapshotFiles[index]}`);
     header.writeUInt32BE(content?.length ?? 0, magic.length + index * 4);
     size += content?.length ?? 0;
@@ -90,13 +95,19 @@ export async function restoreSnapshot(directory: string, input: unknown, archive
   if (archive.length !== pointer.bytes || sha256(archive) !== pointer.sha256)
     throw new Error("Catalog snapshot does not match the checked-out pointer");
   const decoded = gunzipSync(archive, { maxOutputLength: maxBytes });
-  const headerBytes = magic.length + snapshotFiles.length * 4;
-  if (decoded.length < headerBytes || !decoded.subarray(0, magic.length).equals(magic))
-    throw new Error("Unrecognized catalog snapshot");
+  const signature = decoded.subarray(0, magic.length);
+  const files = signature.equals(magic)
+    ? snapshotFiles
+    : signature.equals(legacyMagic)
+      ? existingSnapshotFiles
+      : undefined;
+  if (files === undefined) throw new Error("Unrecognized catalog snapshot");
+  const headerBytes = magic.length + files.length * 4;
+  if (decoded.length < headerBytes) throw new Error("Incomplete catalog snapshot header");
   let offset = headerBytes;
-  const contents = snapshotFiles.map((name, index) => {
+  const contents = files.map((name, index) => {
     const bytes = decoded.readUInt32BE(magic.length + index * 4);
-    if (offset + bytes > decoded.length || (bytes === 0 && name !== optionalFile))
+    if (offset + bytes > decoded.length || (bytes === 0 && !optionalFiles.has(name)))
       throw new Error(`Invalid catalog snapshot member: ${name}`);
     const content = decoded.subarray(offset, offset + bytes);
     offset += bytes;
@@ -106,6 +117,8 @@ export async function restoreSnapshot(directory: string, input: unknown, archive
   await mkdir(directory, { recursive: true });
   await rm(join(directory, markerFile), { force: true });
   await rm(join(directory, ".catalog-state"), { recursive: true, force: true });
+  if (files === existingSnapshotFiles)
+    await rm(join(directory, sourceIconCacheFile), { force: true });
   for (const { name, content } of contents) {
     const path = join(directory, name);
     if (content.length === 0) await rm(path, { force: true });
@@ -126,7 +139,7 @@ export async function snapshotFingerprint(directory: string): Promise<string> {
   const members = await Promise.all(
     snapshotFiles.map(async (name) => {
       const contents = await optionalRead(join(directory, name));
-      if (contents === undefined && name !== optionalFile)
+      if (contents === undefined && !optionalFiles.has(name))
         throw new Error(`Hydrated catalog snapshot is missing ${name}`);
       return contents === undefined ? null : sha256(contents);
     }),
@@ -267,7 +280,7 @@ async function main() {
     if (marker?.toString() === pointer.sha256 && argument !== "--force") {
       const complete = await Promise.all(
         snapshotFiles
-          .filter((name) => name !== optionalFile)
+          .filter((name) => !optionalFiles.has(name))
           .map((name) =>
             stat(join(directory, name)).then(
               (entry) => entry.isFile(),

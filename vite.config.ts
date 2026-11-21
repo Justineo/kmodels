@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import vue from "@vitejs/plugin-vue";
 import { defineConfig, type Plugin } from "vite-plus";
 import {
@@ -9,6 +10,9 @@ import {
   type PublishedAssetProfile,
 } from "./src/catalog/published-assets.ts";
 import { defaultProjectionPaths } from "./src/catalog/projection-paths.ts";
+import { atomicWrite } from "./src/catalog/io.ts";
+import { sourceIconAssets } from "./src/catalog/source-icon-cache.ts";
+import { isSourceIconPath, sourceIconIndexPath } from "./src/source-icon-paths.ts";
 import { catalogUpdateUrl, type CatalogRevision } from "./src/catalog/update-link.ts";
 import { generatedDataTests } from "./tests/generated-data-tests.ts";
 
@@ -125,6 +129,38 @@ function buildCatalog(): Plugin {
       if (dir === undefined) throw new Error("Vite output directory is unavailable");
       published ??= readPublishedAssets();
       await materializePublishedAssets(await published, dir);
+      for (const [path, bytes] of await sourceIconAssets())
+        await atomicWrite(join(dir, path), bytes);
+    },
+  };
+}
+
+function serveSourceIcons(): Plugin {
+  return {
+    name: "kmodels-source-icons-serve",
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const path = new URL(request.url ?? "/", "http://localhost").pathname;
+        if (path !== sourceIconIndexPath && !isSourceIconPath(path)) return next();
+        void sourceIconAssets()
+          .then((assets) => {
+            const bytes = assets.get(path);
+            if (bytes === undefined) {
+              response.statusCode = 404;
+              response.end();
+              return;
+            }
+            const contentType =
+              path === sourceIconIndexPath
+                ? "application/json; charset=utf-8"
+                : path.endsWith(".png")
+                  ? "image/png"
+                  : "image/x-icon";
+            response.setHeader("Content-Type", contentType);
+            response.end(bytes);
+          })
+          .catch(next);
+      });
     },
   };
 }
@@ -138,7 +174,7 @@ export default defineConfig({
     platform: "neutral",
     dts: true,
   },
-  plugins: [buildCatalog(), serveCatalog(), vue()],
+  plugins: [buildCatalog(), serveCatalog(), serveSourceIcons(), vue()],
   define: {
     __KMODELS_CATALOG_UPDATE_URL__: JSON.stringify(updatedUrl),
   },

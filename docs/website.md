@@ -554,9 +554,10 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   briefly and use the citation for request setup. Suppress a duplicate summary of the same
   quantity. If the same structured scope has incompatible maxima or cap states, show
   “Sources disagree” with citations for that scope.
-- Claim citations link to owned documents. Load the site's HTTPS `/favicon.ico` without a
-  referrer and use the hostname initial as a fallback. A link's tooltip and accessible name
-  include the document locator and check time. Compact citations use one icon per site.
+- Claim citations open the original evidence URL. Resolve the citation's origin through the
+  same-origin `/source-icons/index.json` index and load the cached static icon. Use the hostname
+  initial when the index or image is unavailable. A link's tooltip and accessible name include
+  the document locator and check time. Compact citations use one icon per origin.
 - Modalities & capabilities answers only what goes in, what comes out and what the model can do.
   Input and output appear once as modality tags joined by a direction arrow. Supported
   capabilities follow; unsupported and unknown capabilities are not shown. A model with no

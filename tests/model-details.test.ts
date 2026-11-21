@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { load } from "cheerio";
 import ModelDetails from "../src/components/ModelDetails.vue";
 import ModelClaimEvidence from "../src/components/ModelClaimEvidence.vue";
@@ -7,6 +7,11 @@ import { unknownCapabilities } from "../src/catalog/schema.ts";
 import { renderComponent } from "./render-component.ts";
 import type { LimitDetailGroup } from "../src/catalog/model-limit-details.ts";
 import type { CapabilityStatement } from "../src/catalog/model-capability-details.ts";
+
+const cachedIcon = `/source-icons/${"b".repeat(64)}.png`;
+vi.mock("../src/composables/useSourceIcons.ts", () => ({
+  useSourceIcons: () => ({ value: new Map([["https://models.example.net:8443", cachedIcon]]) }),
+}));
 
 describe("model details", () => {
   const sourceOf = (document_url: string) => ({
@@ -173,9 +178,9 @@ describe("model details", () => {
   });
   it("cites each document once with its locators and latest check", async () => {
     const urls = [
-      "https://models.example.net:8443/model",
+      "https://models.example.net:8443/model.md",
       "https://models.example.net:8443/guide?q=api#limits",
-      "http://docs.example.org/reference",
+      "http://DOCS.example.org/reference",
     ] as const;
     // Canonical evidence may still carry audit fields; the citation renders none of them.
     const documents = [...urls, urls[0]].map((document_url, index) => ({
@@ -195,15 +200,19 @@ describe("model details", () => {
         .map((_, el) => $(el).text())
         .get(),
     ).toEqual([
-      "models.example.net:8443/model",
+      "models.example.net:8443/model.md",
       "models.example.net:8443/guide",
       "docs.example.org",
     ]);
     expect(links.first().attr("aria-label")).toMatch(
-      /^models\.example\.net:8443\/model: Section 1; Section 4 · Checked /,
+      /^models\.example\.net:8443\/model\.md: Section 1; Section 4 · Checked /,
     );
     expect($("img")).toHaveLength(2);
-    expect($("img").first().attr("src")).toBe("https://models.example.net:8443/favicon.ico");
+    expect(
+      $("img")
+        .map((_, image) => $(image).attr("src"))
+        .get(),
+    ).toEqual([cachedIcon, cachedIcon]);
     expect($(".source-mark").last().text()).toBe("D");
     expect(html).not.toContain("Quoted evidence");
     expect(html).not.toContain("a".repeat(64));
