@@ -49,6 +49,7 @@ import {
   WEBSITE_DETAIL_CHUNK_MAX_BYTES,
   websiteCatalogIndexSchema,
   websiteDetailChunkSchema,
+  requiresWebsiteDetail13,
   websiteOfferChunkSchema,
   websiteProviderPricingChunkSchema,
   websitePricingDetailSchema,
@@ -361,13 +362,7 @@ function websiteDeferredAssets(
         storedDetails,
         (values, chunk) =>
           websiteDetailChunkSchema.parse({
-            schema_version: values.some(
-              (model) =>
-                model.access_conditions?.length ||
-                model.capability_details?.some((g) =>
-                  g.statements.some((s) => s.kind === "capability_support"),
-                ),
-            )
+            schema_version: values.some(requiresWebsiteDetail13)
               ? 13
               : values.some(
                     ({ limit_details, capability_details, inference_prices }) =>

@@ -23,7 +23,7 @@ const annotations = computed(() => {
   for (const { statements } of props.groups)
     for (const statement of statements) {
       const { applicability, kind, measurement, quantity } = statement;
-      if (applicability === undefined || kind === "default") continue;
+      if ((!applicability && !statement.account_tier) || kind === "default") continue;
       const context = quantity === "context_tokens";
       if (context !== (props.field === "context_tokens")) continue;
       if (context ? measurement !== "shared_context" : measurement !== "per_response") continue;
@@ -34,8 +34,13 @@ const annotations = computed(() => {
         row.conflict ||= limitStatementsConflict(row.statement, statement);
         continue;
       }
-      const { endpoint, beta_header: beta } = applicability;
-      const name = props.endpoints.find(({ path }) => path === endpoint)?.name ?? endpoint;
+      const { endpoint, beta_header: beta } = applicability ?? {};
+      const name = [
+        statement.account_tier,
+        props.endpoints.find(({ path }) => path === endpoint)?.name ?? endpoint,
+      ]
+        .filter(Boolean)
+        .join(" · ");
       const mode = beta === undefined ? "" : beta.present ? " (beta)" : " (standard)";
       byScope.set(key, {
         label: name + mode,
@@ -48,6 +53,7 @@ const annotations = computed(() => {
     if (
       !conflict &&
       statement.kind === "maximum" &&
+      !statement.account_tier &&
       statement.quantity === props.field &&
       statement.tokens === props.summary
     )
@@ -57,6 +63,7 @@ const annotations = computed(() => {
 });
 
 function annotationValue(statement: LimitStatement): string {
+  if (statement.kind === "published_maximum_label") return statement.label;
   const textOnly = statement.quantity === "text_output_tokens";
   if (statement.kind === "no_separate_cap") {
     if (statement.quantity === "context_tokens") return "No separate context cap";

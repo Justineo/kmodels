@@ -55,8 +55,10 @@ record has been refreshed.
 
 ## Scoped capability details
 
-Detail chunk version 13 adds explicit capability support by interface and market-specific
-registration conditions. Writers select it only when one of those facts occurs. Website
+Detail chunk version 13 adds explicit capability support by interface, market-specific
+registration conditions and account-tier model limits. A rounded published maximum retains
+its native label separately from an exact numeric limit. Writers select this version only
+when one of those facts occurs. Website
 consumers can interpret support or exclusion independently of the coarse model flag. The
 legacy audit envelope and v1 semantic profiles continue to omit these internal details.
 

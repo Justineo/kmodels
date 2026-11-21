@@ -27,6 +27,42 @@ function parse(providerId: string, sourceId: string, bundle: LinkedBundle) {
   });
   return { ...result, findings };
 }
+it("distinguishes exact and rounded Cerebras limits at the published account tier", async () => {
+  const bundle = JSON.parse(await fixture("cerebras/inference-current-catalog.json"));
+  const result = parse("cerebras", "cerebras-catalog", bundle);
+  const statements = (id: string) =>
+    result.models.find((m) => m.model_id === id)?.limit_details?.flatMap((g) => g.statements);
+  expect(statements("qwen-3.8-27b")).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        kind: "maximum",
+        quantity: "context_tokens",
+        account_tier: "Free Trial",
+        tokens: 65536,
+      }),
+      expect.objectContaining({
+        kind: "maximum",
+        quantity: "output_tokens",
+        account_tier: "Free Trial",
+        tokens: 32768,
+      }),
+      expect.objectContaining({
+        kind: "maximum",
+        quantity: "output_tokens",
+        account_tier: "Paid tiers and trial customers",
+        tokens: 40960,
+      }),
+    ]),
+  );
+  expect(statements("gpt-oss-120b")).toContainEqual(
+    expect.objectContaining({
+      kind: "published_maximum_label",
+      quantity: "output_tokens",
+      account_tier: "Free",
+      label: "32k tokens",
+    }),
+  );
+});
 
 async function anthropicBundle(): Promise<LinkedBundle> {
   return {

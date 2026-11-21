@@ -126,6 +126,8 @@ request bounds. Parsing and enrichment application still follow manifest order.
 The retry boundary includes the entire response body: a timeout or interrupted stream after
 HTTP headers retries that dependency from the beginning, up to three attempts. Partial bytes
 are discarded, readers are released, and size-limit violations still fail without retrying.
+The final public S3 attempt uses a fresh curl connection if pooled attempts failed. It shares
+the same URL allowlist, byte bounds and retry budget. Exhaustion retains the prior partition.
 
 Official API references:
 [ListHubContents](https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_ListHubContents.html),

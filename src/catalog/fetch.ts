@@ -231,11 +231,14 @@ class TransientFetchError extends SourceFetchError {
 
 const sourceRetryBudgetMs = 5 * 60_000;
 
-async function retryTransient<T>(operation: () => Promise<T>, request?: string): Promise<T> {
+async function retryTransient<T>(
+  operation: (attempt: number) => Promise<T>,
+  request?: string,
+): Promise<T> {
   const deadline = Date.now() + sourceRetryBudgetMs;
   for (let attempts = 1; ; attempts += 1) {
     try {
-      return await operation();
+      return await operation(attempts);
     } catch (error) {
       if (!(error instanceof TransientFetchError))
         throw error instanceof Error ? error : new Error("Unknown source fetch failure");
@@ -996,12 +999,13 @@ async function fetchGoogleModelGarden(
   return body;
 }
 
-async function request(source: SourceManifest, json?: string): Promise<Response> {
+async function request(source: SourceManifest, json?: string, usePool = true): Promise<Response> {
   let url = checkedUrl(source.url, source);
   for (let redirect = 0; redirect <= 4; redirect += 1) {
     // JumpStart has hundreds of small public specs on one reviewed S3 origin.
     // Native fetch reuses connections instead of starting a curl/TLS connection per spec.
     const pooledSageMaker =
+      usePool &&
       source.auth === undefined &&
       json === undefined &&
       url.hostname === "jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com" &&
@@ -1060,8 +1064,9 @@ async function readLimited(response: Response, limit: number): Promise<string> {
 
 async function attemptFetch(
   source: SourceManifest,
+  attempt: number,
 ): Promise<{ payload: FetchPayload; link: string | undefined }> {
-  const response = await request(source);
+  const response = await request(source, undefined, attempt < 3);
   if (response.status === 429 || response.status >= 500)
     throw new TransientFetchError(
       `Transient HTTP ${response.status}`,
@@ -1136,7 +1141,7 @@ async function fetchPost(
 async function fetchResponse(
   source: SourceManifest,
 ): Promise<{ payload: FetchPayload; link: string | undefined }> {
-  return retryTransient(() => attemptFetch(source));
+  return retryTransient((attempt) => attemptFetch(source, attempt));
 }
 
 async function fetchPayload(source: SourceManifest): Promise<FetchPayload> {
