@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { gzipSync, gunzipSync } from "node:zlib";
 import { expect, it, vi } from "vite-plus/test";
 import { sha256 } from "../src/catalog/io.ts";
-import { sourceIconCacheFile } from "../src/catalog/source-icon-cache.ts";
 import {
   expiredAssets,
   packSnapshot,
@@ -22,28 +21,33 @@ vi.mock("node:child_process", async (importOriginal) => ({
   execFileSync: github.exec,
 }));
 
-it("restores the exact archive and removes a stale optional mirror", async () => {
+it("restores a legacy archive while discarding its retired trailing member", async () => {
   const directory = await mkdtemp(join(tmpdir(), "kmodels-archive-"));
   try {
     const optional = "inference-pricing.json";
+    const retired = "source-icons.json";
     for (const name of snapshotFiles) {
-      if (name !== optional && name !== sourceIconCacheFile)
-        await writeFile(join(directory, name), name);
+      if (name !== optional) await writeFile(join(directory, name), name);
     }
     const packed = await packSnapshot(directory, 1_794_010_000);
-    // KMS1 has the same first eleven members and no length slot for icons.
-    const headerBytes = 4 + (snapshotFiles.length - 1) * 4;
+    const headerBytes = 4 + snapshotFiles.length * 4;
     const decoded = gunzipSync(packed.archive);
+    expect(decoded.subarray(0, 4).toString()).toBe("KMS1");
+    const retiredBytes = Buffer.from("cached icons");
+    const retiredLength = Buffer.alloc(4);
+    retiredLength.writeUInt32BE(retiredBytes.length);
     const archive = gzipSync(
       Buffer.concat([
-        Buffer.from("KMS1"),
+        Buffer.from("KMS2"),
         decoded.subarray(4, headerBytes),
-        decoded.subarray(headerBytes + 4),
+        retiredLength,
+        decoded.subarray(headerBytes),
+        retiredBytes,
       ]),
     );
     const pointer = { ...packed.pointer, sha256: sha256(archive), bytes: archive.length };
     await writeFile(join(directory, optional), "stale");
-    await writeFile(join(directory, sourceIconCacheFile), "stale");
+    await writeFile(join(directory, retired), "stale");
     await writeFile(join(directory, "catalog.json"), "local");
     await expect(
       restoreSnapshot(directory, { ...pointer, sha256: "0".repeat(64) }, archive),
@@ -51,16 +55,17 @@ it("restores the exact archive and removes a stale optional mirror", async () =>
     expect(await readFile(join(directory, "catalog.json"), "utf8")).toBe("local");
     await restoreSnapshot(directory, pointer, archive);
     for (const name of snapshotFiles) {
-      if (name !== optional && name !== sourceIconCacheFile)
-        expect(await readFile(join(directory, name), "utf8")).toBe(name);
+      if (name !== optional) expect(await readFile(join(directory, name), "utf8")).toBe(name);
     }
     await expect(readFile(join(directory, optional))).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(readFile(join(directory, sourceIconCacheFile))).rejects.toMatchObject({
+    await expect(readFile(join(directory, retired))).rejects.toMatchObject({
       code: "ENOENT",
     });
     await writeFile(join(directory, "catalog-snapshot.json"), JSON.stringify(pointer));
     const fingerprint = await snapshotFingerprint(directory);
-    await writeFile(join(directory, sourceIconCacheFile), "changed");
+    await writeFile(join(directory, retired), "changed");
+    expect(await snapshotFingerprint(directory)).toBe(fingerprint);
+    await writeFile(join(directory, optional), "changed");
     expect(await snapshotFingerprint(directory)).not.toBe(fingerprint);
     await writeFile(
       join(directory, "catalog-snapshot.json"),

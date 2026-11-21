@@ -217,7 +217,7 @@ describe("website data", () => {
         ),
       );
     }
-    expect(foundAuditFields(details, "model-details")).toEqual([]);
+    expect(foundAuditFields(details)).toEqual([]);
     expect(foundAuditFields(publication.offers)).toEqual([]);
     const hydratedDetails = publishedModelDetails(publication);
     const offers = hydratedDetails.flatMap(({ pricing }) => pricing?.offers ?? []);

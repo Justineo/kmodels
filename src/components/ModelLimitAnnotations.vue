@@ -1,6 +1,5 @@
 <script setup lang="ts" vapor>
 import { computed } from "vue";
-import type { ModelClaimSource } from "../catalog/model-claim-details.ts";
 import {
   limitScopeKey,
   limitStatementsConflict,
@@ -8,7 +7,6 @@ import {
   type WebsiteLimitDetailGroup,
 } from "../catalog/model-limit-details.ts";
 import { formatTokenCount } from "../catalog/presentation.ts";
-import SourceDisclosure from "./SourceDisclosure.vue";
 
 const props = defineProps<{
   groups: readonly WebsiteLimitDetailGroup[];
@@ -20,9 +18,9 @@ const props = defineProps<{
 const annotations = computed(() => {
   const byScope = new Map<
     string,
-    { label: string; statement: LimitStatement; documents: ModelClaimSource[]; conflict: boolean }
+    { label: string; statement: LimitStatement; conflict: boolean }
   >();
-  for (const { statements, evidence } of props.groups)
+  for (const { statements } of props.groups)
     for (const statement of statements) {
       const { applicability, kind, measurement, quantity } = statement;
       if (applicability === undefined || kind === "default") continue;
@@ -33,7 +31,6 @@ const annotations = computed(() => {
       const key = JSON.stringify([quantity, limitScopeKey(statement)]);
       const row = byScope.get(key);
       if (row) {
-        row.documents.push(...evidence);
         row.conflict ||= limitStatementsConflict(row.statement, statement);
         continue;
       }
@@ -43,12 +40,11 @@ const annotations = computed(() => {
       byScope.set(key, {
         label: name + mode,
         statement,
-        documents: [...evidence],
         conflict: false,
       });
     }
 
-  return [...byScope].flatMap(([key, { label, statement, documents, conflict }]) => {
+  return [...byScope].flatMap(([key, { label, statement, conflict }]) => {
     if (
       !conflict &&
       statement.kind === "maximum" &&
@@ -56,9 +52,7 @@ const annotations = computed(() => {
       statement.tokens === props.summary
     )
       return [];
-    return [
-      { key, label, value: conflict ? "Sources disagree" : annotationValue(statement), documents },
-    ];
+    return [{ key, label, value: conflict ? "Sources disagree" : annotationValue(statement) }];
   });
 });
 
@@ -76,10 +70,7 @@ function annotationValue(statement: LimitStatement): string {
 
 <template>
   <ul v-if="annotations.length" class="limit-annotations" role="list">
-    <li v-for="{ key, label, value, documents } in annotations" :key="key">
-      <span>{{ label }} · {{ value }}</span>
-      <SourceDisclosure :documents="documents" />
-    </li>
+    <li v-for="{ key, label, value } in annotations" :key="key">{{ label }} · {{ value }}</li>
   </ul>
 </template>
 
@@ -92,12 +83,5 @@ function annotationValue(statement: LimitStatement): string {
   color: var(--color-text-muted);
   font-size: var(--font-size-meta);
   list-style: none;
-}
-
-.limit-annotations > li {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-1);
 }
 </style>

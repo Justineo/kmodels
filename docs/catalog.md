@@ -38,7 +38,7 @@ commercial coverage after admission and never an admission requirement.
 Start with the field people discover, compare, or consume. A conditional value for the same
 quantity belongs to that field as an optional annotation. Admit it when the distinction affects a
 catalog decision, an authoritative source binds it to the exact subject, and the existing typed
-fields can express its value and complete applicability. Keep a citation with the annotation.
+fields can express its value and complete applicability. Retain source evidence with the canonical claim.
 Leave request recipes and unsupported applicability in the provider documentation. Add another
 structured dimension when an identified consumer needs that distinction.
 

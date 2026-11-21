@@ -13,7 +13,7 @@ function price(id: string, region: string) {
     status: "candidates",
     explanation: "Select a region",
     missing_conditions: ["Region"],
-    evidence_urls: [],
+
     candidates: [],
     pricing_options: [
       {

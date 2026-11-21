@@ -1,4 +1,3 @@
-import type { ModelClaimSource } from "./model-claim-details.ts";
 import {
   capabilityStatementsConflict,
   type CapabilityStatement,
@@ -32,23 +31,19 @@ export interface CapabilityValue {
   partialDefault?: true;
 }
 
-export interface CapabilityOptions {
-  values: CapabilityValue[];
-  sources: ModelClaimSource[];
-}
-
 /** Values on one API that cannot be placed on a published endpoint of this model. */
-interface CapabilityVariant extends CapabilityOptions {
+interface CapabilityVariant {
   label?: string;
+  values: CapabilityValue[];
 }
 
 export interface CapabilityRow {
   key: CapabilityKey;
   label: string;
   /** Present when every evidenced API documents the same values. */
-  options?: CapabilityOptions;
+  values?: CapabilityValue[];
   /** Values by published endpoint path when they differ between APIs. */
-  byEndpoint: Map<string, CapabilityOptions>;
+  byEndpoint: Map<string, CapabilityValue[]>;
   unplaced: CapabilityVariant[];
   conflict: boolean;
 }
@@ -150,7 +145,6 @@ interface Binding {
   label?: string;
   values: CapabilityValue[];
   defaults: Set<string>;
-  sources: Set<ModelClaimSource>;
 }
 
 /**
@@ -165,8 +159,8 @@ export function capabilityRows(
   return capabilityLabels.flatMap(([key, label]): CapabilityRow[] => {
     const bindings = new Map<string, Binding>();
     const statements: CapabilityStatement[] = [];
-    for (const group of groups)
-      for (const statement of group.statements) {
+    for (const { statements: grouped } of groups)
+      for (const statement of grouped) {
         const { capability, values } = presentation(statement);
         if (capability !== key || values.length === 0) continue;
         statements.push(statement);
@@ -177,36 +171,29 @@ export function capabilityRows(
           ...(applicability?.interface === undefined ? {} : { label: applicability.interface }),
           values: [],
           defaults: new Set(),
-          sources: new Set(),
         };
         bindings.set(id, binding);
         addValues(binding, values);
-        for (const source of group.evidence) binding.sources.add(source);
       }
     if (capabilities[key] !== true && bindings.size === 0) return [];
     const variants = [...bindings.values()].map((binding) => ({
       endpoint: binding.endpoint,
       label: binding.label,
       values: settled(binding),
-      sources: [...binding.sources],
     }));
     const values = merged(variants);
-    const options =
-      values === undefined
-        ? undefined
-        : { values, sources: [...new Set(variants.flatMap(({ sources }) => sources))] };
-    const byEndpoint = new Map<string, CapabilityOptions>();
+    const byEndpoint = new Map<string, CapabilityValue[]>();
     const unplaced: CapabilityVariant[] = [];
-    if (options === undefined)
-      for (const { endpoint, label: api, ...options } of variants)
+    if (values === undefined)
+      for (const { endpoint, label: api, values: options } of variants)
         if (endpoint !== undefined && endpointPaths.has(endpoint))
           byEndpoint.set(endpoint, options);
-        else unplaced.push(api === undefined ? options : { label: api, ...options });
+        else unplaced.push({ ...(api === undefined ? {} : { label: api }), values: options });
     return [
       {
         key,
         label,
-        ...(options === undefined ? {} : { options }),
+        ...(values === undefined ? {} : { values }),
         byEndpoint,
         unplaced,
         conflict: statements.some((left, index) =>

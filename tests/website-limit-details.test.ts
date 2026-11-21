@@ -59,8 +59,8 @@ const model: WebsiteModel = {
   detail_chunk: 0,
   pricing: { outcome: "unknown" },
 };
-/** Website chunks cite sources; excerpts and document hashes stay in canonical storage. */
-function sourced<Group extends LimitDetailGroup | CapabilityDetailGroup>(value: Group) {
+/** Reconstruct the compact evidence shape for an existing schema 11 asset. */
+function legacyCitation<Group extends LimitDetailGroup | CapabilityDetailGroup>(value: Group) {
   return {
     ...value,
     evidence: value.evidence.map(({ document_url, locator, observed_at }) => ({
@@ -131,7 +131,7 @@ function chunk(details: LimitDetailGroup[] | undefined, version: string) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("versioned scoped limit website details", () => {
-  it("projects and loads a mixed v11 and v7 publication under the capability cache salt", async () => {
+  it("projects and loads a mixed v12 and v7 publication without publishing claim evidence", async () => {
     const capability: CapabilityDetailGroup = {
       source_ref: group.source_ref,
       claim: "interactions_cache",
@@ -162,9 +162,9 @@ describe("versioned scoped limit website details", () => {
     const versions = ["example", "limited", "other"].map((provider) =>
       websiteDetailChunkSchema.parse(JSON.parse(packedChunk(provider))),
     );
-    expect(versions.map(({ schema_version }) => schema_version)).toEqual([11, 11, 7]);
+    expect(versions.map(({ schema_version }) => schema_version)).toEqual([12, 12, 7]);
     const details = versions.flatMap((chunk) => chunk.details);
-    expect(foundAuditFields(details, "model-details")).toEqual([]);
+    expect(foundAuditFields(details)).toEqual([]);
     expect(() => websiteDetailChunkSchema.parse({ ...versions[0], schema_version: 8 })).toThrow();
     vi.stubGlobal(
       "fetch",
@@ -175,8 +175,8 @@ describe("versioned scoped limit website details", () => {
       }),
     );
     expect(await loadWebsiteModelDetail(dataVersion, model)).toMatchObject({
-      limit_details: [sourced(group)],
-      capability_details: [sourced(capability)],
+      limit_details: [{ statements: group.statements }],
+      capability_details: [{ statements: capability.statements }],
     });
     const limited = await loadWebsiteModelDetail(dataVersion, {
       ...model,
@@ -197,28 +197,19 @@ describe("versioned scoped limit website details", () => {
       websiteDataVersion(core.catalog_version, pricing.pricing_data_version, undefined, true),
     );
   });
-  it("flags pricing locators and raw fields alongside allowed model-claim locators", () => {
-    const claims = { limit_details: [sourced(group)] };
-    expect(foundAuditFields([claims])).toEqual(["locator"]);
-    expect(foundAuditFields([{ ...claims, pricing: claims }], "model-details")).toEqual([
+  it("flags evidence and locators in both model details and pricing", () => {
+    expect(foundAuditFields([{ limit_details: [legacyCitation(group)] }])).toEqual([
+      "document_url",
+      "evidence",
       "locator",
+      "source_ref",
     ]);
-    const groupWithRawEvidence = {
-      ...sourced(group),
-      evidence: sourced(group).evidence.map((revision) => ({
-        ...revision,
-        raw: "source fragment",
-      })),
-    };
-    expect(foundAuditFields([{ limit_details: [groupWithRawEvidence] }], "model-details")).toEqual([
-      "raw",
-    ]);
-    expect(foundAuditFields([{ limit_details: [group] }], "model-details")).toEqual([
-      "content_hash",
-      "excerpt",
-    ]);
+    expect(
+      foundAuditFields([{ pricing: { evidence_urls: ["https://example.com/price"] } }]),
+    ).toEqual(["evidence_urls"]);
+    expect(foundAuditFields([{ limit_details: [group] }])).toContain("content_hash");
   });
-  it("carries reviewed applicability through v11 while reading accepted v9 and v10 chunks", async () => {
+  it("carries reviewed applicability through v12 while reading accepted v9, v10 and v11 chunks", async () => {
     const statement = {
       kind: "reasoning_effort",
       scope: "Interactions API, beta enabled (config.level).",
@@ -246,17 +237,17 @@ describe("versioned scoped limit website details", () => {
     const legacy = catalog([group], [capability]);
     const current = catalog([group], [structured, { ...capability, claim: "legacy" }]);
     const pricing = emptyPricingCatalog();
-    const legacyVersion = websiteDataVersionForCatalog(legacy, "b".repeat(64));
+    const legacyVersion = "c".repeat(64);
     const version = websiteDataVersionForCatalog(current, "b".repeat(64));
     expect(version).not.toBe(legacyVersion);
     const [legacyChunk] = websitePublication(legacy, pricing, legacyVersion).details;
     const [currentChunk] = websitePublication(current, pricing, version).details;
     if (legacyChunk === undefined || currentChunk === undefined)
       throw new Error("Missing model detail chunk");
-    expect(legacyChunk.schema_version).toBe(11);
-    expect(currentChunk.schema_version).toBe(11);
-    expect(foundAuditFields(currentChunk.details, "model-details")).toEqual([]);
-    // Slim sources do not satisfy the accepted v10 evidence contract.
+    expect(legacyChunk.schema_version).toBe(12);
+    expect(currentChunk.schema_version).toBe(12);
+    expect(foundAuditFields(currentChunk.details)).toEqual([]);
+    // An evidence-free detail does not satisfy the legacy wire schema.
     expect(() => websiteDetailChunkSchema.parse({ ...currentChunk, schema_version: 10 })).toThrow();
     const acceptedDetails = (capabilityDetails: CapabilityDetailGroup[]) =>
       legacyChunk.details.map((detail) => ({
@@ -264,11 +255,11 @@ describe("versioned scoped limit website details", () => {
         limit_details: [group],
         capability_details: capabilityDetails,
       }));
-    const acceptedV9 = websiteDetailChunkSchema.parse({
+    const acceptedV9 = {
       ...legacyChunk,
       schema_version: 9,
       details: acceptedDetails([capability]),
-    });
+    };
     expect(() =>
       websiteDetailChunkSchema.parse({ ...acceptedV9, details: acceptedDetails([structured]) }),
     ).toThrow();
@@ -279,24 +270,37 @@ describe("versioned scoped limit website details", () => {
         details: acceptedDetails([structured]),
       }).schema_version,
     ).toBe(10);
+    const acceptedV11 = {
+      ...legacyChunk,
+      schema_version: 11,
+      details: legacyChunk.details.map((detail) => ({
+        ...detail,
+        limit_details: [legacyCitation(group)],
+        capability_details: [legacyCitation(structured)],
+      })),
+    };
+    expect(websiteDetailChunkSchema.parse(acceptedV11).details[0]).toMatchObject({
+      limit_details: [{ statements: group.statements }],
+      capability_details: [{ statements: structured.statements }],
+    });
     const fetcher = vi.fn(
       async (input: string) =>
         new Response(stableJson(input.includes(legacyVersion) ? acceptedV9 : currentChunk)),
     );
     vi.stubGlobal("fetch", fetcher);
     expect((await loadWebsiteModelDetail(legacyVersion, model)).capability_details).toEqual([
-      capability,
+      { statements: capability.statements },
     ]);
     expect((await loadWebsiteModelDetail(version, model)).capability_details).toEqual([
-      sourced(structured),
-      sourced({ ...capability, claim: "legacy" }),
+      { statements: structured.statements },
+      { statements: capability.statements },
     ]);
     expect((await loadWebsiteModelDetail(legacyVersion, model)).capability_details).toEqual([
-      capability,
+      { statements: capability.statements },
     ]);
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
-  it("projects real statement-bearing assets under the conditional v11 cache identity", async () => {
+  it("projects real statement-bearing assets under the conditional v12 cache identity", async () => {
     const coreInput: unknown = JSON.parse(stableJson(catalog([group])));
     const core = catalogSchema.parse(coreInput);
     const pricing = createPricingCatalogEnvelope(emptyPricingCatalog(), core);
@@ -323,18 +327,20 @@ describe("versioned scoped limit website details", () => {
       gunzipSync(compressedAsset(result.ui.pack, entry)).toString("utf8"),
     );
     const parsed = websiteDetailChunkSchema.parse(input);
-    expect(parsed.schema_version).toBe(11);
-    expect(parsed.details[0]).toMatchObject({ limit_details: [sourced(group)] });
+    expect(parsed.schema_version).toBe(12);
+    expect(parsed.details[0]).toMatchObject({ limit_details: [{ statements: group.statements }] });
   });
-  it("keeps exact no-detail v7 output and emits v11 only for statement-bearing chunks", () => {
+  it("keeps exact no-detail v7 output and emits v12 only for statement-bearing chunks", () => {
     const version = "b".repeat(64);
     const legacy = chunk(undefined, version);
     expect(legacy.schema_version).toBe(7);
     expect(legacy.details[0]).not.toHaveProperty("limit_details");
     expect(stableJson(chunk([{ ...group, statements: [] }], version))).toBe(stableJson(legacy));
     const current = chunks([group], version);
-    expect(current.map(({ schema_version }) => schema_version)).toEqual([11, 7]);
-    expect(current[0]?.details[0]).toMatchObject({ limit_details: [sourced(group)] });
+    expect(current.map(({ schema_version }) => schema_version)).toEqual([12, 7]);
+    expect(current[0]?.details[0]).toMatchObject({
+      limit_details: [{ statements: group.statements }],
+    });
     expect(current[1]).toEqual(chunks(undefined, version)[1]);
   });
 
@@ -350,11 +356,11 @@ describe("versioned scoped limit website details", () => {
     );
   });
 
-  it("keeps v7 closed while explicitly accepting v11, rejecting unknown versions and new unknown fields", () => {
+  it("keeps v7 closed while explicitly accepting v12, rejecting unknown versions and new unknown fields", () => {
     const current = chunk([group], "c".repeat(64));
     expect(websiteDetailChunkSchema.parse(current)).toEqual(current);
     expect(() => websiteDetailChunkSchema.parse({ ...current, schema_version: 7 })).toThrow();
-    expect(() => websiteDetailChunkSchema.parse({ ...current, schema_version: 12 })).toThrow();
+    expect(() => websiteDetailChunkSchema.parse({ ...current, schema_version: 13 })).toThrow();
     expect(() => websiteDetailChunkSchema.parse({ ...current, extra: true })).toThrow();
     expect(() =>
       websiteDetailChunkSchema.parse({
@@ -364,7 +370,7 @@ describe("versioned scoped limit website details", () => {
     ).toThrow();
   });
 
-  it("loads unchanged v7 and qualified v11 without serving an older cached model detail", async () => {
+  it("loads unchanged v7 and qualified v12 without serving an older cached model detail", async () => {
     const oldVersion = "d".repeat(64),
       newVersion = "e".repeat(64);
     const fetcher = vi.fn(
@@ -382,7 +388,7 @@ describe("versioned scoped limit website details", () => {
     const previous = await loadWebsiteModelDetail(oldVersion, model);
     expect(previous).not.toHaveProperty("limit_details");
     const current = await loadWebsiteModelDetail(newVersion, model);
-    expect(current.limit_details).toEqual([sourced(group)]);
+    expect(current.limit_details).toEqual([{ statements: group.statements }]);
     expect(await loadWebsiteModelDetail(oldVersion, model)).toEqual(previous);
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
@@ -401,7 +407,7 @@ describe("versioned scoped limit website details", () => {
               ? "other"
               : field === "chunk"
                 ? 1
-                : 12,
+                : 13,
       };
       const fetcher = vi
         .fn()
@@ -410,13 +416,13 @@ describe("versioned scoped limit website details", () => {
       vi.stubGlobal("fetch", fetcher);
       await expect(loadWebsiteModelDetail(version, model)).rejects.toThrow();
       expect((await loadWebsiteModelDetail(version, model)).limit_details).toEqual([
-        sourced(group),
+        { statements: group.statements },
       ]);
       expect(fetcher).toHaveBeenCalledTimes(2);
     },
   );
 
-  it("loads an intentional same-publication mixture of explicit v7 and v11 provider chunks", async () => {
+  it("loads an intentional same-publication mixture of explicit v7 and v12 provider chunks", async () => {
     const version = "f".repeat(64);
     const values = chunks([group], version);
     vi.stubGlobal(
@@ -425,7 +431,9 @@ describe("versioned scoped limit website details", () => {
         async (url: string) => new Response(stableJson(values[url.includes("/other/") ? 1 : 0])),
       ),
     );
-    expect((await loadWebsiteModelDetail(version, model)).limit_details).toEqual([sourced(group)]);
+    expect((await loadWebsiteModelDetail(version, model)).limit_details).toEqual([
+      { statements: group.statements },
+    ]);
     expect(
       await loadWebsiteModelDetail(version, { ...model, provider_id: "other", uid: "other/model" }),
     ).not.toHaveProperty("limit_details");

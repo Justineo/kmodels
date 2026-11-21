@@ -200,7 +200,7 @@ export function pricingPerformanceFixture(
         status: "candidates",
         explanation: "Select published conditions.",
         missing_conditions: ["Region", "Service tier", "Speed"],
-        evidence_urls: [],
+
         candidates: [],
         pricing_options: selectors,
         matching: {

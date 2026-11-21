@@ -247,7 +247,7 @@ describe("model pricing details", () => {
           reason: "no_applicable_price",
           explanation: "No published price applies to these conditions at the evaluated time.",
           missing_conditions: [],
-          evidence_urls: [],
+
           candidates: [],
         },
       ],
@@ -271,7 +271,7 @@ describe("model pricing details", () => {
           reason: "unreviewed_id",
           explanation: "No verified inference price mapping is available for this identifier.",
           missing_conditions: [],
-          evidence_urls: [],
+
           candidates: [],
         },
       ],
@@ -294,7 +294,7 @@ describe("model pricing details", () => {
           status: "matched",
           explanation: "The documented ID mapping identifies these prices.",
           missing_conditions: [],
-          evidence_urls: [],
+
           candidates: [{ offer_ref: "c".repeat(64), selectors: [] }],
           matching: {
             generated_at: "2026-11-01T00:00:00.000Z",

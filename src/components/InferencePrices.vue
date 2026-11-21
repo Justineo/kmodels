@@ -10,7 +10,6 @@ import UiIcon from "./UiIcon.vue";
 import UiSelect from "./UiSelect.vue";
 import PricingControls from "./PricingControls.vue";
 import PricingSelectionPrompt from "./PricingSelectionPrompt.vue";
-import SourceDisclosure from "./SourceDisclosure.vue";
 import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
 import {
   fixedPricingSelection,
@@ -86,12 +85,6 @@ const selectedGroup = computed(() => {
 });
 const idOptions = computed(() =>
   compatibleIds.value.map((model_id) => ({ value: model_id, label: model_id })),
-);
-const mappingSources = computed(
-  () =>
-    selectedGroup.value?.flatMap(({ evidence_urls }) =>
-      evidence_urls.map((document_url) => ({ document_url })),
-    ) ?? [],
 );
 const unselectedMatch = computed(() => {
   const matching = toRaw(selectedPrice.value?.matching);
@@ -524,49 +517,42 @@ async function copyId(id: string): Promise<void> {
       <span v-else class="id-label">{{
         (selectedGroup?.length ?? 0) > 1 ? "Inference model IDs" : "Inference model ID"
       }}</span>
-      <div class="id-value">
-        <div v-if="priceGroups.length > 1" class="id-picker">
-          <UiSelect
-            id="inference-model-id"
-            class="id-select"
-            :title="idPending ? undefined : selected.model_id"
-            :model-value="idPending ? '' : selected.model_id"
-            :options="idOptions"
-            v-bind="idPending ? { placeholder: 'Choose…' } : {}"
-            @update:model-value="selectId"
-          />
-          <button
-            v-if="!idPending"
-            class="identifier-copy id-copy"
-            type="button"
-            :data-copied="copiedId === selected.model_id || undefined"
-            :aria-label="`Copy inference model ID ${selected.model_id}`"
-            :title="copiedId === selected.model_id ? 'Copied' : 'Copy inference model ID'"
-            @click="copyId(selected.model_id)"
-          >
-            <UiIcon :name="copiedId === selected.model_id ? 'check' : 'copy'" />
-          </button>
-        </div>
-        <ul v-else class="identifier-list inference-ids">
-          <li v-for="{ model_id } in selectedGroup" :key="model_id">
-            <button
-              class="identifier-copy"
-              type="button"
-              :data-copied="copiedId === model_id || undefined"
-              :aria-label="`Copy inference model ID ${model_id}`"
-              @click="copyId(model_id)"
-            >
-              <code>{{ model_id }}</code>
-              <UiIcon :name="copiedId === model_id ? 'check' : 'copy'" />
-            </button>
-          </li>
-        </ul>
-        <SourceDisclosure
-          v-if="!idPending"
-          :key="selectedGroup?.[0].model_id ?? selected.model_id"
-          :documents="mappingSources"
+      <div v-if="priceGroups.length > 1" class="id-picker">
+        <UiSelect
+          id="inference-model-id"
+          class="id-select"
+          :title="idPending ? undefined : selected.model_id"
+          :model-value="idPending ? '' : selected.model_id"
+          :options="idOptions"
+          v-bind="idPending ? { placeholder: 'Choose…' } : {}"
+          @update:model-value="selectId"
         />
+        <button
+          v-if="!idPending"
+          class="identifier-copy id-copy"
+          type="button"
+          :data-copied="copiedId === selected.model_id || undefined"
+          :aria-label="`Copy inference model ID ${selected.model_id}`"
+          :title="copiedId === selected.model_id ? 'Copied' : 'Copy inference model ID'"
+          @click="copyId(selected.model_id)"
+        >
+          <UiIcon :name="copiedId === selected.model_id ? 'check' : 'copy'" />
+        </button>
       </div>
+      <ul v-else class="identifier-list inference-ids">
+        <li v-for="{ model_id } in selectedGroup" :key="model_id">
+          <button
+            class="identifier-copy"
+            type="button"
+            :data-copied="copiedId === model_id || undefined"
+            :aria-label="`Copy inference model ID ${model_id}`"
+            @click="copyId(model_id)"
+          >
+            <code>{{ model_id }}</code>
+            <UiIcon :name="copiedId === model_id ? 'check' : 'copy'" />
+          </button>
+        </li>
+      </ul>
       <p class="visually-hidden" aria-live="polite">{{ copiedId ? `Copied ${copiedId}` : "" }}</p>
     </div>
     <p v-if="selected.unresolved_choices.length" class="fixed-conditions">
@@ -653,12 +639,6 @@ async function copyId(id: string): Promise<void> {
   display: grid;
   gap: var(--space-2);
 }
-.id-value {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: var(--space-1) var(--space-3);
-}
 .id-control label,
 .id-label,
 .plan-control legend,
@@ -686,7 +666,6 @@ async function copyId(id: string): Promise<void> {
 }
 .id-picker {
   display: grid;
-  flex: 1 1 var(--layout-pricing-select-width);
   grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
   min-height: var(--control-height-comfortable);

@@ -1,39 +1,28 @@
 <script setup lang="ts" vapor>
-import type { CapabilityOptions } from "../catalog/capability-presentation.ts";
-import SourceDisclosure from "./SourceDisclosure.vue";
+import type { CapabilityValue } from "../catalog/capability-presentation.ts";
 import UiTooltip from "./UiTooltip.vue";
 
-defineProps<{ options: CapabilityOptions }>();
+defineProps<{ values: readonly CapabilityValue[] }>();
 </script>
 
 <template>
-  <div class="capability-options">
-    <ul class="capability-values" role="list">
-      <li v-for="{ value, isDefault, partialDefault } in options.values" :key="value">
-        <UiTooltip
-          v-if="isDefault"
-          class="capability-value"
-          data-default
-          :aria-label="`${value} (${partialDefault ? 'default where documented' : 'default'})`"
-          :content="partialDefault ? 'Default where documented' : 'Default'"
-          tabindex="0"
-          >{{ value }}</UiTooltip
-        >
-        <span v-else class="capability-value">{{ value }}</span>
-      </li>
-    </ul>
-    <SourceDisclosure :documents="options.sources" />
-  </div>
+  <ul class="capability-values" role="list">
+    <li v-for="{ value, isDefault, partialDefault } in values" :key="value">
+      <UiTooltip
+        v-if="isDefault"
+        class="capability-value"
+        data-default
+        :aria-label="`${value} (${partialDefault ? 'default where documented' : 'default'})`"
+        :content="partialDefault ? 'Default where documented' : 'Default'"
+        tabindex="0"
+        >{{ value }}</UiTooltip
+      >
+      <span v-else class="capability-value">{{ value }}</span>
+    </li>
+  </ul>
 </template>
 
 <style scoped>
-.capability-options {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1) var(--space-3);
-}
 .capability-values {
   display: flex;
   flex-wrap: wrap;

@@ -86,9 +86,8 @@ the selected ID no longer admits the value, a sole compatible ID replaces it as 
 singleton; with several compatible IDs the picker returns to an unselected state and rates wait
 for an explicit ID. Linking never picks among compatible IDs, because each remains a distinct
 request value with its own price. A Bedrock source Region therefore narrows Geo and Global profile
-IDs without merging Region into the ID: the ID stays explicit and copyable. The selected ID or ID
-group exposes its mapping sources beside its ID controls through the shared Sources disclosure.
-Unknown mappings preserve ordinary catalog prices
+IDs without merging Region into the ID: the ID stays explicit and copyable. Unknown mappings
+preserve ordinary catalog prices
 with an explicit unverified-ID notice in the Inference model ID position; known exclusions do not fall back to unfiltered rates.
 Snapshots without mappings retain the
 catalog price view. Provider-specific conditions use readable English labels in controls, missing-condition
@@ -512,27 +511,18 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   chunk also shares its provider pricing snapshot across models. Standalone
   provider resources use the same offer dictionary. Offer chunks use the same
   bound and are requested only for a selected or window-preloaded model.
-  Schema 7 model details share identical inference-matching tariffs across a model's
+  Model details share identical inference-matching tariffs across a model's
   request IDs while retaining each ID's own fixed selectors. The loader restores
   those references before use; the transport version participates in `data_version`.
   Local condition dictionaries, variant tuples, and shared selector options preserve the same
   matching input. Inventory and pricing coverage growth can add chunks. The
   2 MiB ceiling applies to each requested chunk.
-  Strict schema 7 remains readable without rewriting existing snapshots. Chunks containing
-  source-owned `limit_details` statements use strict schema 8; chunks without statements retain
-  the exact schema 7 shape. A publication may contain both explicit versions. Statement-bearing
-  publications add the `model-limit-details-v8` salt to `data_version`, independently of producer
-  catalog-version changes. No-detail publication bytes and cache identity remain unchanged.
-  Chunks with visible capability details use the conditional `model-capability-details-v9` or
-  `model-capability-applicability-v10` salt, selected with the same statement checks as the
-  accepted-pack validator. The writer emits strict schema 11 for every chunk that carries
-  limit or capability statements. Schema 11 cites each claim source by document URL, locator and
-  observation time only; excerpts and document hashes stay audit evidence in canonical storage.
-  Statement-bearing publications add the `model-claim-sources-v11` salt. Schemas 8, 9 and 10
-  stay in the reader for accepted chunks whose statements still fit the current statement schema;
-  chunks with fields since removed from canonical storage are republished as schema 11 rather than
-  read through a legacy shape. Withdrawals stay in canonical storage and do not change the chunk
-  schema or cache identity.
+  The writer emits strict schema 12 for chunks containing scoped limit or capability statements
+  or inference price mappings. Statements retain their applicability, and inference prices retain
+  their matching inputs. The projection keeps claim owners, evidence and mapping URLs in canonical
+  and audit data. Affected publications add the `model-details-v12` salt to `data_version`.
+  Chunks without those details retain the schema 7 shape. The reader accepts schemas 7 through 11
+  for existing publications and discards their embedded evidence at parse time.
   Cache completed and in-flight chunks by data version, and retain parsed model
   details after either path. Failed preloads stay silent and are evicted so an
   explicit open can retry.
@@ -551,19 +541,13 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   chunks; inventory growth and richer details do not inflate the core rows or create aggregate-size
   warnings. Provider strings are rendered as text.
 - Keep Context window and Maximum output in Overview. Place meaningful scoped values directly
-  under the corresponding value as compact notes with an endpoint, amount or explicit cap state,
-  and source links. Generate note text from
+  under the corresponding value as compact notes with an endpoint, amount or explicit cap state.
+  Generate note text from
   [structured applicability](catalog-schema-upgrade.md#scoped-limit-details). Show the known
   endpoint label when available, and otherwise its evidenced path. Describe a beta exception
-  briefly and use the citation for request setup. Suppress a duplicate summary of the same
+  briefly. Suppress a duplicate summary of the same
   quantity. If the same structured scope has incompatible maxima or cap states, show
-  “Sources disagree” with citations for that scope.
-- Scoped limits, capability options and inference ID mappings use the same compact
-  `Sources · N` disclosure beside the fact it supports. It lists each distinct document and
-  links to its original URL. Show the host and disambiguate documents on the same host with
-  their paths and URL suffixes. Include document locators and local check times when available.
-  Resolve icons by origin through the same-origin `/source-icons/index.json` and use the
-  hostname initial when the index or image is unavailable.
+  “Sources disagree” for that scope.
 - Modalities & capabilities answers only what goes in, what comes out and what the model can do.
   Input and output appear once as modality tags joined by a direction arrow. Supported
   capabilities follow; unsupported and unknown capabilities are not shown. A model with no
@@ -579,8 +563,7 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
 - Option values that differ between APIs belong to endpoints, not to the capability. The row
   reads "Varies by endpoint" and each Published endpoints row lists its own values, joined by the
   statement's `applicability.endpoint` path. A binding without a matching published endpoint
-  stays under the capability, labelled by its evidenced interface. Sources accompany the values
-  they document, including at their endpoint when that is where the values appear.
+  stays under the capability, labelled by its evidenced interface.
 - `src/catalog/capability-presentation.ts` owns this presentation. Each capability statement kind
   registers the capability it evidences and a function returning its supported option values with
   an optional default. A new statement kind adds a schema member, a registry entry and its
@@ -612,18 +595,15 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   remain build concerns. Keep post-paint chunks out of the HTML module-preload
   graph. Mount the inspector into a second Vapor root and share only the small
   reactive detail state.
-- UI projections exclude audit source records, observations, locators, undigested source
-  fragments, derivations, evidence arrays, and canonical audit-envelope metadata. Versioned
-  model detail chunks cite the documents behind scoped limit and capability claims by URL,
-  locator and observation time under each claim's `evidence`, without excerpts or document
-  hashes. Raw commercial facts may
+- Keep source records, observations, locators, source fragments, derivations, and evidence in
+  canonical catalogs, captured source revisions and machine-readable audit resources.
+  Raw commercial facts in the UI may
   retain only display-safe structured parameters such as amount, denomination, unit, meter,
   validity, formula, and
   conditions. They retain displayed commercial semantics—including reviewed usage-signal
   definitions, aggregation boundaries, resolution phases, and provider-snapshot freshness copy.
-  Compact official source links, verification status and explanatory copy are permitted for
-  both ID associations and ordinary prices. Full audit data remains in the machine-readable
-  audit resources. Unknown associations and known conditions with no applicable published price
+  Both ID associations and ordinary prices can show verification status and explanatory copy.
+  Unknown associations and known conditions with no applicable published price
   use different labels and explanations; an empty candidate set is not proof of provider non-support.
 - Build-time projection indexes snapshots, dispositions, and model-scoped
   books once. Each model reuses one pricing view for its summary and detail.

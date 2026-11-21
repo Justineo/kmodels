@@ -34,7 +34,6 @@ export function websiteInferencePrices(
               ({ snapshot }) => snapshot.provider_id === providerId,
             ),
           });
-    const prices = priceSnapshot.data;
     const rules = mapping.rules.filter(({ provider_id }) => provider_id === providerId);
     const sources = mapping.sources.filter(({ provider_id }) => provider_id === providerId);
     const offerIds = priceSnapshot.offers;
@@ -55,12 +54,6 @@ export function websiteInferencePrices(
     });
     const rulesByModel = groupRules(rules, "model_ref");
     const rulesById = groupRules(rules, "model_id");
-    const sourceUrls = new Map([
-      ...prices.providers.flatMap(({ sources }) =>
-        sources.map(({ id, url }) => [id, url] as const),
-      ),
-      ...sources.map(({ id, url }) => [id, url] as const),
-    ]);
     for (const model of catalog.models.filter(({ provider_id }) => provider_id === providerId)) {
       const modelRules = rulesByModel.get(model.uid) ?? [];
       const ids = new Set([
@@ -88,7 +81,7 @@ export function websiteInferencePrices(
           // explain current conflicts and validity from the complete matcher.
           const explanation = inferencePriceExplanation(result, "publication");
           return {
-            ...websiteInferencePrice(result, sourceUrls, explanation),
+            ...websiteInferencePrice(result, explanation),
             matching,
             pricing_options,
           };
@@ -111,7 +104,6 @@ function groupRules(rules: readonly InferencePriceRule[], key: "model_ref" | "mo
 
 export function websiteInferencePrice(
   result: InferencePriceResult,
-  sourceUrls: ReadonlyMap<string, string>,
   explanation = inferencePriceExplanation(result),
 ): WebsiteInferencePrice {
   return {
@@ -120,14 +112,6 @@ export function websiteInferencePrice(
     ...(result.reason === undefined ? {} : { reason: result.reason }),
     explanation,
     missing_conditions: result.missing_conditions.map(formatDimension),
-    evidence_urls: [
-      ...new Set(
-        result.evidence.flatMap(({ source_ref }) => {
-          const url = sourceUrls.get(source_ref);
-          return url === undefined ? [] : [url];
-        }),
-      ),
-    ],
     candidates:
       result.status === "unknown"
         ? []

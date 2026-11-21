@@ -403,7 +403,7 @@ it("still matches hidden singleton modes without repeating them beside inference
         status: "candidates",
         explanation: "Fixture pricing",
         missing_conditions: [],
-        evidence_urls: [],
+
         candidates: [],
         matching,
         pricing_options: modes,

@@ -89,11 +89,6 @@ Status: implemented
   partial non-exhaustive source; numeric pricing is retained only through the provider-atomic
   partition rule above, never by silently merging stale price rows into a fresh partition.
 - Never snapshot or publish authenticated raw responses. Redact source URLs, cloud principals, account IDs, email identities, and unmatched private identifiers from diagnostics.
-- After catalog assembly, refresh citation favicons once per HTTPS origin cited by published
-  model claims from reviewed public sources. Try the homepage's same-origin icon declarations,
-  then `/favicon.ico`. Use bounded anonymous requests and cache only PNG or ICO image bytes.
-  Keep the previous icon when all candidates fail. Icons are optional website assets and never
-  determine which claims are admitted or which evidence URL a citation opens.
 
 ## Identity matching
 
@@ -441,7 +436,6 @@ Git tracks only `data/catalog-snapshot.json`. The referenced archive contains th
 - `data/pricing-inputs.json.gz` (catalog-bound, public-only parsed compiler input)
 - `data/website-assets.json` (the pair-bound UI asset index)
 - `data/website-assets.pack` (individually compressed audit-free UI assets)
-- `data/source-icons.json` (optional citation icon bytes indexed by origin)
 - `data/export-assets.json` (the pair-bound public JSON-export index)
 - `data/export-assets.pack` (individually compressed public JSON exports)
 - `data/fetch-state.json`

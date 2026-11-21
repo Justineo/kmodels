@@ -242,7 +242,7 @@ it.each(["service_tier", "speed"] as const)(
       status: "candidates" as const,
       explanation: "Fixture pricing",
       missing_conditions: [],
-      evidence_urls: [],
+
       candidates: [{ offer_ref: offer.id, selectors: [] }],
       matching: data,
       pricing_options: [option, native],

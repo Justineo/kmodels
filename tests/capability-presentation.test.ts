@@ -6,18 +6,7 @@ import type {
 } from "../src/catalog/model-capability-details.ts";
 import { unknownCapabilities } from "../src/catalog/schema.ts";
 
-const source = (document_url: string) => ({
-  document_url,
-  locator: "Request options",
-  observed_at: "2026-11-17T00:00:00.000Z",
-});
-const group = (
-  statements: CapabilityStatement[],
-  url = "https://docs.example.net/models",
-): WebsiteCapabilityDetailGroup => ({
-  source_ref: "docs",
-  claim: statements.map(({ scope }) => scope).join("+"),
-  evidence: [source(url)],
+const group = (statements: CapabilityStatement[]): WebsiteCapabilityDetailGroup => ({
   statements,
 });
 const effort = (
@@ -38,8 +27,8 @@ describe("capability rows", () => {
     const rows = capabilityRows(
       { ...unknownCapabilities(), tool_call: true, fine_tuning: false },
       [
-        group([effort("/chat", ["low", "high"], "high")], "https://docs.example.net/chat"),
-        group([effort("/responses", ["low", "high"], "high")], "https://docs.example.org/api"),
+        group([effort("/chat", ["low", "high"], "high")]),
+        group([effort("/responses", ["low", "high"], "high")]),
         group([{ kind: "prompt_cache", scope: "Chat", mode: "implicit" }]),
       ],
       endpoints,
@@ -50,17 +39,13 @@ describe("capability rows", () => {
       "Prompt caching",
     ]);
     expect(rows[0]).toMatchObject({
-      options: { values: [{ value: "low" }, { value: "high", isDefault: true }] },
+      values: [{ value: "low" }, { value: "high", isDefault: true }],
       byEndpoint: new Map(),
       unplaced: [],
       conflict: false,
     });
-    expect(rows[0]?.options?.sources.map(({ document_url }) => document_url)).toEqual([
-      "https://docs.example.net/chat",
-      "https://docs.example.org/api",
-    ]);
-    expect(rows[1]?.options).toBeUndefined();
-    expect(rows[2]?.options?.values).toEqual([{ value: "automatic" }]);
+    expect(rows[1]?.values).toBeUndefined();
+    expect(rows[2]?.values).toEqual([{ value: "automatic" }]);
   });
 
   it("treats an unstated default as unknown rather than a different value", () => {
@@ -69,7 +54,7 @@ describe("capability rows", () => {
       [group([effort("/chat", ["low", "high"], "high"), effort("/responses", ["low", "high"])])],
       endpoints,
     );
-    expect(row?.options?.values).toEqual([
+    expect(row?.values).toEqual([
       { value: "low" },
       { value: "high", isDefault: true, partialDefault: true },
     ]);
@@ -87,30 +72,17 @@ describe("capability rows", () => {
       ],
       endpoints,
     );
-    expect(row?.options).toBeUndefined();
+    expect(row?.values).toBeUndefined();
     expect(row?.byEndpoint).toEqual(
       new Map([
-        [
-          "/chat",
-          {
-            values: [{ value: "low" }, { value: "high" }],
-            sources: [source("https://docs.example.net/models")],
-          },
-        ],
-        [
-          "/responses",
-          {
-            values: [{ value: "none", isDefault: true }, { value: "low" }, { value: "high" }],
-            sources: [source("https://docs.example.net/models")],
-          },
-        ],
+        ["/chat", [{ value: "low" }, { value: "high" }]],
+        ["/responses", [{ value: "none", isDefault: true }, { value: "low" }, { value: "high" }]],
       ]),
     );
     expect(row?.unplaced).toEqual([
       {
         label: "Example /legacy",
         values: [{ value: "low" }],
-        sources: [source("https://docs.example.net/models")],
       },
     ]);
   });
@@ -119,10 +91,10 @@ describe("capability rows", () => {
     expect(capabilityRows({ ...unknownCapabilities(), fine_tuning: false }, [])).toEqual([]);
     const [row] = capabilityRows(unknownCapabilities(), [
       group([effort("/chat", ["low", "high"], "high")]),
-      { ...group([effort("/chat", ["low", "high"], "low")]), claim: "other" },
+      group([effort("/chat", ["low", "high"], "low")]),
     ]);
     expect(row?.conflict).toBe(true);
     // A disputed default stays unknown; the options both sources share remain.
-    expect(row?.options?.values).toEqual([{ value: "low" }, { value: "high" }]);
+    expect(row?.values).toEqual([{ value: "low" }, { value: "high" }]);
   });
 });

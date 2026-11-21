@@ -73,13 +73,16 @@ const capabilities = computed(() =>
         new Set(apiEndpoints.value.map(({ path }) => path)),
       ),
 );
-/** Capability values that differ between endpoints, shown on the endpoint they apply to. */
-function endpointCapabilities(path: string) {
-  return capabilities.value.flatMap(({ key, label, byEndpoint }) => {
-    const options = byEndpoint.get(path);
-    return options === undefined ? [] : [{ key, label, options }];
-  });
-}
+const publishedEndpoints = computed(() =>
+  apiEndpoints.value.map(({ name, path }) => ({
+    name,
+    path,
+    options: capabilities.value.flatMap(({ key, label, byEndpoint }) => {
+      const values = byEndpoint.get(path);
+      return values === undefined ? [] : [{ key, label, values }];
+    }),
+  })),
+);
 const availabilitySummary = computed(() => {
   const regionCount = new Set(deploymentAvailability.value.flatMap(({ regions }) => regions)).size;
   const deploymentCount = deploymentAvailability.value.length;
@@ -364,19 +367,13 @@ onUnmounted(() => {
             >
               <h3 id="routes-heading">Published endpoints</h3>
               <ul class="endpoint-list">
-                <li v-for="endpoint in apiEndpoints" :key="`${endpoint.name}:${endpoint.path}`">
-                  <span>{{ endpoint.name }}</span>
-                  <code>{{ endpoint.path }}</code>
-                  <dl
-                    v-if="endpointCapabilities(endpoint.path).length"
-                    class="endpoint-capabilities"
-                  >
-                    <div
-                      v-for="{ key, label, options } in endpointCapabilities(endpoint.path)"
-                      :key
-                    >
+                <li v-for="{ name, path, options } in publishedEndpoints" :key="`${name}:${path}`">
+                  <span>{{ name }}</span>
+                  <code>{{ path }}</code>
+                  <dl v-if="options.length" class="endpoint-capabilities">
+                    <div v-for="{ key, label, values } in options" :key>
                       <dt>{{ label }}</dt>
-                      <dd><CapabilityValues :options /></dd>
+                      <dd><CapabilityValues :values /></dd>
                     </div>
                   </dl>
                 </li>

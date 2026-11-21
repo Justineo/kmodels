@@ -217,7 +217,7 @@ it.each(["removed", "billing changed"])(
   },
 );
 
-it("uses the same applicable price and compact evidence in the static website projection", async () => {
+it("preserves price selection in the static website projection and evidence in the lookup", async () => {
   const candidate = await collect();
   const projected = await projectCatalogPair(candidate);
   const price = projected.ui.manifest.assets
@@ -232,6 +232,12 @@ it("uses the same applicable price and compact evidence in the static website pr
   if (!price) throw new Error("Missing website ID prices");
   expect(queryWebsiteInferencePrice(price, selectors(), at).status).toBe("matched");
   expect(queryWebsiteInferencePrice(price, [], at).status).toBe("candidates");
-  expect(price.evidence_urls).toContain("https://api-docs.deepseek.com/quick_start/pricing/");
+  const result = lookup(candidate)({
+    provider_id: "deepseek",
+    model_id: "deepseek-flash",
+    selectors: selectors(),
+  });
+  expect(result.evidence.length).toBeGreaterThan(0);
+  expect(price).not.toHaveProperty("evidence_urls");
   expect(JSON.stringify(price)).not.toContain("content_hash");
 });

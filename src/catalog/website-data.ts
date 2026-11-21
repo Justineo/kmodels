@@ -3,7 +3,7 @@ import { storeInferencePrices } from "./website-inference-storage.ts";
 import { canonicalJsonKey, compareUtf8, uniqueCanonicalValues } from "./canonical-value.ts";
 import { modelLifecycles, modelReleaseStages, modelTasks } from "./catalog-vocabulary.ts";
 import { manifests, type ProviderManifest } from "./manifests.ts";
-import { claimSources, hasClaimStatements } from "./model-claim-details.ts";
+import { websiteClaimStatements } from "./model-claim-details.ts";
 import { formatDecimal, formatSentenceCase } from "./presentation.ts";
 import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
 import {
@@ -362,10 +362,10 @@ function websiteDeferredAssets(
         (values, chunk) =>
           websiteDetailChunkSchema.parse({
             schema_version: values.some(
-              ({ limit_details, capability_details }) =>
-                hasClaimStatements(limit_details) || hasClaimStatements(capability_details),
+              ({ limit_details, capability_details, inference_prices }) =>
+                limit_details?.length || capability_details?.length || inference_prices?.length,
             )
-              ? 11
+              ? 12
               : 7,
             data_version: dataVersion,
             provider_id: provider.id,
@@ -663,12 +663,8 @@ function websiteModelDetailFromView(
 ): WebsiteModelDetail {
   const pricingDetail = websitePricingDetail(view, model.uid, labels, atoms);
   const deploymentAvailability = groupedDeploymentAvailability(model);
-  const limitDetails = model.limit_details?.flatMap(({ evidence, ...group }) =>
-    group.statements.length ? [{ ...group, evidence: claimSources(evidence) }] : [],
-  );
-  const capabilityDetails = model.capability_details?.flatMap(({ evidence, ...group }) =>
-    group.statements.length ? [{ ...group, evidence: claimSources(evidence) }] : [],
-  );
+  const limitDetails = websiteClaimStatements(model.limit_details ?? []);
+  const capabilityDetails = websiteClaimStatements(model.capability_details ?? []);
   return {
     model_ref: model.uid,
     ...(model.updated_date === undefined ? {} : { updated_date: model.updated_date }),
@@ -679,8 +675,8 @@ function websiteModelDetailFromView(
     ...(model.api_endpoints === undefined ? {} : { api_endpoints: model.api_endpoints }),
     modalities: model.modalities,
     capabilities: model.capabilities,
-    ...(limitDetails?.length ? { limit_details: limitDetails } : {}),
-    ...(capabilityDetails?.length ? { capability_details: capabilityDetails } : {}),
+    ...(limitDetails.length ? { limit_details: limitDetails } : {}),
+    ...(capabilityDetails.length ? { capability_details: capabilityDetails } : {}),
     ...(model.limits.max_output_tokens === undefined
       ? {}
       : { max_output_tokens: model.limits.max_output_tokens }),

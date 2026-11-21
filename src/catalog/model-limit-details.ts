@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  legacyWebsiteClaimDetailsSchema,
   modelClaimGroupSchema,
   modelClaimGroupsSchema,
   websiteClaimGroupSchema,
@@ -39,7 +40,11 @@ export const limitStatementSchema = z.discriminatedUnion("kind", [
 export const limitDetailGroupSchema = modelClaimGroupSchema(limitStatementSchema);
 export const limitDetailsSchema = modelClaimGroupsSchema(limitDetailGroupSchema, 8);
 const websiteLimitDetailGroupSchema = websiteClaimGroupSchema(limitStatementSchema);
-export const websiteLimitDetailsSchema = modelClaimGroupsSchema(websiteLimitDetailGroupSchema, 8);
+export const websiteLimitDetailsSchema = z.array(websiteLimitDetailGroupSchema).max(8);
+export const legacyWebsiteLimitDetailsSchema = legacyWebsiteClaimDetailsSchema(
+  limitStatementSchema,
+  8,
+);
 
 export type LimitStatement = z.infer<typeof limitStatementSchema>;
 export type LimitDetailGroup = z.infer<typeof limitDetailGroupSchema>;

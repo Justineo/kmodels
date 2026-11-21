@@ -255,10 +255,10 @@ execution alternatives remain available within the selected account plan.
 When a model has no verified ID association, preserve its ordinary catalog prices and explicitly
 state that those prices are not verified for the requested inference ID.
 Known associations with no applicable price do not fall back to unfiltered catalog rates.
-Compact official source links, verification/freshness status and explanations may be disclosed
-progressively. Full evidence arrays, document hashes, source fragments, extraction traces, raw
-observation bundles and audit envelopes remain outside UI payloads. This evidence rule also applies
-to ordinary pricing. Method/path, general capabilities, deployment confirmations and request
+Show verification and freshness status and explain unresolved conditions in the pricing UI.
+Keep source links, evidence arrays, document hashes, source fragments, extraction traces and raw
+observations in audit data for both inference ID mappings and ordinary pricing. Method/path,
+general capabilities, deployment confirmations and request
 templates are outside this lookup UI.
 
 ## Compatibility and implementation limits

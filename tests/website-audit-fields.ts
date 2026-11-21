@@ -1,5 +1,3 @@
-import { modelClaimFields } from "../src/catalog/model-claim-details.ts";
-
 const auditFields = new Set([
   "atom_contract_hash",
   "charge_binding",
@@ -11,6 +9,9 @@ const auditFields = new Set([
   "core_generated_at",
   "delivery_mode_evidence",
   "derivation",
+  "document_url",
+  "evidence",
+  "evidence_urls",
   "excerpt",
   "fact_inventory_hash",
   "locator",
@@ -19,48 +20,23 @@ const auditFields = new Set([
   "raw",
   "raw_type",
   "scope_observations",
+  "source_ref",
   "source_refs",
   "task_evidence",
   "term_key",
 ]);
 
-function isModelClaimEvidence(path: readonly (string | number)[]): boolean {
-  const [model, field, claim, evidence, revision] = path;
-  return (
-    path.length === 5 &&
-    typeof model === "number" &&
-    modelClaimFields.some((claimField) => claimField === field) &&
-    typeof claim === "number" &&
-    evidence === "evidence" &&
-    typeof revision === "number"
-  );
-}
-
-export function foundAuditFields(value: unknown, scope?: "model-details"): string[] {
+export function foundAuditFields(value: unknown): string[] {
   const found = new Set<string>();
-  const path: (number | string)[] = [];
   function visit(current: unknown) {
     if (current === null || typeof current !== "object") return;
     if (Array.isArray(current)) {
-      for (const [index, item] of current.entries()) {
-        path.push(index);
-        visit(item);
-        path.pop();
-      }
+      current.forEach(visit);
       return;
     }
     for (const [field, item] of Object.entries(current)) {
-      if (
-        field === "locator" &&
-        typeof item === "string" &&
-        scope === "model-details" &&
-        isModelClaimEvidence(path)
-      )
-        continue;
       if (auditFields.has(field)) found.add(field);
-      path.push(field);
       visit(item);
-      path.pop();
     }
   }
   visit(value);

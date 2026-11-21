@@ -1,10 +1,16 @@
 import { z } from "zod";
-import { limitDetailsSchema, websiteLimitDetailsSchema } from "./model-limit-details.ts";
+import {
+  legacyWebsiteLimitDetailsSchema,
+  limitDetailsSchema,
+  websiteLimitDetailsSchema,
+} from "./model-limit-details.ts";
 import {
   capabilityDetailsSchema,
   hasStructuredCapabilityDetails,
+  legacyWebsiteCapabilityDetailsSchema,
   websiteCapabilityDetailsSchema,
 } from "./model-capability-details.ts";
+import { websiteClaimStatements } from "./model-claim-details.ts";
 import { selectorSchema } from "../pricing/schema.ts";
 import { inferencePriceReasonSchema } from "../pricing/inference-schema.ts";
 import { inferenceMatchDataSchema } from "../pricing/inference-matching-schema.ts";
@@ -490,7 +496,6 @@ export const websiteInferencePriceSchema = z.strictObject({
   reason: inferencePriceReasonSchema.optional(),
   explanation: nonEmpty,
   missing_conditions: z.array(nonEmpty),
-  evidence_urls: z.array(z.url()),
   candidates: z.array(
     z.strictObject({
       offer_ref: hash,
@@ -568,6 +573,9 @@ const websiteStoredInferencePriceSchema = websiteInferencePriceSchema.extend({
   matching_ref: z.number().int().nonnegative().optional(),
   pricing_options_ref: matchingIndex.optional(),
 });
+const legacyWebsiteStoredInferencePriceSchema = websiteStoredInferencePriceSchema
+  .extend({ evidence_urls: z.array(z.url()) })
+  .transform(({ evidence_urls: _urls, ...price }) => price);
 
 const websiteModelDetailShape = {
   inference_prices: z.array(websiteInferencePriceSchema).optional(),
@@ -615,14 +623,18 @@ const websiteModelDetailShape = {
     .optional(),
 };
 
-export const websiteModelDetailSchema = z.strictObject({
-  ...websiteModelDetailShape,
+const websiteClaimDetailsShape = {
   limit_details: websiteLimitDetailsSchema.optional(),
   capability_details: websiteCapabilityDetailsSchema.optional(),
+};
+
+export const websiteModelDetailSchema = z.strictObject({
+  ...websiteModelDetailShape,
+  ...websiteClaimDetailsShape,
   pricing: websitePricingDetailSchema.optional(),
 });
 
-const websiteStoredModelDetailSchemaV7 = z.strictObject({
+const websiteStoredModelDetailBaseSchema = z.strictObject({
   ...websiteModelDetailShape,
   inference_prices: z.array(websiteStoredInferencePriceSchema).optional(),
   pricing: z
@@ -632,20 +644,25 @@ const websiteStoredModelDetailSchemaV7 = z.strictObject({
     })
     .optional(),
 });
+const websiteStoredModelDetailSchemaV7 = websiteStoredModelDetailBaseSchema.extend({
+  inference_prices: z.array(legacyWebsiteStoredInferencePriceSchema).optional(),
+});
 
 const websiteStoredModelDetailSchemaV8 = websiteStoredModelDetailSchemaV7.extend({
-  limit_details: limitDetailsSchema.optional(),
+  limit_details: limitDetailsSchema.transform(websiteClaimStatements).optional(),
 });
 
 const websiteStoredModelDetailSchemaV10 = websiteStoredModelDetailSchemaV8.extend({
-  capability_details: capabilityDetailsSchema.optional(),
+  capability_details: capabilityDetailsSchema.transform(websiteClaimStatements).optional(),
 });
 
-// Schema 11 cites claim sources without audit excerpts or document hashes.
-const websiteStoredModelDetailSchema = websiteStoredModelDetailSchemaV7.extend({
-  limit_details: websiteLimitDetailsSchema.optional(),
-  capability_details: websiteCapabilityDetailsSchema.optional(),
+const websiteStoredModelDetailSchemaV11 = websiteStoredModelDetailSchemaV7.extend({
+  limit_details: legacyWebsiteLimitDetailsSchema.optional(),
+  capability_details: legacyWebsiteCapabilityDetailsSchema.optional(),
 });
+
+const websiteStoredModelDetailSchema =
+  websiteStoredModelDetailBaseSchema.extend(websiteClaimDetailsShape);
 
 const websiteDetailChunkSchemaV7 = z.strictObject({
   schema_version: z.literal(7),
@@ -677,6 +694,10 @@ export const websiteDetailChunkSchema = z.discriminatedUnion("schema_version", [
   }),
   websiteDetailChunkSchemaV7.extend({
     schema_version: z.literal(11),
+    details: z.array(websiteStoredModelDetailSchemaV11),
+  }),
+  websiteDetailChunkSchemaV7.extend({
+    schema_version: z.literal(12),
     details: z.array(websiteStoredModelDetailSchema),
   }),
 ]);

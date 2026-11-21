@@ -21,32 +21,22 @@ const documentEvidenceSchema = z.strictObject({
 
 export type ModelDetailEvidence = z.infer<typeof documentEvidenceSchema>;
 
-/**
- * Website detail chunks cite each source by link, locator and observation time. Excerpts and
- * document hashes remain audit evidence in canonical storage.
- */
-const claimSourceSchema = documentEvidenceSchema.pick({
-  document_url: true,
-  locator: true,
-  observed_at: true,
-});
-export type ModelClaimSource = z.infer<typeof claimSourceSchema>;
-
-export function claimSources(evidence: readonly ModelClaimSource[]): ModelClaimSource[] {
-  return evidence.map(({ document_url, locator, observed_at }) => ({
-    document_url,
-    locator,
-    observed_at,
-  }));
+export function websiteClaimStatements<Statement>(
+  groups: readonly { statements: Statement[] }[],
+): { statements: Statement[] }[] {
+  return groups.flatMap(({ statements }) => (statements.length ? [{ statements }] : []));
 }
+
 export interface ModelClaimGroup {
   source_ref: string;
   claim: string;
   statements: readonly unknown[];
-  evidence: readonly ModelClaimSource[];
+  evidence: readonly ModelDetailEvidence[];
 }
 
-export function hasClaimStatements(groups: readonly ModelClaimGroup[] | undefined): boolean {
+export function hasClaimStatements(
+  groups: readonly Pick<ModelClaimGroup, "statements">[] | undefined,
+): boolean {
   return groups?.some(({ statements }) => statements.length > 0) ?? false;
 }
 
@@ -87,7 +77,18 @@ export function modelClaimGroupSchema<Statement extends z.ZodType>(statement: St
 }
 
 export function websiteClaimGroupSchema<Statement extends z.ZodType>(statement: Statement) {
-  return modelClaimGroupWith(statement, claimSourceSchema);
+  return z.strictObject({ statements: z.array(statement).min(1).max(16) });
+}
+
+export function legacyWebsiteClaimDetailsSchema<Statement extends z.ZodType>(
+  statement: Statement,
+  maxGroups: number,
+) {
+  const group = modelClaimGroupWith(
+    statement,
+    documentEvidenceSchema.pick({ document_url: true, locator: true, observed_at: true }),
+  );
+  return modelClaimGroupsSchema(group, maxGroups).transform(websiteClaimStatements);
 }
 
 function modelClaimGroupWith<Statement extends z.ZodType, Evidence extends z.ZodType>(

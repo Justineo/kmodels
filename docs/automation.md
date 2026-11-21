@@ -421,8 +421,7 @@ Status: implemented
   `node_modules/typescript/lib` as the workspace TypeScript SDK to use the same bridge.
 - The scheduled refresh runs hourly with jitter and uploads the verified catalog snapshot
   to the `catalog-snapshots` GitHub Release. The archive contains the generated mirrors,
-  including the public-only compiler input, fetch state, and optional citation icon cache.
-  Earlier archives hydrate with an empty icon cache. The refresh compares the
+  including the public-only compiler input and fetch state. The refresh compares the
   uploaded asset's SHA-256 and byte count before committing only `data/catalog-snapshot.json`.
   The pointer commit records the
   producing Actions run and attempt in `Kmodels-Refresh-Run` and `Kmodels-Refresh-Attempt` trailers.

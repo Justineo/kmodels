@@ -822,7 +822,7 @@ it("reports canonical raw conflicts through public model/resource lookup and web
     expect(selected).toEqual(data.providers[0]?.books[0]?.offers[0]?.terms);
     expect(inferencePriceExplanation(query)).toContain("Published prices conflict");
   }
-  const price = websiteInferencePrice(result, new Map());
+  const price = websiteInferencePrice(result);
   const projected = websiteInferencePrices(accepted.catalog, accepted.pricing, associations).get(
     association.model_ref,
   );
@@ -1229,7 +1229,7 @@ it("returns the mechanism-selected offer with independent price conditions", asy
     candidates: [],
   });
   const price = {
-    ...websiteInferencePrice(result, new Map()),
+    ...websiteInferencePrice(result),
     matching: inferenceMatchData(createPricingSnapshot(data), [association]),
   };
   expect(
@@ -1320,7 +1320,7 @@ it("retains all commercial offers in lookup and prompts the inspector for a plan
   const offer = website.offers.flatMap(({ offers }) => offers).find(({ id }) => id === original.id);
   if (offer === undefined) throw new Error("Missing original website offer");
   const price = {
-    ...websiteInferencePrice(result, new Map()),
+    ...websiteInferencePrice(result),
     matching: inferenceMatchData(createPricingSnapshot(data), [association]),
   };
   expect(queryWebsiteInferencePrice(price, [], at).requires_offer_choice).toBe(true);
@@ -1410,7 +1410,7 @@ it("keeps date-only rates visible as evidence near their boundary without prompt
       ),
     ),
   ).toContainEqual({ until: { value: "2026-11-30", precision: "date" } });
-  const projected = websiteInferencePrice(result, new Map());
+  const projected = websiteInferencePrice(result);
   const matching = inferenceMatchData(createPricingSnapshot(data), [association]);
   expect(
     queryWebsiteInferencePrice({ ...projected, matching }, [], "2026-11-30T00:00:00.000Z"),
@@ -1499,14 +1499,11 @@ it("distinguishes an unknown ID from known conditions that exclude every price i
   expect(excluded.evidence.length).toBeGreaterThan(0);
   const unknown = lookup({ provider_id: "amazon-bedrock", model_id: "private-deployment" });
   expect(unknown).toMatchObject({ status: "unknown", reason: "unreviewed_id", evidence: [] });
-  const sourceUrls = new Map(
-    bedrock.providers.flatMap(({ sources }) => sources.map(({ id, url }) => [id, url] as const)),
-  );
   for (const [result, title] of [
     [excluded, "No applicable prices"],
     [unknown, "Price mapping unknown"],
   ] as const) {
-    const projected = websiteInferencePrice(result, sourceUrls);
+    const projected = websiteInferencePrice(result);
     const html = await renderComponent(InferencePrices, {
       modelRef: "amazon-bedrock/openai.gpt-6-astra",
       prices: [projected],
@@ -1812,11 +1809,7 @@ it("uses shared lookup candidates for the website and preserves raw regional IDs
   expect(html).toContain("to see rates.");
   expect(html).not.toContain("$66");
   expect(html).not.toContain('class="exact-rate"');
-  expect(html).toContain('class="source-disclosure"');
-  expect(html).toContain("Sources ·");
-  expect(html).toContain("#ui-chevron-right");
-  expect(html).toContain('class="source-documents"');
-  expect(html.indexOf("Sources ·")).toBeLessThan(html.indexOf("to see rates."));
+  expect(html).not.toContain("Sources ·");
   expect(html).not.toContain("Inspect target");
   expect(html).not.toContain("Task and documented scope");
 });
@@ -2069,7 +2062,7 @@ it("preserves price conflicts and time exclusions in the audit-free UI matcher",
       mapping(data, [rule]),
     )({ provider_id: "typesafe", model_id: rule.model_id, evaluated_at: at });
     const price = {
-      ...websiteInferencePrice(result, new Map()),
+      ...websiteInferencePrice(result),
       matching: inferenceMatchData(createPricingSnapshot(data), [rule]),
     };
     const ui = queryWebsiteInferencePrice(price, [], at);

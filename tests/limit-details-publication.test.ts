@@ -478,11 +478,11 @@ describe("scoped capability publication compatibility", () => {
 
   it.each([
     { tokens: undefined, capability: undefined, wire: 7, manifest: 1 },
-    { tokens: 300, capability: undefined, wire: 11, manifest: 2 },
+    { tokens: 300, capability: undefined, wire: 12, manifest: 2 },
     { tokens: undefined, capability: "withdrawn", wire: 7, manifest: 2 },
-    { tokens: 300, capability: "withdrawn", wire: 11, manifest: 2 },
-    { tokens: undefined, capability: true, wire: 11, manifest: 2 },
-    { tokens: 300, capability: false, wire: 11, manifest: 2 },
+    { tokens: 300, capability: "withdrawn", wire: 12, manifest: 2 },
+    { tokens: undefined, capability: true, wire: 12, manifest: 2 },
+    { tokens: 300, capability: false, wire: 12, manifest: 2 },
   ] as const)(
     "recovers v$wire assets with capability receipt $capability and private manifest v$manifest",
     async ({ tokens, capability, wire, manifest }) => {
@@ -508,29 +508,25 @@ describe("scoped capability publication compatibility", () => {
       const salt =
         (tokens === undefined ? "" : "\0model-limit-details-v8") +
         (scopedCapability ? "\0model-capability-details-v9" : "") +
-        (wire === 11 ? "\0model-claim-sources-v11" : "");
+        (wire === 12 ? "\0model-details-v12" : "");
       expect(data_version).toBe(
         sha256(
           `website-core-v7\0${full.catalog_version}\0${candidate.pricing.pricing_data_version}${salt}`,
         ),
       );
-      expect(foundAuditFields(details, "model-details")).toEqual([]);
-      const citedDetails = (field: "limit_details" | "capability_details") =>
-        full.models[0]?.[field]?.map(({ evidence, ...group }) => ({
-          ...group,
-          evidence: evidence.map(({ document_url, locator, observed_at }) => ({
-            document_url,
-            locator,
-            observed_at,
-          })),
-        }));
+      expect(foundAuditFields(details)).toEqual([]);
+      const detailStatements = (field: "limit_details" | "capability_details") =>
+        full.models[0]?.[field]?.map(({ statements }) => ({ statements }));
       if (scopedCapability) {
-        expect(details[0]).toHaveProperty("capability_details", citedDetails("capability_details"));
+        expect(details[0]).toHaveProperty(
+          "capability_details",
+          detailStatements("capability_details"),
+        );
       } else {
         expect(details[0]).not.toHaveProperty("capability_details");
       }
       if (tokens !== undefined)
-        expect(details[0]).toHaveProperty("limit_details", citedDetails("limit_details"));
+        expect(details[0]).toHaveProperty("limit_details", detailStatements("limit_details"));
 
       const rebuild = vi.spyOn(projections, "projectCatalogPair");
       expect(await recoverCatalogPair(output)).toEqual(candidate);

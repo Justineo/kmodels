@@ -101,7 +101,6 @@ import {
   type SourcePricingFacts,
 } from "./pricing-source.ts";
 import type { SourceParseResult } from "./source-parse.ts";
-import { refreshSourceIcons } from "./source-icons.ts";
 import { validatePricingCatalog } from "./pricing-validation.ts";
 import { emptyPricingCatalog, type PricingRefreshFailureCode } from "./pricing-schema.ts";
 import {
@@ -1717,7 +1716,6 @@ export function collect(options: CollectionOptions = {}): Promise<Catalog> {
   // End ownership of the old pair and collection replay inputs before projection.
   return prepareCollection(options).then(async ({ candidate, catalog, summary }) => {
     await commitCatalogPair(candidate);
-    await refreshSourceIcons(catalog.models);
     await writeJson(join(rootDirectory, "data/refresh-summary.json"), summary);
     return catalog;
   });

@@ -140,15 +140,15 @@ function offerChunk(dataVersion: string, values = [pricingOffer()]): WebsiteOffe
 afterEach(() => vi.unstubAllGlobals());
 
 describe("website detail loading", () => {
-  it("restores shared ID tariffs before returning model details", async () => {
-    const dataVersion = "03".repeat(32);
+  it.each([7, 12])("restores shared ID tariffs from schema %s without evidence", async (wire) => {
+    const dataVersion = wire.toString(16).padStart(2, "0").repeat(32);
     const at = "2026-11-02T00:00:00.000Z";
     const prices: WebsiteInferencePrice[] = ["us", "global"].map((region) => ({
       model_id: `${region}.model`,
       status: "unknown",
       explanation: "No applicable price",
       missing_conditions: [],
-      evidence_urls: [],
+
       candidates: [],
       matching: {
         generated_at: at,
@@ -179,11 +179,18 @@ describe("website detail loading", () => {
         referenced_rates: [],
       },
     }));
-    const detail = detailChunk(dataVersion, "Shared ID tariffs");
-    const stored = detail.details[0];
-    if (stored === undefined) throw new Error("Missing test model detail");
-    stored.inference_prices = storeInferencePrices(prices);
-    expect(stored.inference_prices[1]?.matching_ref).toBe(0);
+    const chunk = detailChunk(dataVersion, "Shared ID tariffs");
+    const stored = storeInferencePrices(prices);
+    expect(stored[1]?.matching_ref).toBe(0);
+    const inference_prices =
+      wire === 7
+        ? stored.map((price) => ({ ...price, evidence_urls: ["https://example.com/mapping"] }))
+        : stored;
+    const detail = {
+      ...chunk,
+      schema_version: wire,
+      details: chunk.details.map((modelDetail) => ({ ...modelDetail, inference_prices })),
+    };
     vi.stubGlobal("fetch", async () => new Response(JSON.stringify(detail)));
     const loaded = await loadWebsiteModelDetail(dataVersion, model);
     expect(loaded.inference_prices).toEqual(prices);

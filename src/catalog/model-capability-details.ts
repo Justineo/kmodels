@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  legacyWebsiteClaimDetailsSchema,
   modelClaimGroupSchema,
   modelClaimGroupsSchema,
   websiteClaimGroupSchema,
@@ -64,8 +65,9 @@ export const capabilityStatementSchema = z.discriminatedUnion("kind", [
 export const capabilityDetailGroupSchema = modelClaimGroupSchema(capabilityStatementSchema);
 export const capabilityDetailsSchema = modelClaimGroupsSchema(capabilityDetailGroupSchema, 10);
 const websiteCapabilityDetailGroupSchema = websiteClaimGroupSchema(capabilityStatementSchema);
-export const websiteCapabilityDetailsSchema = modelClaimGroupsSchema(
-  websiteCapabilityDetailGroupSchema,
+export const websiteCapabilityDetailsSchema = z.array(websiteCapabilityDetailGroupSchema).max(10);
+export const legacyWebsiteCapabilityDetailsSchema = legacyWebsiteClaimDetailsSchema(
+  capabilityStatementSchema,
   10,
 );
 

@@ -12,7 +12,7 @@ const props = defineProps<{
 }>();
 
 const hasValues = (row: CapabilityRow) =>
-  row.options !== undefined || row.byEndpoint.size > 0 || row.unplaced.length > 0;
+  row.values !== undefined || row.byEndpoint.size > 0 || row.unplaced.length > 0;
 const supported = computed(() => props.rows.filter((row) => !hasValues(row)));
 const detailed = computed(() => props.rows.filter(hasValues));
 </script>
@@ -55,12 +55,12 @@ const detailed = computed(() => props.rows.filter(hasValues));
           >
         </dt>
         <dd>
-          <CapabilityValues v-if="row.options" :options="row.options" />
+          <CapabilityValues v-if="row.values" :values="row.values" />
           <span v-else-if="row.byEndpoint.size" class="varies">Varies by endpoint</span>
           <dl v-if="row.unplaced.length" class="variants">
             <div v-for="(variant, index) in row.unplaced" :key="index">
               <dt v-if="variant.label">{{ variant.label }}</dt>
-              <dd><CapabilityValues :options="variant" /></dd>
+              <dd><CapabilityValues :values="variant.values" /></dd>
             </div>
           </dl>
         </dd>

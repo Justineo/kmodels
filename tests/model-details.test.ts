@@ -1,24 +1,13 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { load } from "cheerio";
 import ModelDetails from "../src/components/ModelDetails.vue";
-import SourceDisclosure from "../src/components/SourceDisclosure.vue";
 import type { WebsiteModel, WebsiteModelDetail } from "../src/catalog/website-schema.ts";
 import { unknownCapabilities } from "../src/catalog/schema.ts";
 import { renderComponent } from "./render-component.ts";
 import type { LimitDetailGroup } from "../src/catalog/model-limit-details.ts";
 import type { CapabilityStatement } from "../src/catalog/model-capability-details.ts";
 
-const cachedIcon = `/source-icons/${"b".repeat(64)}.png`;
-vi.mock("../src/composables/useSourceIcons.ts", () => ({
-  useSourceIcons: () => ({ value: new Map([["https://models.example.net:8443", cachedIcon]]) }),
-}));
-
 describe("model details", () => {
-  const sourceOf = (document_url: string) => ({
-    document_url,
-    observed_at: "2026-11-17T00:00:00.000Z",
-    locator: "Request options",
-  });
   const effortOn = (
     endpoint: string,
     supported_values: string[],
@@ -81,19 +70,13 @@ describe("model details", () => {
       delivery_modes: ["streaming"],
       capability_details: [
         {
-          source_ref: "test-models",
-          claim: "effort",
           statements: [
             effortOn("/chat", ["low", "high"], "high"),
             effortOn("/responses", ["low", "high"], "high"),
           ],
-          evidence: [sourceOf("https://example.com/effort")],
         },
         {
-          source_ref: "test-models",
-          claim: "cache",
           statements: [{ kind: "prompt_cache", scope: "Example API", mode: "implicit" }],
-          evidence: [sourceOf("https://example.com/cache")],
         },
       ],
     });
@@ -117,8 +100,6 @@ describe("model details", () => {
     expect(texts($, ".capability-details > div:last-child .capability-value")).toEqual([
       "automatic",
     ]);
-    expect(effort.find(".source-disclosure summary").text()).toContain("Sources · 1");
-    expect(effort.find(".source-documents a").attr("href")).toBe("https://example.com/effort");
     for (const hidden of ["Example API", "caller-defined", "Unsupported", "Fine-tuning", "Varies"])
       expect(html).not.toContain(hidden);
     expect($(".endpoint-capabilities")).toHaveLength(0);
@@ -145,19 +126,13 @@ describe("model details", () => {
       await inspector({
         capability_details: [
           {
-            source_ref: "test-models",
-            claim: "effort",
             statements: [
               effortOn("/chat", ["low", "high"], "high"),
               effortOn("/responses", ["none", "low", "high"], "none"),
             ],
-            evidence: [sourceOf("https://example.com/effort")],
           },
           {
-            source_ref: "test-models",
-            claim: "disputed",
             statements: [effortOn("/chat", ["low", "high"], "low")],
-            evidence: [sourceOf("https://example.com/other")],
           },
         ],
       }),
@@ -175,56 +150,6 @@ describe("model details", () => {
     // The disputed /chat default stays unknown.
     expect(chat?.find("[data-default]")).toHaveLength(0);
     expect(responses?.find("[data-default]").text()).toBe("none");
-    expect($(".capability-details .source-disclosure")).toHaveLength(0);
-    expect(chat?.find(".source-documents a")).toHaveLength(2);
-    expect(responses?.find(".source-documents a").attr("href")).toBe("https://example.com/effort");
-    expect(responses?.find(".source-documents a")).toHaveLength(1);
-  });
-  it("cites each document once with its locators and latest check", async () => {
-    const urls = [
-      "https://models.example.net:8443/model.md",
-      "https://models.example.net:8443/guide?q=api#limits",
-      "http://DOCS.example.org/reference",
-    ] as const;
-    // Canonical evidence may still carry audit fields; the citation renders none of them.
-    const documents = [...urls, urls[0]].map((document_url, index) => ({
-      document_url,
-      locator: `Section ${index + 1}`,
-      excerpt: "Quoted evidence <script>alert(1)</script>",
-      content_hash: "a".repeat(64),
-      observed_at: `2026-11-1${index}T05:03:39.290Z`,
-    }));
-    const html = await renderComponent(SourceDisclosure, {
-      documents: [...documents, { document_url: "javascript:alert(1)" }],
-    });
-    const $ = load(html);
-    expect($(".source-disclosure summary").text()).toContain("Sources · 3");
-    const links = $(".source-documents a");
-    expect(links.map((_, el) => $(el).attr("href")).get()).toEqual(urls);
-    expect(
-      links
-        .find(".source-label")
-        .map((_, el) => $(el).text())
-        .get(),
-    ).toEqual([
-      "models.example.net:8443/model.md",
-      "models.example.net:8443/guide?q=api#limits",
-      "docs.example.org",
-    ]);
-    expect($(".source-documents li").first().find("small").first().text()).toBe(
-      "Section 1 · Section 4",
-    );
-    expect($(".source-documents li").first().find("small").last().text()).toMatch(/^Checked /);
-    expect($("img")).toHaveLength(2);
-    expect(
-      $("img")
-        .map((_, image) => $(image).attr("src"))
-        .get(),
-    ).toEqual([cachedIcon, cachedIcon]);
-    expect($(".source-mark").last().text()).toBe("D");
-    expect(html).not.toContain("Quoted evidence");
-    expect(html).not.toContain("a".repeat(64));
-    expect($("script")).toHaveLength(0);
   });
   it("annotates limit fields from structured applicability and cites their sources", async () => {
     const model: WebsiteModel = {
@@ -359,18 +284,15 @@ describe("model details", () => {
     expect(output.next("dd").text()).not.toContain("standard");
     expect(context.next("dd").text()).toContain("Responses · 2M shared budget");
     expect(context.next("dd").text()).not.toContain("300K");
-    expect(
-      output.next("dd").find(".source-documents a[href='https://example.com/limits']").length,
-    ).toBeGreaterThan(0);
     expect(html).not.toContain("Qualified limits");
     expect(html).not.toContain("catalog summary");
     expect(html).not.toContain("requires beta header");
     expect(html).not.toContain("extended-output");
     expect(html).not.toContain("65,536");
     expect(html).not.toContain("32,768");
-    expect(html).toContain('href="https://example.com/limits"');
+    expect(html).not.toContain('href="https://example.com/limits"');
     expect(html).not.toContain("Native output evidence");
-    expect(html).toContain("At a glance / output");
+    expect(html).not.toContain("At a glance / output");
     expect(html).not.toContain("a".repeat(64));
     expect($('img[src="x"], [onerror]')).toHaveLength(0);
     expect(html).not.toContain("<script>");
