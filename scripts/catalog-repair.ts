@@ -14,6 +14,7 @@ import {
   candidateKey,
   chooseProvider,
   difficulty,
+  digest,
   boundedIncidentBatch,
   investigationMinutes,
   idleInvestigation,
@@ -164,12 +165,30 @@ const level = difficulty(
   ),
 );
 const repairable = candidates.length > 0 || (!periodic && executionNeedsReview);
+// An admitted removal already has its own review row. A deferred one is covered only by
+// the same evidenced blocker until its retry date. Other acquisition gaps remain explicit.
+const accountedRemovals = new Set(
+  candidates.filter((c) => c.trigger === "source_location_change").map(candidateKey),
+);
+for (const candidate of deferred) {
+  if (candidate.trigger !== "source_location_change") continue;
+  const id = candidateKey(candidate);
+  const task = maintenance?.tasks.find((item) => item.id === id);
+  if (
+    task?.status === "blocked" &&
+    task.retry_at &&
+    Date.parse(task.retry_at) > preparedAt.getTime() &&
+    task.source_wait_reason_hash === digest(candidate.message)
+  )
+    accountedRemovals.add(id);
+}
 const sourceEvidenceIncomplete = catalogRepairEvidenceIncomplete(
   report,
   candidates.length === 0 ||
     candidates.some(({ trigger }) => trigger === "scheduled_architecture_review")
     ? undefined
     : new Set(candidates.map(({ provider_id }) => provider_id)),
+  accountedRemovals,
 );
 const admissionPath = process.env.KMODELS_REPAIR_ADMISSION;
 let reviewMarkdown = "";

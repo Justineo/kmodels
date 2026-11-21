@@ -241,6 +241,7 @@ async function main(): Promise<void> {
       join(output, "route.json"),
       JSON.stringify({
         route,
+        ...(proposal.type === "report_incomplete" ? { cause: proposal.cause } : {}),
         reason:
           proposal.type === "report_incomplete"
             ? proposal.reason || proposal.cause
@@ -275,7 +276,8 @@ async function main(): Promise<void> {
       process.env.MAINTENANCE_REVIEW_RESULT,
     );
     const settlementPath = join(directory, receipt);
-    if (await exists(settlementPath)) {
+    const hasSettlement = await exists(settlementPath);
+    if (hasSettlement) {
       const lease = leaseSchema.parse(JSON.parse(await readFile(leasePath, "utf8")));
       const usage = z
         .object({ lease_id: z.literal(lease.id), charged_microusd: z.number().int().nonnegative() })
@@ -291,7 +293,11 @@ async function main(): Promise<void> {
     const routePath = join(directory, "catalog-maintenance-verification-budget/route.json");
     const route = (await exists(routePath))
       ? z
-          .object({ route: z.enum(["verify", "pending", "idle"]), reason: z.string() })
+          .object({
+            route: z.enum(["verify", "pending", "idle"]),
+            reason: z.string(),
+            cause: z.string().optional(),
+          })
           .parse(JSON.parse(await readFile(routePath, "utf8")))
       : undefined;
     const decisionPath = join(independentDirectory, "decision.json");
@@ -336,6 +342,7 @@ async function main(): Promise<void> {
       throw new Error("Completed investigation is missing its admission or review");
     if (["noop", "commit_repair"].includes(finalOutcome ?? "") && !finalReview)
       throw new Error("Missing final independent proof");
+    let waitingForSource = false;
     if (hasInvestigation) {
       const feedback = await verificationFeedback(directory);
       const prepared = stateSchema.parse(
@@ -398,7 +405,7 @@ async function main(): Promise<void> {
       }
       let verified = false;
       try {
-        await validateRepairReview(
+        const checked = await validateRepairReview(
           admissionText,
           text,
           (path) =>
@@ -414,6 +421,13 @@ async function main(): Promise<void> {
           },
         );
         verified = true;
+        waitingForSource =
+          checked.waiting_for_source &&
+          hasSettlement &&
+          finalOutcome === "pending" &&
+          route?.route === "pending" &&
+          route.cause === "report_incomplete" &&
+          !decision;
       } catch (error) {
         if (finalReview) throw error;
         /* Partial notes survive as leads; invalid receipts never close a task. */
@@ -425,8 +439,10 @@ async function main(): Promise<void> {
           !["catalog", "workflow", ...manifests.map((manifest) => manifest.provider.id)].includes(
             provider,
           )
-        )
+        ) {
+          waitingForSource = false;
           continue;
+        }
         let task = state.tasks.find((task) => task.id === admitted.id);
         if (!task) {
           task = {
@@ -451,7 +467,10 @@ async function main(): Promise<void> {
         ) {
           task.counterexample_run = run;
         }
-        if (!recordAttempt(task, prepared, run, attempt, now)) continue;
+        if (!recordAttempt(task, prepared, run, attempt, now)) {
+          waitingForSource = false;
+          continue;
+        }
         if (
           decision?.takeover_attempted &&
           (decision.takeover_candidate_ids?.includes(task.id) ??
@@ -495,6 +514,7 @@ async function main(): Promise<void> {
             },
             now,
           );
+          if (waitingForSource) task.source_wait_reason_hash = digest(admitted.description);
           if (accepted && row.coverage) task.coverage = row.coverage;
           if (task.status === "code_published")
             task.source_versions = published?.providers[task.provider] ?? {};
@@ -502,6 +522,8 @@ async function main(): Promise<void> {
       }
     }
     writeState(repo, state, sha);
+    if (waitingForSource && process.env.GITHUB_OUTPUT)
+      await appendFile(process.env.GITHUB_OUTPUT, "waiting_for_source=true\n");
     if (process.env.GITHUB_STEP_SUMMARY) {
       const rows = state.tasks.filter((task) => task.evidence_run === env("GITHUB_RUN_ID"));
       const detail = JSON.stringify(
@@ -581,7 +603,7 @@ async function main(): Promise<void> {
         const manifest = manifests.find((manifest) =>
           manifest.sources.some((source) => source.id === receipt.source_id),
         );
-        if (manifest && receipt.body && digest(receipt.body) === receipt.source_hash)
+        if (manifest && receipt.body !== undefined && digest(receipt.body) === receipt.source_hash)
           recordDiscovery(state, manifest.provider.id, receipt.source_id, receipt.body, now);
       }
     }

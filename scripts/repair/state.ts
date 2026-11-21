@@ -25,6 +25,7 @@ export const taskSchema = z.object({
   run_id: z.string().regex(/^\d+$/).optional(),
   run_attempt: z.number().int().positive().optional(),
   evidence_run: z.string().regex(/^\d+$/).optional(),
+  source_wait_reason_hash: hash.optional(),
   counterexample_run: z.string().regex(/^\d+$/).optional(),
   code_revision: z
     .string()
@@ -258,6 +259,7 @@ export function observeCandidates(
         delete task.adopted_snapshot;
         delete task.deployed_run;
         delete task.retry_at;
+        delete task.source_wait_reason_hash;
       }
     } else
       state.tasks.push({
@@ -368,6 +370,7 @@ export function recordOutcome(
   },
   now: Date,
 ): void {
+  delete task.source_wait_reason_hash;
   task.reason = result.reason.slice(0, 8000);
   task.next_action = (
     result.next_action ?? "Recheck evidence and continue the unfinished investigation."

@@ -455,6 +455,8 @@ jobs:
           retention-days: 30
           if-no-files-found: error
   maintenance_finish:
+    outputs:
+      waiting_for_source: ${{ steps.finish.outputs.waiting_for_source }}
     needs: [maintenance_prepare, agent, initial_verification, semantic_review, publish_repair]
     if: always() && needs.maintenance_prepare.result == 'success'
     runs-on: ubuntu-latest
@@ -483,6 +485,7 @@ jobs:
           name: catalog-repair-investigation
           path: ${{ runner.temp }}/maintenance-results/investigation
       - name: Save verified progress and settle trusted inference usage
+        id: finish
         env:
           GH_TOKEN: ${{ github.token }}
           MAINTENANCE_INPUT: ${{ runner.temp }}/maintenance-results
@@ -644,6 +647,7 @@ jobs:
       - name: Verify the repair was delivered
         env:
           REPAIR_OUTCOME: ${{ needs.semantic_review.outputs.outcome }}
+          WAITING_FOR_SOURCE: ${{ needs.maintenance_finish.outputs.waiting_for_source }}
           DELIVERY_RESULT: ${{ needs.safe_outputs.result }}
           PUBLICATION_RESULT: ${{ needs.publish_repair.result }}
         run: |
@@ -651,6 +655,10 @@ jobs:
           case "$REPAIR_OUTCOME" in
             idle) echo 'No candidates admitted.' >> "$GITHUB_STEP_SUMMARY"; exit 0 ;;
             pending)
+              if [ "$WAITING_FOR_SOURCE" = true ]; then
+                echo 'Waiting for the upstream source. The verified acquisition blockers and next actions remain open in the ledger.' >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
               echo 'Investigation remains open. See maintenance_finish for candidate findings and next actions.' >> "$GITHUB_STEP_SUMMARY"
               echo '::error::Catalog repair incomplete; evidence retained for the next investigation.'
               exit 1 ;;
@@ -1196,5 +1204,6 @@ When an independent repair is ready, submit one small `commit_repair` describing
 change, repair, focused regression results, and unresolved work.
 List unresolved candidates separately in the commit report rather than claiming complete coverage. Use
 `report_incomplete` for an incomplete investigation; `missing_data` and `missing_tool` do not replace
-it. A deterministic post-execution check fails the job on any of those incomplete signals or a missing
-completed outcome, even if the model process exits successfully.
+it. Delivery reports a waiting run only after settlement when all admitted rows have checked
+upstream removal evidence. Other incomplete outcomes fail delivery. Keep each unresolved task
+and its next action in the ledger.

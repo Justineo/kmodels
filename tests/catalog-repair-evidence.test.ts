@@ -7,6 +7,8 @@ import {
   retryArtifactDownloads,
 } from "../scripts/catalog-repair-evidence.ts";
 
+import { digest, emptyState } from "../scripts/repair/state.ts";
+
 const directories: string[] = [];
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -252,6 +254,70 @@ describe("repair execution evidence", () => {
     });
     expect(evidence?.report_path).toBeUndefined();
     expect(gh.mock.calls.some(([args]) => args.includes("download"))).toBe(false);
+  });
+
+  it("leaves an evidenced removal on cooldown and surfaces any newly unavailable evidence", async () => {
+    const path = await directory();
+    const reportPath = join(path, "report.json");
+    const ledger = join(path, "state.json");
+    const output = join(path, "outputs.jsonl");
+    const state = emptyState();
+    const now = new Date().toISOString();
+    state.tasks.push({
+      id: "openai/openai-pricing",
+      provider: "openai",
+      trigger: "source_location_change",
+      fingerprint: digest("snapshot"),
+      status: "blocked",
+      reason: "Await restored source",
+      next_action: "Recheck the owned URL",
+      attempts: 1,
+      first_seen: now,
+      last_seen: now,
+      retry_at: new Date(Date.now() + 86_400_000).toISOString(),
+      source_wait_reason_hash: digest("HTTP 404"),
+      coverage: [],
+      source_versions: {},
+    });
+    await writeFile(ledger, JSON.stringify(state));
+    vi.stubEnv("KMODELS_REFRESH_REPORT_PATH", reportPath);
+    vi.stubEnv("KMODELS_MAINTENANCE_STATE", ledger);
+    vi.stubEnv("KMODELS_REPAIR_ADMISSION", undefined);
+    vi.stubEnv("KMODELS_SEMANTIC_AUDIT_DIR", undefined);
+    vi.stubEnv("KMODELS_REFRESH_EXECUTION_PATH", undefined);
+    vi.stubEnv("GH_AW_SAFE_OUTPUTS", output);
+    const run = async (message: string, sibling = false) => {
+      const sources = [
+        { source_id: "openai-pricing", outcome: "fetch_failed", message, consecutive_failures: 3 },
+      ];
+      if (sibling)
+        sources.push({
+          source_id: "openai-api",
+          outcome: "fetch_failed",
+          message: "HTTP 503",
+          consecutive_failures: 1,
+        });
+      await writeFile(
+        reportPath,
+        JSON.stringify({
+          schema_version: 2,
+          generated_at: now,
+          providers: [
+            { provider_id: "openai", signals: [], attempt: { outcome: "accepted", sources } },
+          ],
+        }),
+      );
+      await writeFile(output, "");
+      vi.resetModules();
+      await import("../scripts/catalog-repair.ts");
+      return JSON.parse(await readFile(output, "utf8"));
+    };
+    expect(await run("HTTP 404")).toMatchObject({
+      type: "noop",
+      message: expect.stringContaining("1 deferred"),
+    });
+    expect(await run("HTTP 410")).toMatchObject({ type: "report_incomplete" });
+    expect(await run("HTTP 404", true)).toMatchObject({ type: "report_incomplete" });
   });
 
   it("requires the workflow attempt instead of guessing the first attempt", async () => {

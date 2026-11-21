@@ -376,6 +376,7 @@ it("gates automatic publication on exact-patch validation and threat detection",
   expect(delivery).toContain("!failure()");
   expect(delivery).toContain("needs.maintenance_finish.result == 'success'");
   expect(delivery).toContain("pending)");
+  expect(delivery).toContain("${{ needs.maintenance_finish.outputs.waiting_for_source }}");
   expect(delivery).toContain("idle)");
   expect(delivery).toContain("${{ needs.safe_outputs.result }}");
   expect(delivery).toContain("${{ needs.publish_repair.result }}");

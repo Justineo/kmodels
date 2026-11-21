@@ -21,6 +21,12 @@ experiment is added.
 | Insufficient evidence, unfinished revision, or unresolved final review | Save the available receipts and next action before the delivery job reports incomplete work.                                       |
 | Supported closure                                                      | Send the verified artifact through detection and safe outputs. A repair additionally requires publication and deployment dispatch. |
 
+A run can finish waiting for an upstream source after usage settles. Every admitted row must
+document the source blocker, an alternative diagnostic and a failed acquisition receipt showing
+HTTP 404 or 410 for an admitted source. The tasks remain blocked until their retry dates. A
+matching removal on cooldown can sit out the next run. Unaccounted acquisition gaps, mixed
+incidents with unresolved work, tool failures and incomplete verification still report incomplete delivery.
+
 An invalid receipt or failed execution fails its owning stage. Settlement reads the journal from
 the last stage that could have spent money. If that journal is missing, the reservation stays in
 place. A completed initial decision reaches delivery directly. Only a takeover transfers the

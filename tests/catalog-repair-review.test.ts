@@ -31,6 +31,7 @@ function scenario() {
     commandOverride?: string,
     started_at = "2026-10-18T04:10:00Z",
     patch_sha256?: string,
+    stderr = "",
   ) => {
     number += 1;
     const command = commandOverride ?? `vp node /tmp/replay-${number}.mjs`;
@@ -43,6 +44,7 @@ function scenario() {
       started_at,
       patch_sha256,
       stdout: "Observed result",
+      stderr,
     };
     return {
       ...receipt,
@@ -325,6 +327,50 @@ it("allows unavailable-source blockers only with failed acquisition and alternat
   });
 });
 
+it("marks an entire investigation waiting only for evidenced upstream removals", async () => {
+  const s = scenario();
+  const source = { id: s.id, trigger: "source_location_change" };
+  const evidence = { id: "workflow/source-evidence", trigger: "provider_validation" };
+  const run = async (
+    candidates: (typeof source)[],
+    kind = "source",
+    http = "HTTP 404",
+    sourceId = "vertex-pricing",
+    exit = 1,
+  ) => {
+    const command = ["vp", "node", "scripts/fetch-catalog-evidence.ts", sourceId]
+      .map((arg) => JSON.stringify(arg))
+      .join(" ");
+    const fetch = s.check("fetch", "investigation", exit, command, undefined, undefined, http);
+    const admission = JSON.stringify({ schema_version: 1, candidates });
+    return (
+      await validateRepairReview(
+        admission,
+        JSON.stringify({
+          admission_sha256: reviewHash(admission),
+          candidates: candidates.map(({ id }) => ({
+            ...s.blocked(),
+            id,
+            blocker: { kind, next_action: "Recheck the owned source" },
+            checks: [s.check("parser"), s.check("navigation"), s.check("alternative"), fetch],
+          })),
+        }),
+        s.read,
+      )
+    ).waiting_for_source;
+  };
+  expect(await run([source])).toBe(true);
+  expect(await run([source, evidence])).toBe(false);
+  expect(await run([source], "source", "HTTP 410")).toBe(true);
+  expect(await run([])).toBe(false);
+  expect(await run([evidence])).toBe(false);
+  expect(await run([source, { id: "other/pricing", trigger: "pricing_validation" }])).toBe(false);
+  expect(await run([source], "tooling")).toBe(false);
+  expect(await run([source], "source", "command timed out")).toBe(false);
+  expect(await run([source], "source", "HTTP 404", "different-source")).toBe(false);
+  expect(await run([source], "source", "HTTP 404", "vertex-pricing", 0)).toBe(false);
+});
+
 it("requires before/after results and a passing regression for a claimed repair", async () => {
   const s = scenario();
   await expect(
@@ -462,6 +508,7 @@ it("allows a repair with evidenced blockers and pending work while rejecting an 
     blocked: 1,
     pending: 1,
     not_a_defect: 0,
+    waiting_for_source: false,
   });
   await expect(
     validateRepairReview(admission, review, s.read, { requireNoDefect: true }),

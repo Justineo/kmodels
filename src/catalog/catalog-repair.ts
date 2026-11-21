@@ -228,7 +228,7 @@ function sourceCandidate(
   source: SourceManifest,
   attempt: SourceAttempt,
   trigger: CatalogRepairCandidate["trigger"],
-  fallbackMessage: string,
+  message: string,
 ): CatalogRepairCandidate {
   return {
     provider_id: providerId,
@@ -239,7 +239,7 @@ function sourceCandidate(
     source_access: source.access,
     extractor: source.extractor.kind,
     trigger,
-    message: attempt.message ?? fallbackMessage,
+    message,
     diagnostics: [
       ...contractFindings(attempt),
       ...(attempt.dependency_failures ?? []).flatMap((failure) => failure.contract_findings ?? []),
@@ -290,7 +290,8 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
           source,
           sourceAttempt,
           "source_location_change",
-          "The reviewed public source is repeatedly unavailable and may be retaining stale pricing; investigate acquisition and first-party successors before deciding whether code can repair it.",
+          sourceAttempt.message ??
+            "The reviewed public source is repeatedly unavailable and may be retaining stale pricing; investigate acquisition and first-party successors before deciding whether code can repair it.",
         );
         candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
         continue;
@@ -301,7 +302,7 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
           source,
           sourceAttempt,
           "source_parse_failure",
-          "The reviewed source no longer satisfies its parser contract.",
+          sourceAttempt.message ?? "The reviewed source no longer satisfies its parser contract.",
         );
         candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
         continue;
@@ -325,16 +326,13 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
         const value = sourceCandidate(
           provider.provider_id,
           source,
-          {
-            ...sourceAttempt,
-            message: `Dependency evidence requires investigation: ${[...structural, ...relocated].map(({ dependency_id, message }) => `${dependency_id}: ${message}`).join("; ")}${(sourceAttempt.dependency_failures_omitted ?? 0) > 0 ? "; additional failures omitted" : ""}`,
-          },
+          sourceAttempt,
           structural.length > 0
             ? "source_parse_failure"
             : relocated.length > 0
               ? "source_location_change"
               : "source_contract_change",
-          "Inspect failed source dependencies.",
+          `Dependency evidence requires investigation: ${[...structural, ...relocated].map(({ dependency_id, message }) => `${dependency_id}: ${message}`).join("; ")}${(sourceAttempt.dependency_failures_omitted ?? 0) > 0 ? "; additional failures omitted" : ""}`,
         );
         candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
         // The reconciliation branch below may add independent native price evidence.
@@ -382,7 +380,8 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
           source,
           sourceAttempt,
           "source_contract_change",
-          "The source contains unresolved contract evidence; investigate before deciding whether a code repair is needed.",
+          sourceAttempt.message ??
+            "The source contains unresolved contract evidence; investigate before deciding whether a code repair is needed.",
         );
         const key = `${value.provider_id}\0${value.subject_id}`;
         const existing = candidates.get(key);
@@ -461,6 +460,7 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
 export function catalogRepairEvidenceIncomplete(
   input: unknown,
   providerIds?: ReadonlySet<string>,
+  accountedRemovals?: ReadonlySet<string>,
 ): boolean {
   return refreshSummarySchema
     .parse(input)
@@ -468,13 +468,19 @@ export function catalogRepairEvidenceIncomplete(
       ({ provider_id }) => providerIds === undefined || providerIds.has(provider_id),
     )
     .some(
-      ({ attempt }) =>
-        attempt?.sources.some(
-          ({ outcome, dependency_failures, dependency_failures_omitted }) =>
-            outcome === "fetch_failed" ||
-            dependency_failures?.some(({ outcome }) => outcome === "fetch_failed") === true ||
-            (dependency_failures_omitted ?? 0) > 0,
-        ) === true ||
+      ({ provider_id, attempt }) =>
+        attempt?.sources.some((source) => {
+          const accounted = accountedRemovals?.has(`${provider_id}/${source.source_id}`);
+          return (
+            (source.dependency_failures_omitted ?? 0) > 0 ||
+            (source.outcome === "fetch_failed" && !(accounted && repeatedMissingSource(source))) ||
+            source.dependency_failures?.some(
+              (failure) =>
+                failure.outcome === "fetch_failed" &&
+                !(accounted && repeatedMissingSource(failure)),
+            )
+          );
+        }) === true ||
         (attempt?.pricing?.outcome === "failed" &&
           attempt.pricing.failure_code === "source_unavailable"),
     );
