@@ -325,6 +325,10 @@ onUnmounted(() => {
                   <dt>Availability</dt>
                   <dd>{{ availability }}</dd>
                 </div>
+                <div v-for="rule in detail?.access_conditions" :key="rule.market">
+                  <dt>{{ rule.market }} eligibility</dt>
+                  <dd>Registered before {{ rule.month_day }} (month–day, year unspecified)</dd>
+                </div>
               </dl>
             </section>
 

@@ -144,7 +144,9 @@ export function extractMistralPricingInputs(
       parsed.origin === "https://docs.mistral.ai"
         ? parsed.pathname === "/openapi.yaml"
           ? openApiPath
-          : `${repositoryRoot}/src/content/en/docs${parsed.pathname.replace(/\.md$/, "/page.mdx")}`
+          : parsed.pathname === "/inference/conversations/advanced/prompt-caching.md"
+            ? promptCachingPath
+            : `${repositoryRoot}/src/content/en/docs${parsed.pathname.replace(/\.md$/, "/page.mdx")}`
         : parsed.pathname;
     bodies.set(path, bodies.has(path) ? undefined : body);
   }

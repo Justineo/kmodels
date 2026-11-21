@@ -121,4 +121,43 @@ export function applyXaiLimitDetails(
       ],
     });
   }
+  const notesIndex = markers.findIndex((m) => m[1] === "/developers/release-notes");
+  const notes = markers[notesIndex];
+  if (!notes) return;
+  const releaseNotes = prose.slice(notes.index + notes[0].length, markers[notesIndex + 1]?.index);
+  for (const model of models) {
+    if (
+      candidates.has(model) ||
+      !/^grok-\d+\.\d+$/.test(model.model_id) ||
+      model.limits.max_output_tokens !== undefined
+    )
+      continue;
+    const title = "Grok " + model.model_id.slice("grok-".length);
+    const announcement = markdownSection(releaseNotes, 3, title)?.trim();
+    if (
+      !announcement?.startsWith(title + ",") ||
+      !announcement.includes("is now available on the xAI API.") ||
+      !announcement.includes(
+        "text and image inputs with text-only output, and no text output limit.",
+      ) ||
+      !announcement.includes(
+        `[${title} overview](/developers/${model.model_id.replaceAll(".", "-")})`,
+      )
+    )
+      continue;
+    addLimitDetailGroup(input, model, {
+      claim: "launch_output_limit",
+      statements: [
+        {
+          quantity: "text_output_tokens",
+          kind: "no_separate_cap",
+          measurement: "per_response",
+          scope: "xAI API text output at model launch; the context window remains bounded.",
+        },
+      ],
+      evidence: [
+        modelDocumentEvidence(input, document, "/developers/release-notes; " + title, announcement),
+      ],
+    });
+  }
 }

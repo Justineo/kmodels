@@ -11,6 +11,21 @@ const scope = z
   .min(1)
   .max(768)
   .refine((value) => value.trim().length > 0);
+export const triStateSchema = z.union([z.boolean(), z.literal("unknown")]);
+export const modelCapabilitiesSchema = z.object({
+  reasoning: triStateSchema,
+  tool_call: triStateSchema,
+  structured_output: triStateSchema,
+  streaming: triStateSchema,
+  batch: triStateSchema,
+  prompt_cache: triStateSchema,
+  fine_tuning: triStateSchema,
+  citations: triStateSchema.default("unknown"),
+  code_execution: triStateSchema.default("unknown"),
+  context_management: triStateSchema.default("unknown"),
+  effort_control: triStateSchema.default("unknown"),
+  computer_use: triStateSchema.default("unknown"),
+});
 const nativeValue = z
   .string()
   .min(1)
@@ -52,7 +67,15 @@ const reasoningEffortSchema = z
     "An effort statement must report documented levels or a default",
   );
 
+export const scopedCapabilitySchema = z.strictObject({
+  kind: z.literal("capability_support"),
+  capability: modelCapabilitiesSchema.keyof(),
+  scope,
+  applicability: applicability.unwrap(),
+  supported: z.boolean(),
+});
 export const capabilityStatementSchema = z.discriminatedUnion("kind", [
+  scopedCapabilitySchema,
   z.strictObject({
     kind: z.literal("prompt_cache"),
     scope,
@@ -88,6 +111,15 @@ export function capabilityStatementsConflict(
   right: CapabilityStatement,
 ): boolean {
   if (left.scope !== right.scope) return false;
+  if (left.kind === "capability_support" && right.kind === "capability_support")
+    return (
+      left.capability === right.capability &&
+      left.applicability.endpoint === right.applicability.endpoint &&
+      left.applicability.interface === right.applicability.interface &&
+      left.applicability.condition === right.applicability.condition &&
+      left.applicability.parameter === right.applicability.parameter &&
+      left.supported !== right.supported
+    );
   if (left.kind !== "reasoning_effort" || right.kind !== "reasoning_effort") return false;
   return (
     left.default_value !== undefined &&

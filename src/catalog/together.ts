@@ -146,10 +146,13 @@ function bindBatchPricing(models: Map<string, ParsedProviderModel>, body: string
     if (model === undefined || model.status === "retired" || !model.tasks.includes("transcription"))
       continue;
     const rate = model.price_facts.find(
-      ({ meter, unit }) => meter === "input_audio" && unit === "minute",
+      ({ meter, unit, conditions }) =>
+        meter === "input_audio" &&
+        unit === "minute" &&
+        (conditions.operation === undefined || conditions.operation === "standard"),
     );
     assertSourceConstraint(
-      "Together discounted audio model lacks an audio-minute rate",
+      "Together discounted audio model lacks a standard audio-minute rate",
       rate !== undefined,
       id,
     );
@@ -371,6 +374,7 @@ function audioModel(input: SourceParseInput, row: Row): ParsedProviderModel {
     : [{ name: "Transcriptions", path: "/v1/audio/transcriptions" }];
   const raw = cell(row, "Pricing");
   const amount = raw.match(usdCell)?.[1];
+  const locator = { kind: "table", value: `Audio models/${model.model_id}/Pricing` } as const;
   if (raw === "-") return model;
   if (amount !== undefined && speech && /^\\?\$[\d.]+ per 1M chars$/u.test(raw)) {
     model.price_facts.push(
@@ -382,23 +386,72 @@ function audioModel(input: SourceParseInput, row: Row): ParsedProviderModel {
           input.source.id,
           "USD per 1M chars",
         ),
-        { kind: "table", value: `Audio models/${model.model_id}/Pricing` },
+        locator,
         "input_characters",
       ),
     );
-  } else if (amount !== undefined && !speech && /^\\?\$[\d.]+ per audio min$/u.test(raw)) {
-    model.price_facts.push(
-      hostedUsageRate(
-        publishedRate("input_audio", amount, "minute", input.source.id, "USD per audio minute"),
-        { kind: "table", value: `Audio models/${model.model_id}/Pricing` },
-        "processed_audio_seconds",
-      ),
-    );
-  } else {
-    model.raw_price_facts.push(
-      rawPricingFact(input.source.id, "audio", "base_price", "unsupported_structure", raw),
-    );
+    return model;
   }
+  if (!speech) {
+    const cells = raw.split(", ");
+    const rates = new Map<string, string>();
+    for (const cell of cells) {
+      const match = cell.match(
+        /^\\?\$((?:0|[1-9]\d*)(?:\.\d+)?) per audio min(?: \((standard|realtime(?: only)?)\))?$/u,
+      );
+      const amount = match?.[1];
+      const label = match?.[2];
+      const mode = label === "realtime only" ? "realtime" : (label ?? "standard");
+      if (
+        amount === undefined ||
+        ((label === undefined || label === "realtime only") && cells.length !== 1) ||
+        rates.has(mode)
+      )
+        break;
+      rates.set(mode, amount);
+    }
+    if (rates.size === cells.length) {
+      const standard = rates.get("standard");
+      const realtime = rates.get("realtime");
+      if (standard !== undefined)
+        model.price_facts.push(
+          hostedUsageRate(
+            publishedRate(
+              "input_audio",
+              standard,
+              "minute",
+              input.source.id,
+              "USD per audio minute",
+              realtime === undefined ? {} : { operation: "standard" },
+            ),
+            locator,
+            "processed_audio_seconds",
+          ),
+        );
+      if (realtime !== undefined) {
+        if (standard === undefined) model.api_endpoints = [];
+        model.api_endpoints.push({ name: "Realtime transcription", path: "/v1/realtime" });
+        model.delivery_modes = ["realtime"];
+        model.price_facts.push({
+          ...publishedRate(
+            "input_audio",
+            realtime,
+            "minute",
+            input.source.id,
+            "USD per audio minute",
+            {
+              operation: "realtime",
+            },
+          ),
+          source_locator: locator,
+        });
+      }
+      return model;
+    }
+  }
+  model.raw_price_facts.push(
+    rawPricingFact(input.source.id, "audio", "base_price", "unsupported_structure", raw),
+  );
   return model;
 }
 
@@ -613,9 +666,20 @@ export function parseTogetherServerless(input: SourceParseInput): SourceParseRes
     models: published,
     inference_prices: published
       .filter((model) => model.price_facts.length > 0 || model.raw_price_facts.length > 0)
-      .map((model) =>
-        hostedInferencePrice(model, input.source.id, { kind: "table", value: model.model_id }),
-      ),
+      .flatMap((model) => {
+        const association = hostedInferencePrice(model, input.source.id, {
+          kind: "table",
+          value: model.model_id,
+        });
+        const realtime = model.price_facts.some(
+          ({ conditions }) => conditions.operation === "realtime",
+        );
+        if (!realtime) return [association];
+        const live = { ...association, offer_key: "realtime" };
+        return model.price_facts.some(({ conditions }) => conditions.operation !== "realtime")
+          ? [association, live]
+          : [live];
+      }),
   };
 }
 
@@ -675,6 +739,7 @@ export const togetherSelectionPolicy = {
   offers: {
     usage: ["request"],
     batch: ["batch"],
+    realtime: ["realtime"],
   },
   values: {},
 } satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;

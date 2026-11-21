@@ -552,6 +552,39 @@ it("retains distinct Anthropic reference paths sharing the overview filename", a
   expect(transport.calls.filter((url) => url.endsWith("/overview.md"))).toHaveLength(3);
 });
 
+it("reads only the exact Mistral archive section and falls back for ambiguous guides", async () => {
+  const source = reviewedPublicSource("mistral-pricing");
+  const crawl = source.linkedDocuments;
+  const priority = crawl?.documents?.find(({ id }) => id === "priority-tier");
+  const cache = crawl?.documents?.find(({ id }) => id === "prompt-caching");
+  if (!crawl?.mistralGuideArchive || !priority || !cache) throw new Error("Missing Mistral guides");
+  const ok = (body: string) => `HTTP/1.1 200 OK\r\n\r\n${body}`;
+  transport.responses.set(source.url, [ok("<html>Pricing</html>")]);
+  transport.responses.set(crawl.mistralGuideArchive, [
+    ok(
+      [
+        "# Mistral AI — full documentation",
+        `[Priority Tier]\nSource: ${priority.url}\n\n# Priority Tier\nReviewed policy`,
+        "[Unrelated]\nSource: https://docs.mistral.ai/unrelated.md\n\nUnrelated prose",
+        ...["First", "Second"].map(
+          (label) => `[Caching]\nSource: ${cache.url}\n\n# Caching\n${label}`,
+        ),
+      ].join("\n\n"),
+    ),
+  ]);
+  transport.responses.set(cache.url, [ok("# Direct caching guide")]);
+  const result = await fetchSource({
+    ...source,
+    linkedDocuments: { ...crawl, documents: [priority, cache] },
+  });
+  expect(linkedBundleSchema.parse(JSON.parse(result.body)).documents).toEqual([
+    { url: priority.url, body: "# Priority Tier\nReviewed policy" },
+    { url: cache.url, body: "# Direct caching guide" },
+  ]);
+  expect(transport.calls).not.toContain(priority.url);
+  expect(result.dependencyFailures).toBeUndefined();
+});
+
 it("keeps the Anthropic root when an optional commercial companion fails", async () => {
   const source = reviewedPublicSource("anthropic-models");
   const crawl = source.linkedDocuments;

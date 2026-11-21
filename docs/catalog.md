@@ -76,6 +76,8 @@ catalog. Consumer profiles use `schema_version` for their contract, while
   exact `(provider_id, model_id, version)` rows, source records, coverage, and
   warnings. It and the v1 semantic profiles omit internal `limit_details` and
   `capability_details`. Durable catalog storage and its full core hash include both fields.
+  Market-specific `access_conditions` also reside in durable storage. The public website detail
+  chunks expose scoped limit, capability and access statements without their internal evidence.
 - `/providers/index.json` is provider metadata and provider-scoped coverage
   only. `/providers/<provider>/index.json` selects one such record, and
   `/providers/<provider>/models/index.json` contains only that provider's
@@ -117,6 +119,9 @@ public profiles.
   fallback, or historical catalog row. Collection audit may retain only bounded
   aggregate counts and stable exclusion reasons, never the excluded row.
 - `account_availability` remains `unknown`; scoped inventories cannot establish global availability.
+  Optional `access_conditions` record documented eligibility rules for a market, including an
+  exclusive registration cutoff when the source gives only a month and day. Each rule references
+  its owning source. Individual account access requires separate evidence.
 
 ## Tasks, delivery, and routes
 
@@ -164,7 +169,8 @@ snapshot is merged atomically to avoid combining different package versions.
   or guarantee a tool category, API, forced tool choice, parallel calls, hosted execution,
   remote MCP, or account entitlement. Those claims require evidence at their own scope.
   The pricing meter named `tool_call` describes a billed quantity independently of this flag.
-- Optional `capability_details` records separately evidenced prompt-cache modes and native
+- Optional `capability_details` records explicitly supported or unsupported capabilities for a
+  documented interface or endpoint, separately evidenced prompt-cache modes and native
   reasoning-effort configuration for an exact model and documented scope. Cache statements record
   only modes documented as usable; an unsupported or excluded mode is omitted rather than stored as
   a negative fact, so absence never distinguishes "excluded" from "unknown". Effort statements record supported

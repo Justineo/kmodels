@@ -55,6 +55,11 @@ or another exact non-numeric price state. Absence of a separate price is unknown
 
 ## Sources and identity
 
+Use the individual dated release notes for Command A Vision, Reasoning and Translate. A
+first-party launch article can also establish a hosted release when its launch-day API
+availability statement links to the exact model in the Cohere playground and its own
+publication metadata supplies the date. A weights release alone cannot date an API endpoint.
+
 - The public Models overview at `https://docs.cohere.com/docs/models.md` discovers Cohere model
   pages. Its relative links resolve against the overview page, while legacy absolute `.md` links
   remain supported. Only same-origin `/docs/` and default `/v2/docs/` document paths are admitted;

@@ -88,7 +88,13 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
 - Prompt-caching and Batch guides are claim-local catalog companions. The central price page and
   its optional OpenAPI, built-in-tool, currency and Priority companions form a separate pricing overlay. This
   lets catalog identity advance when pricing acquisition fails. The public documentation OpenAPI
-  and Markdown guides replace the unavailable repository companions. The current Batch guide lives
+  and Markdown guides replace the unavailable repository companions. Fixed guides can be read
+  from the provider's [full Markdown documentation](https://docs.mistral.ai/llms-full.txt).
+  Some individual Markdown routes return 404 even though their guides are present in the archive.
+  Only a unique section with the exact configured source URL, a Markdown heading and a body
+  within the guide's size limit qualifies. Otherwise fetch that guide directly and apply its
+  normal failure policy. The current prompt-caching guide is under
+  `/inference/conversations/advanced/prompt-caching.md`. The current Batch guide lives
   at `/inference/batch-processing.md`; the former `/studio/batch-processing.md` path returns 404, so
   the Markdown parser reads the relocated path while historical repository bundles keep resolving
   their `/studio/batch-processing/page.mdx` document. Priority carries numeric

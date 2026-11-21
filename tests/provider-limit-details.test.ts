@@ -153,6 +153,22 @@ it("publishes the owned xAI no-cap state with exact document evidence and finite
     }),
   );
 });
+it("binds a model-wide release-note output claim only to the named model and overview", async () => {
+  const bundle = await xaiBundle();
+  const doc = bundle.documents.find((d) => d.url === "https://docs.x.ai/llms-full.txt");
+  if (!doc) throw new Error("Missing release notes");
+  const get = () =>
+    parse("xai", "xai-models", bundle).models.find((m) => m.model_id === "grok-4.6");
+  expect(get()?.limit_details?.[0]?.statements).toEqual([
+    expect.objectContaining({ kind: "no_separate_cap", quantity: "text_output_tokens" }),
+  ]);
+  expect(get()?.limits.max_output_tokens).toBeUndefined();
+  doc.body = doc.body.replace(
+    "[Grok 4.6 overview](/developers/grok-4-6)",
+    "[Grok 4.7 overview](/developers/grok-4-7)",
+  );
+  expect(get()?.limit_details).toBeUndefined();
+});
 
 it.each(["gemini-4-carbon", "gemini-4-argon", "gemini-4-hydrogen"])(
   "keeps Gemini API, default, hop and shared-budget statements distinct (%s)",

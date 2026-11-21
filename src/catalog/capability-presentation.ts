@@ -50,7 +50,7 @@ export interface CapabilityRow {
 
 type StatementOf<K extends CapabilityStatement["kind"]> = Extract<CapabilityStatement, { kind: K }>;
 interface CapabilityDetailKind<K extends CapabilityStatement["kind"]> {
-  capability: CapabilityKey;
+  capability: CapabilityKey | ((statement: StatementOf<K>) => CapabilityKey);
   /** Documented native options; an empty list contributes nothing. */
   values(statement: StatementOf<K>): CapabilityValue[];
 }
@@ -62,6 +62,10 @@ interface CapabilityDetailKind<K extends CapabilityStatement["kind"]> {
 export const capabilityDetailKinds: {
   [K in CapabilityStatement["kind"]]: CapabilityDetailKind<K>;
 } = {
+  capability_support: {
+    capability: (statement) => statement.capability,
+    values: ({ supported }) => [{ value: supported ? "Supported" : "Unsupported" }],
+  },
   reasoning_effort: {
     capability: "effort_control",
     values: ({ supported_values, default_value }) =>
@@ -83,12 +87,18 @@ function present<K extends CapabilityStatement["kind"]>(
   kind: CapabilityDetailKind<K>,
   statement: StatementOf<K>,
 ) {
-  return { capability: kind.capability, values: kind.values(statement) };
+  return {
+    capability:
+      typeof kind.capability === "function" ? kind.capability(statement) : kind.capability,
+    values: kind.values(statement),
+  };
 }
 
 /** Narrows each statement to its registered kind; a new kind fails here until it is added. */
 function presentation(statement: CapabilityStatement) {
   switch (statement.kind) {
+    case "capability_support":
+      return present(capabilityDetailKinds.capability_support, statement);
     case "reasoning_effort":
       return present(capabilityDetailKinds.reasoning_effort, statement);
     case "prompt_cache":

@@ -1,6 +1,14 @@
 import { z } from "zod";
 
 const text = z.string().min(1).max(2048);
+export const accessConditionSchema = z.strictObject({
+  kind: z.literal("registered_before"),
+  market: text,
+  month_day: z
+    .string()
+    .regex(/^\d{2}-\d{2}$/)
+    .refine((value) => z.iso.date().safeParse("2000-" + value).success),
+});
 
 // Publisher labels and ranges remain labels; they are not exact parameter/token counts.
 export const modelCardSchema = z.strictObject({

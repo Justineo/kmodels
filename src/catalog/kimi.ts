@@ -881,6 +881,8 @@ const retiredCatalogSections = ["已下线模型", "Deprecated Models"];
 const continuedAvailability = /仍可继续使用|can continue using/i;
 
 export function parseKimiCatalog(input: Input): ProviderModel[] {
+  const extractor = input.source.extractor;
+  if (extractor.kind !== "kimi-catalog") throw new Error("Invalid Kimi catalog source");
   const tables = markdownTables(input.body).filter(
     (table) =>
       (table.headers[0] === "模型名称" && table.headers[1] === "描述") ||
@@ -904,7 +906,7 @@ export function parseKimiCatalog(input: Input): ProviderModel[] {
       const continues =
         retired && description !== undefined && continuedAvailability.test(description);
       const retirement = retired ? modelRetirement(id, notices) : undefined;
-      return catalogModel(
+      const model = catalogModel(
         input,
         id,
         description,
@@ -913,6 +915,33 @@ export function parseKimiCatalog(input: Input): ProviderModel[] {
         retirement === undefined ? [] : [retirement.replacement],
         id.includes("preview") ? "preview" : "unknown",
       );
+      if (continues && description) {
+        const chinese =
+          /已停止向新注册用户提供，(\d{1,2})\s*月\s*(\d{1,2})\s*日前注册的用户仍可继续使用/.exec(
+            description,
+          );
+        const english =
+          /No longer available to newly registered users; users registered before ([A-Z][a-z]+ \d{1,2}) can continue using/.exec(
+            description,
+          );
+        // The notice specifies a month and day. The shutdown estimate has its own year.
+        const date =
+          chinese?.[1] && chinese[2]
+            ? modelDate("2000", chinese[1], chinese[2])
+            : english?.[1]
+              ? englishDate(english[1] + ", 2000")
+              : undefined;
+        if (date)
+          model.access_conditions = [
+            {
+              kind: "registered_before",
+              market: extractor.market,
+              month_day: date.slice(5),
+              source_ref: input.source.id,
+            },
+          ];
+      }
+      return model;
     });
   });
   for (const retired of notices.filter(({ series }) => !series)) {

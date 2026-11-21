@@ -322,6 +322,7 @@ function modelChargeBinding(
           input,
           rateMeters,
           variant.charge_binding?.signal,
+          variant.applicability,
         )
       : providerModelSignal(
           input,
@@ -431,12 +432,13 @@ function providerModelSignal(
   key: string,
   definition: string,
   directKeys: string[],
+  unit: UnitExpression = openAiTokenUnit,
 ): ModelSignalSpec {
   addAtom(input, {
     kind: "usage_signal",
     key,
     definition,
-    unit: openAiTokenUnit,
+    unit,
     resolution_phase: "outcome",
   });
   return { signal: { namespace: "provider", provider_id: "openai", value: key }, directKeys };
@@ -449,6 +451,7 @@ function modelSignal(
   input: AtomicProviderPricing,
   rateMeters: readonly PriceMeter[],
   sourceSignal?: UsageSignal,
+  applicability?: PriceApplicability,
 ): ModelSignalSpec | undefined {
   const standard = (
     value: Extract<UsageSignal, { namespace: "kmodels" }>["value"],
@@ -522,7 +525,22 @@ function modelSignal(
     return;
   }
   if (meter.value === "session_runtime" && isStandardUnit(unit, "second"))
-    return standard("active_seconds", []);
+    return applicability?.any_of.some(({ all_of }) =>
+      all_of.some(
+        (condition) =>
+          condition.kind === "categorical" &&
+          condition.dimension.value === "session_state" &&
+          condition.values.some(({ value }) => value === "webrtc_standby"),
+      ),
+    )
+      ? providerModelSignal(
+          input,
+          "standby_seconds",
+          "Billed seconds while WebRTC inference is paused",
+          [],
+          unit,
+        )
+      : standard("active_seconds", []);
   if (meter.value === "input_text" && isStandardUnit(unit, "token")) {
     const partitioned = hasMeter(rateMeters, "input_audio") || hasMeter(rateMeters, "input_image");
     return model?.tasks.includes("image_generation")

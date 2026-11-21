@@ -1,5 +1,11 @@
 # Gemini API
 
+Price-cell modality lists describe independently billed outputs except where the source
+explicitly includes a component in another output. Keep the quoted text as evidence and bind
+only the billed quantity. Historical cards in the official documentation directory can supply
+modalities, limits and capabilities for exact IDs admitted by the lifecycle table. They do
+not grant current invocation routes or pricing.
+
 Status: current
 
 The fixed Gemma API guide and model-card companions retain their reviewed `ai.google.dev`

@@ -1589,6 +1589,43 @@ function releases(models: Map<string, ProviderModel>, body: string, root: boolea
   }
 }
 
+function hostedLaunch(models: Map<string, ProviderModel>, document: LinkedDocument): void {
+  const $ = load(document.body);
+  const dates = $('script[type="application/ld+json"]')
+    .toArray()
+    .flatMap((node) => {
+      try {
+        const post = z
+          .object({
+            "@type": z.literal("BlogPosting"),
+            mainEntityOfPage: z.object({ "@id": z.literal(document.url) }),
+            datePublished: z.iso.datetime({ offset: true }),
+          })
+          .safeParse(JSON.parse($(node).text()));
+        return post.success ? [post.data.datePublished.slice(0, 10)] : [];
+      } catch {
+        return [];
+      }
+    });
+  const [released] = dates;
+  if (!released || dates.length !== 1) return;
+  for (const node of $("p").toArray()) {
+    const paragraph = $(node);
+    if (!/models are available today .*on the Cohere API platform/.test(text(paragraph.text())))
+      continue;
+    for (const a of paragraph.find("a[href]").toArray()) {
+      const href = $(a).attr("href");
+      if (!href || !URL.canParse(href)) continue;
+      const url = new URL(href);
+      if (url.origin !== "https://dashboard.cohere.com" || url.pathname !== "/playground/chat")
+        continue;
+      const ids = url.searchParams.getAll("model");
+      const model = ids.length === 1 ? models.get(ids[0] ?? "") : undefined;
+      if (model) model.release_date ??= released;
+    }
+  }
+}
+
 function applyGenerateEndpoint(
   models: Map<string, ProviderModel>,
   references: EndpointReferences,
@@ -1673,6 +1710,8 @@ export function parseCohereCatalog(input: Input): SourceParseResult {
     const url = new URL(document.url);
     if (url.pathname.includes("/changelog"))
       releases(models, document.body, url.pathname === "/v2/changelog");
+    if (url.origin === "https://cohere.com" && url.pathname.startsWith("/blog/"))
+      hostedLaunch(models, document);
   }
   applyAliasPricing(models);
   finalizeRetiredPricing(models);

@@ -44,27 +44,36 @@ export function splitBatchModelOffers(
   requestOperation: "sync" | "standard",
 ): AtomicProviderPricing {
   const provider = input.provider_id;
-  function partition(scope: PriceApplicability, batch: boolean): PriceApplicability | undefined {
+  const mechanisms =
+    provider === "together"
+      ? (["usage", "batch", "realtime"] as const)
+      : (["usage", "batch"] as const);
+  type Mechanism = (typeof mechanisms)[number];
+  function partition(
+    scope: PriceApplicability,
+    mechanism: Mechanism,
+  ): PriceApplicability | undefined {
     const any_of = scope.any_of.flatMap(({ all_of }) => {
       const operation = all_of.find(
         (condition) =>
           condition.dimension.namespace === "kmodels" && condition.dimension.value === "operation",
       );
-      if (operation === undefined) return batch ? [] : [{ all_of }];
-      if (operation.kind !== "categorical") return batch ? [] : [{ all_of }];
-      const values = operation.values.filter(
-        (value) =>
-          batch ===
-          (value.namespace === "provider" &&
-            value.provider_id === provider &&
-            value.value === "batch"),
-      );
+      if (operation?.kind !== "categorical") return mechanism === "usage" ? [{ all_of }] : [];
+      const values = operation.values.filter((value) => {
+        const key =
+          value.namespace === "provider" &&
+          value.provider_id === provider &&
+          (value.value === "batch" || (provider === "together" && value.value === "realtime"))
+            ? value.value
+            : "usage";
+        return key === mechanism;
+      });
       if (values.length === 0) return [];
       const removesOperation = values.every(
         (value) =>
           value.namespace === "provider" &&
           value.provider_id === provider &&
-          ["batch", requestOperation].includes(value.value),
+          value.value === (mechanism === "usage" ? requestOperation : mechanism),
       );
       return [
         {
@@ -80,18 +89,18 @@ export function splitBatchModelOffers(
     });
     return any_of.length === 0 ? undefined : canonicalizeApplicability({ any_of });
   }
-  function raw(variant: AtomicRawVariant, batch: boolean): AtomicRawVariant[] {
-    if (variant.possible_scope === undefined) return [variant];
-    const possible_scope = partition(variant.possible_scope, batch);
+  function raw(variant: AtomicRawVariant, mechanism: Mechanism): AtomicRawVariant[] {
+    if (variant.possible_scope === undefined) return mechanism === "realtime" ? [] : [variant];
+    const possible_scope = partition(variant.possible_scope, mechanism);
     return possible_scope === undefined ? [] : [{ ...variant, possible_scope }];
   }
-  function rate(variant: AtomicRateVariant, batch: boolean): AtomicRateVariant[] {
-    const applicability = partition(variant.applicability, batch);
+  function rate(variant: AtomicRateVariant, mechanism: Mechanism): AtomicRateVariant[] {
+    const applicability = partition(variant.applicability, mechanism);
     if (applicability === undefined) return [];
     const { selector_sources: sources, charge_binding: binding, ...base } = variant;
     const selector_sources = (sources ?? []).flatMap((source) => {
       if (
-        batch ||
+        mechanism === "batch" ||
         (source.dimension.namespace === "kmodels" &&
           source.dimension.value === "operation" &&
           !applicability.any_of.some(({ all_of }) =>
@@ -105,7 +114,7 @@ export function splitBatchModelOffers(
       return [source];
     });
     let charge_binding = binding;
-    if (batch && binding !== undefined) {
+    if (mechanism === "batch" && binding !== undefined) {
       const { quantity_methods: methods, ...semantic } = binding;
       // Batch results do not inherit synchronous response/stream or generation-lookup locations.
       const quantity_methods = (methods ?? []).flatMap(({ calculation }) =>
@@ -127,15 +136,15 @@ export function splitBatchModelOffers(
       },
     ];
   }
-  function term(value: AtomicPricingTerm, batch: boolean): AtomicPricingTerm[] {
+  function term(value: AtomicPricingTerm, mechanism: Mechanism): AtomicPricingTerm[] {
     if (value.kind === "raw") {
-      const variants = value.variants.flatMap((variant) => raw(variant, batch));
+      const variants = value.variants.flatMap((variant) => raw(variant, mechanism));
       return variants.length === 0 ? [] : [{ ...value, variants }];
     }
     if (value.kind !== "rate")
       throw new Error(`${provider} Batch model offer has an unreviewed ${value.kind} term`);
-    const variants = value.variants.flatMap((variant) => rate(variant, batch));
-    const raw_variants = value.raw_variants.flatMap((variant) => raw(variant, batch));
+    const variants = value.variants.flatMap((variant) => rate(variant, mechanism));
+    const raw_variants = value.raw_variants.flatMap((variant) => raw(variant, mechanism));
     return variants.length + raw_variants.length === 0
       ? []
       : [{ ...value, variants, raw_variants }];
@@ -153,16 +162,21 @@ export function splitBatchModelOffers(
             ],
       ),
     ];
-    if (!scopes.some((scope) => partition(scope, true) !== undefined)) return [value];
+    if (
+      !mechanisms.some(
+        (key) => key !== "usage" && scopes.some((scope) => partition(scope, key) !== undefined),
+      )
+    )
+      return [value];
     if (
       value.relations.length > 0 ||
       (value.enrollment?.length ?? 0) > 0 ||
       (value.settlement?.length ?? 0) > 0
     )
       throw new Error(`${provider} Batch model offer has unreviewed commercial relations`);
-    return [false, true].flatMap((batch) => {
+    return mechanisms.flatMap((mechanism) => {
       const states = value.states.flatMap((state) => {
-        const applicability = partition(state.applicability, batch);
+        const applicability = partition(state.applicability, mechanism);
         return applicability === undefined
           ? []
           : [
@@ -173,14 +187,18 @@ export function splitBatchModelOffers(
               },
             ];
       });
-      const terms = value.terms.flatMap((value) => term(value, batch));
+      const terms = value.terms.flatMap((value) => term(value, mechanism));
       return states.length + terms.length === 0
         ? []
         : [
             {
               ...value,
-              offer_key: batch ? "batch" : "usage",
-              name: batch ? "Batch inference" : "On-demand inference",
+              offer_key: mechanism,
+              name: {
+                batch: "Batch inference",
+                realtime: "Realtime inference",
+                usage: "On-demand inference",
+              }[mechanism],
               states,
               terms,
             },

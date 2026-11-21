@@ -276,6 +276,21 @@ it.each(["<br>", " ", "\n"])(
   },
 );
 
+it("bills the parent of an included modality and preserves separately priced audio", () => {
+  const rates = (cell: string) =>
+    parse(html(cell, "Output price")).parsed.models.flatMap((model) =>
+      model.price_facts.map(({ meter, price }) => [meter, price]),
+    );
+  expect(rates("$9.00 (text)<br>$17.50 (video, audio included)")).toEqual([
+    ["output_text", "9.00"],
+    ["output_video", "17.50"],
+  ]);
+  expect(rates("$17.50 (video)<br>$6.00 (audio)")).toEqual([
+    ["output_audio", "6.00"],
+    ["output_video", "17.50"],
+  ]);
+});
+
 it("keeps unqualified output on its own modality and excludes an adjacent equivalence", () => {
   const { parsed } = parse(
     html("$3.70 (text). $8.10 (audio). Equivalent to $0.002 per 10s audio", "Output price"),
