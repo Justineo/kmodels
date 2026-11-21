@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { load } from "cheerio";
 import { beforeAll, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
@@ -484,7 +485,7 @@ it.each([
       offers: websiteModelDetail(canonical, model).pricing?.offers ?? [],
     });
     expect(html).not.toContain('placeholder="Enter value"');
-    expect(html.includes("<select")).toBe(values > 1);
+    expect(/<select\b|role="radiogroup"/.test(html)).toBe(values > 1);
     if (!numeric && values > 1)
       for (let index = 0; index < values; index++)
         expect(html).toContain(`Option ${name} ${index}`);
@@ -1833,7 +1834,12 @@ it("uses single-value Bedrock conditions without asking the viewer", async () =>
   ).offers.flatMap(({ offers }) => offers);
   const pending = await renderComponent(InferencePrices, { modelRef, prices: [price], offers });
   expect(pending).toContain("to see rates.");
-  expect(pending).toMatch(/<label[^>]*>Service tier/);
+  const $ = load(pending);
+  expect(
+    $("label[for]")
+      .map((_, label) => $(label).text().trim())
+      .get(),
+  ).toContain("Service tier");
   expect(pending).not.toContain("<output");
   expect(pending).not.toContain("Cache TTL");
   expect(pending).not.toContain('class="exact-rate"');
@@ -1865,7 +1871,7 @@ it("uses single-value Bedrock conditions without asking the viewer", async () =>
   expect(resolved).not.toContain("<output");
   expect(resolved).not.toContain("Cache TTL");
   expect(resolved).toContain("$66");
-  expect(resolved).not.toContain("<select");
+  expect(resolved).not.toMatch(/<select\b|role="radiogroup"/);
   expect(resolved).not.toContain('aria-label="Pricing options"');
 });
 it("shares pricing across equivalent inference IDs and keeps different fixed scopes selectable", async () => {

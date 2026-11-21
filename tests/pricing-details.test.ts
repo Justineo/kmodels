@@ -342,8 +342,8 @@ describe("model pricing details", () => {
     ]);
 
     expect(html).toContain(">Region");
-    expect(html).toContain("ui-select");
-    expect(html).not.toContain('type="radio"');
+    expect(html).toContain('role="radiogroup"');
+    expect(html).not.toContain("ui-select");
     expect(html).toContain(">US<");
     expect(html).toContain(">EU<");
     expect(html).toContain('class="pricing-selection-prompt" role="status"');
@@ -401,12 +401,11 @@ describe("model pricing details", () => {
     expect(html).toContain("United States routing");
     expect(html).not.toContain("(default)");
     expect(html).not.toContain("US-only");
-    expect(html).toContain("ui-select");
-    expect(html).not.toContain('type="radio"');
+    expect(html.match(/<select\b|role="radiogroup"/g)).toHaveLength(1);
   });
 
-  it("uses the same select for larger categorical choices", async () => {
-    const values = ["apac", "eu", "other", "us"];
+  it("uses a select for larger categorical choices", async () => {
+    const values = ["apac", "eu", "jp", "other", "sa", "us"];
     const pricedOffer = offer(
       values.map((value, index) => ({
         amount: `$${index + 1}`,
@@ -604,7 +603,7 @@ describe("model pricing details", () => {
 
     expect(html).toContain("$2");
     expect(html).not.toContain("<output");
-    expect(html).not.toContain("<select");
+    expect(html).not.toMatch(/<select\b|role="radiogroup"/);
     expect(html).not.toContain("Billing details");
     expect(html).not.toContain("Price scope");
     expect(html).not.toContain("Pricing offer");

@@ -349,6 +349,6 @@ it("renders the direct ID and applicable rates without adding configuration cont
   });
   expect(html).toContain("gpt-oss-120b");
   expect(html).toContain('class="exact-rate"');
-  expect(html).not.toContain("<select");
+  expect(html).not.toMatch(/<select\b|role="radiogroup"/);
   expect(html).not.toContain("content_hash");
 });

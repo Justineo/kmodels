@@ -176,7 +176,7 @@ describe("provider pricing details", () => {
     const fixed = await renderComponent(PricingOfferBreakdown, { offer });
     expect(fixed).not.toContain("<output");
     expect(fixed).toContain('class="exact-rate"');
-    expect(fixed).not.toContain("<select");
+    expect(fixed).not.toMatch(/<select\b|role="radiogroup"/);
     expect(fixed).not.toContain("Price scope");
     expect(fixed).not.toContain("Usage conditions");
 
@@ -197,7 +197,7 @@ describe("provider pricing details", () => {
       ).fixed_choices,
     ).toEqual([]);
     const mixedControls = await renderComponent(PricingOfferBreakdown, { offer: mixed });
-    expect(mixedControls).not.toContain("<select");
+    expect(mixedControls).not.toMatch(/<select\b|role="radiogroup"/);
     expect(mixedControls).not.toContain("<output");
     expect(mixedControls).toContain('class="exact-rate"');
     expect(
@@ -225,7 +225,7 @@ describe("provider pricing details", () => {
     if (selector?.kind !== "categorical") throw new Error("Missing tier selector");
     selector.values.push({ key: "priority", label: "Priority", value: priority });
     const selectable = await renderComponent(PricingOfferBreakdown, { offer });
-    expect(selectable).toContain("<select");
+    expect(selectable).toMatch(/<select\b|role="radiogroup"/);
     expect(selectable).toContain("Priority");
     expect(selectable).not.toContain('class="exact-rate"');
   });

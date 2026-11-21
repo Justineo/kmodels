@@ -10,7 +10,7 @@ import {
   formatRecurringTimeSchedule,
   formatConditionValue,
 } from "../catalog/pricing-presentation.ts";
-import UiSelect from "./UiSelect.vue";
+import UiChoice from "./UiChoice.vue";
 import UiIcon from "./UiIcon.vue";
 import UiTooltip from "./UiTooltip.vue";
 import { pricingConditionDescription } from "../pricing/condition-presentation.ts";
@@ -28,6 +28,21 @@ const booleanOptions = [
 ];
 function inputValue(key: string): string {
   return props.inputs[key] ?? "";
+}
+function choiceOptions(selector: Exclude<WebsitePricingSelector, { kind: "decimal_range" }>) {
+  switch (selector.kind) {
+    case "categorical":
+      return selector.values.map(({ key, value, label }) => ({
+        value: key,
+        label: formatConditionValue(selector.dimension, value, label),
+      }));
+    case "boolean":
+      return booleanOptions;
+    case "decimal_values":
+      return selector.values.map((value) => ({ value, label: value }));
+    case "decimal_buckets":
+      return selector.values.map(({ key, label }) => ({ value: key, label }));
+  }
 }
 function setInput(key: string, value: string): void {
   emit("input", key, value);
@@ -60,62 +75,34 @@ function scheduleRows(selector: WebsitePricingSelector) {
 
 <template>
   <div v-for="(selector, index) in selectors" :key="selector.key" class="pricing-condition">
-    <label v-if="pricingConditionDescription(selector)" :for="`${prefix}-selector-${index}`">
+    <label :id="`${prefix}-selector-${index}-label`" :for="`${prefix}-selector-${index}`">
       <UiTooltip
+        v-if="pricingConditionDescription(selector)"
         class="tooltip-text-trigger"
         tabindex="0"
         :content="pricingConditionDescription(selector) ?? ''"
         :aria-label="`${selector.label}: ${pricingConditionDescription(selector)}`"
         >{{ selector.label }}</UiTooltip
       >
-      <template v-if="'unit' in selector">({{ formatUnitExpression(selector.unit) }})</template>
+      <template v-else>{{ selector.label }}</template>
+      <template v-if="'unit' in selector">{{
+        ` (${formatUnitExpression(selector.unit)})`
+      }}</template>
     </label>
-    <label v-else :for="`${prefix}-selector-${index}`">
-      {{ selector.label }}
-      <template v-if="'unit' in selector">({{ formatUnitExpression(selector.unit) }})</template>
-    </label>
-    <template v-if="selector.kind === 'categorical'">
-      <UiSelect
-        :id="`${prefix}-selector-${index}`"
-        :model-value="inputValue(selector.key)"
-        :options="
-          selector.values.map((option) => ({
-            value: option.key,
-            label: formatConditionValue(selector.dimension, option.value, option.label),
-          }))
-        "
-        :placeholder="
-          followRegion?.key === selector.key ? `Pricing region · ${followRegion.label}` : 'Choose…'
-        "
-        @update:model-value="setInput(selector.key, $event)"
-      />
-    </template>
-    <UiSelect
-      v-else-if="selector.kind === 'boolean'"
+    <UiChoice
+      v-if="selector.kind !== 'decimal_range'"
       :id="`${prefix}-selector-${index}`"
       :model-value="inputValue(selector.key)"
-      :options="booleanOptions"
-      placeholder="Choose…"
-      @update:model-value="setInput(selector.key, $event)"
-    />
-    <UiSelect
-      v-else-if="selector.kind === 'decimal_values'"
-      :id="`${prefix}-selector-${index}`"
-      :model-value="inputValue(selector.key)"
-      :options="selector.values.map((value) => ({ value, label: value }))"
-      placeholder="Choose…"
-      @update:model-value="setInput(selector.key, $event)"
-    />
-    <UiSelect
-      v-else-if="selector.kind === 'decimal_buckets'"
-      :id="`${prefix}-selector-${index}`"
-      :model-value="inputValue(selector.key)"
-      :options="selector.values.map(({ key, label }) => ({ value: key, label }))"
-      placeholder="Choose…"
+      :options="choiceOptions(selector)"
+      :empty-label="
+        selector.kind === 'categorical' && followRegion?.key === selector.key
+          ? `Pricing region · ${followRegion.label}`
+          : undefined
+      "
       @update:model-value="setInput(selector.key, $event)"
     />
     <input
-      v-else-if="selector.kind === 'decimal_range'"
+      v-else
       :id="`${prefix}-selector-${index}`"
       :inputmode="isIntegerSelector(selector) ? 'numeric' : 'decimal'"
       :value="inputValue(selector.key)"

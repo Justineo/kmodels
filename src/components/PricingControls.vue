@@ -11,7 +11,7 @@ import {
   commercialValueLabel,
   commercialConditionDimension,
 } from "../pricing/commercial-vocabulary.ts";
-import UiSelect from "./UiSelect.vue";
+import UiChoice from "./UiChoice.vue";
 import PricingConditions from "./PricingConditions.vue";
 import PricingSelectionPrompt from "./PricingSelectionPrompt.vue";
 
@@ -110,14 +110,16 @@ function choose(dimension: CommercialChoice["dimension"], key: string): void {
     <fieldset v-for="section in sections" :key="section.label">
       <legend>{{ section.label }}</legend>
       <div v-for="group in section.choices" :key="group.dimension" class="commercial-choice">
-        <label :for="`${prefix}-${group.dimension}`" :title="group.description">{{
-          group.label
-        }}</label>
-        <UiSelect
+        <label
+          :id="`${prefix}-${group.dimension}-label`"
+          :for="`${prefix}-${group.dimension}`"
+          :title="group.description"
+          >{{ group.label }}</label
+        >
+        <UiChoice
           :id="`${prefix}-${group.dimension}`"
           :model-value="group.selected ? canonicalJson(group.selected.value) : ''"
           :options="group.options"
-          placeholder="Choose…"
           @update:model-value="choose(group.dimension, $event)"
         />
       </div>

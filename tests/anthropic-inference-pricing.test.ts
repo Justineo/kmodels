@@ -323,7 +323,8 @@ it("uses the same selected offer in public static output and the interactive UI"
   expect(html).toMatch(/<span\b[^>]*>Request<\/span>/);
   expect(html).toContain("Batch");
   expect(html).toContain("Speed");
-  expect(html).toContain("Choose…");
+  expect(html).toContain('role="radiogroup"');
+  expect(html).not.toMatch(/type="radio"[^>]*checked/);
   expect(html).toContain("Cache TTL");
   expect(html).not.toContain("Message Batches");
   expect(html).not.toContain("Inspect target");

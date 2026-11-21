@@ -4,10 +4,14 @@ import type { PricingPerformanceCase } from "./pricing-fixture.ts";
 import { pricingTransitionAudit } from "./pricing-transitions.ts";
 import { selectorSchema } from "../../src/pricing/schema.ts";
 import "../../src/tokens.css";
+import "../../src/style.css";
 
 const root = document.querySelector("#app");
 if (!(root instanceof HTMLElement)) throw new Error("Missing benchmark mount point");
 let app: ReturnType<typeof createVaporApp> | undefined;
+function radios(group: Element) {
+  return [...group.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+}
 function state() {
   return {
     text: root?.textContent ?? "",
@@ -15,14 +19,33 @@ function state() {
     categoricalSelections: selectorSchema
       .array()
       .parse(JSON.parse(document.getElementById("pricing-context")?.dataset.selections ?? "[]")),
-    controls: [...document.querySelectorAll("select")].map((select) => ({
-      id: select.id,
-      label: [...(select.labels ?? [])].map((label) => label.textContent?.trim()).join(" "),
-      value: select.value,
-      options: [...select.options]
-        .filter(({ value }) => value !== "")
-        .map(({ value, label, disabled }) => ({ value, label, disabled })),
-    })),
+    controls: [...document.querySelectorAll('select, [role="radiogroup"]:not([inert])')].map(
+      (control) => {
+        if (control instanceof HTMLSelectElement)
+          return {
+            id: control.id,
+            label: [...(control.labels ?? [])].map((label) => label.textContent?.trim()).join(" "),
+            value: control.value,
+            options: [...control.options]
+              .filter(({ value }) => value !== "")
+              .map(({ value, label, disabled }) => ({ value, label, disabled })),
+          };
+        const buttons = radios(control);
+        return {
+          id: control.id,
+          label:
+            document
+              .getElementById(control.getAttribute("aria-labelledby") ?? "")
+              ?.textContent?.trim() ?? "",
+          value: buttons.find(({ checked }) => checked)?.value ?? "",
+          options: buttons.map(({ value, labels, disabled }) => ({
+            value,
+            label: labels?.[0]?.textContent?.trim() ?? "",
+            disabled,
+          })),
+        };
+      },
+    ),
   };
 }
 async function settle(start: number) {
@@ -53,15 +76,22 @@ const benchmark = {
     return settle(start);
   },
   async select(id: string, value: string) {
-    const select = document.getElementById(id);
-    if (
-      !(select instanceof HTMLSelectElement) ||
-      ![...select.options].some((option) => option.value === value && !option.disabled)
-    )
-      throw new Error(`Unavailable option ${id}: ${value}`);
+    const control = document.getElementById(id);
     const start = performance.now();
-    select.value = value;
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    if (
+      control instanceof HTMLSelectElement &&
+      [...control.options].some((o) => o.value === value && !o.disabled)
+    ) {
+      control.value = value;
+      control.dispatchEvent(new Event("change", { bubbles: true }));
+    } else if (control?.matches('[role="radiogroup"]:not([inert])')) {
+      const button = radios(control).find((r) => (value === "" ? r.checked : r.value === value));
+      if (button?.disabled || (!button && value !== ""))
+        throw new Error(`Unavailable option ${id}: ${value}`);
+      if (button && (value === "" || !button.checked)) button.click();
+    } else {
+      throw new Error(`Unavailable option ${id}: ${value}`);
+    }
     return settle(start);
   },
 };

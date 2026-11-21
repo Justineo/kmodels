@@ -204,12 +204,12 @@ it("keeps commercial alternatives selectable so conflicting native inputs can be
     inputs: {},
   };
   const html = await renderComponent(PricingControls, props);
-  expect(html).toContain("<select");
+  expect(html).toMatch(/<select\b|role="radiogroup"/);
   expect(html).toContain("Latency optimized");
   expect(html).not.toContain("disabled");
   expect(html).not.toContain("<output");
   const absent = await renderComponent(PricingControls, { ...props, choices: [] });
-  expect(absent).not.toContain("<select");
+  expect(absent).not.toMatch(/<select\b|role="radiogroup"/);
 });
 
 it("uses readable speed choices and omits fixed canonical and native values", async () => {
@@ -244,7 +244,7 @@ it("uses readable speed choices and omits fixed canonical and native values", as
   for (const html of [fixed, canonical]) {
     expect(html).not.toContain("Latency optimized");
     expect(html).not.toContain('class="pricing-controls"');
-    expect(html).not.toContain("<select");
+    expect(html).not.toMatch(/<select\b|role="radiogroup"/);
   }
   expect(
     formatConditionValue(
@@ -284,7 +284,7 @@ it("shows only dynamic native conditions beside a fixed range and commercial cho
     selected: [],
     inputs: {},
   });
-  expect(html.match(/<select\b/g)).toHaveLength(1);
+  expect(html.match(/<select\b|role="radiogroup"/g)).toHaveLength(1);
   expect(html).toContain("Region");
   for (const fixed of ["Price scope", "Context", "≤ 1M", "Service tier"])
     expect(html).not.toContain(fixed);
