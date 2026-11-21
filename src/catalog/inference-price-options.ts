@@ -1,4 +1,5 @@
 import {
+  admitsInferenceSelection,
   matchInferencePrices,
   type InferenceMatchCandidate,
   type InferenceMatchResult,
@@ -102,15 +103,7 @@ export function inferencePriceOptions(
   const indexes = indexCurrentChoices(data, initial, dimensions, evaluatedAt, choices);
   const isAvailable = (selection: PricingSelection) => {
     if (indexes !== undefined) return indexes.some((matches) => matches(selection));
-    const { reason } = matchInferencePrices(
-      data,
-      [selection],
-      evaluatedAt,
-      offerRef,
-      undefined,
-      choices,
-    );
-    return reason !== "incompatible_conditions" && reason !== "no_applicable_price";
+    return admitsInferenceSelection(data, selection, evaluatedAt, offerRef, choices);
   };
   return required.flatMap<WebsitePricingSelector>((option) => {
     if (!("values" in option)) return [option];

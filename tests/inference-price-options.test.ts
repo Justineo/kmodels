@@ -7,7 +7,10 @@ import {
 import { unconditionalApplicability } from "../src/catalog/pricing-canonical.ts";
 import type { PriceApplicability, PriceCategoricalValue } from "../src/catalog/pricing-schema.ts";
 import type { WebsitePricingSelector } from "../src/catalog/website-schema.ts";
-import { matchInferencePrices } from "../src/pricing/inference-matching.ts";
+import {
+  admitsInferenceSelection,
+  matchInferencePrices,
+} from "../src/pricing/inference-matching.ts";
 import type { CommercialChoice } from "../src/catalog/pricing-schema.ts";
 import InferencePrices from "../src/components/InferencePrices.vue";
 import { renderComponent } from "./render-component.ts";
@@ -158,6 +161,19 @@ it("indexes current price evidence and excludes an expired Region at its precise
 
 it("admits every published choice when one compatible evidence clause omits the dimension", () => {
   expect(menu(fixture(), at)).toEqual(regions);
+});
+
+it("uses the full lookup's admission decision when a selector needs a time-sensitive probe", () => {
+  const data = fixture(scope("other"));
+  for (const time of [at, boundary, after])
+    for (const choices of [[], [commercialChoice("speed", "undeclared")]])
+      for (const value of regions) {
+        const selection = { kind: "categorical", dimension, value: region(value) } as const;
+        const full = matchInferencePrices(data, [selection], time, "plan", undefined, choices);
+        expect(admitsInferenceSelection(data, selection, time, "plan", choices)).toBe(
+          full.reason !== "incompatible_conditions" && full.reason !== "no_applicable_price",
+        );
+      }
 });
 
 it("keeps a sole published Region conditional in lookup while allowing its schedule to be browsed", () => {

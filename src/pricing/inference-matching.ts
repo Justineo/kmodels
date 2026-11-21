@@ -61,6 +61,38 @@ export function matchInferencePrices(
   executionMode?: ExecutionMode,
   commercialChoices: readonly CommercialChoice[] = [],
 ): InferenceMatchResult {
+  return matchPrices(data, supplied, evaluatedAt, offerRef, executionMode, commercialChoices, true);
+}
+
+/** A selector probe needs the same price decision but never consumes alternative menu choices. */
+export function admitsInferenceSelection(
+  data: InferenceMatchData,
+  selection: PricingSelection,
+  evaluatedAt: string,
+  offerRef: string | undefined,
+  choices: readonly CommercialChoice[],
+): boolean {
+  const { reason } = matchPrices(
+    data,
+    [selection],
+    evaluatedAt,
+    offerRef,
+    undefined,
+    choices,
+    false,
+  );
+  return reason !== "incompatible_conditions" && reason !== "no_applicable_price";
+}
+
+function matchPrices(
+  data: InferenceMatchData,
+  supplied: readonly PricingSelection[],
+  evaluatedAt: string,
+  offerRef: string | undefined,
+  executionMode: ExecutionMode | undefined,
+  commercialChoices: readonly CommercialChoice[],
+  includeAlternatives: boolean,
+): InferenceMatchResult {
   validateSelectors(supplied, []);
   const requested = [...commercialChoices];
   if (executionMode !== undefined) {
@@ -125,6 +157,7 @@ export function matchInferencePrices(
         } else if (!prior.rule_indexes.includes(rule_index)) prior.rule_indexes.push(rule_index);
       }
       // Each dimension is discovered under the other choices, retaining correlated scopes.
+      if (!includeAlternatives) continue;
       for (const { targets = [], ...choice } of declaredCommercialChoices(offer.selection)) {
         const others = requested.filter(({ dimension }) => dimension !== choice.dimension);
         const probe = resolveCommercialChoices(
