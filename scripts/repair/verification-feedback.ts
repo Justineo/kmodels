@@ -7,6 +7,7 @@ import { progressSchema, verificationSchema } from "./verification.ts";
 export async function verificationFeedback(directory: string) {
   const notes = new Map<string, string>();
   const initialErrors = new Set<string>();
+  const counterexamples = new Set<string>();
   let interrupted: string | undefined;
   for (const [artifact, label] of [
     ["catalog-maintenance-initial", "initial"],
@@ -24,6 +25,7 @@ export async function verificationFeedback(directory: string) {
       notes.set(row.id, [notes.get(row.id), row.next_action].filter(Boolean).join("\n"));
     const report = verificationSchema.safeParse(await read(`${label}-verification.json`));
     for (const row of report.data?.candidates ?? []) {
+      if (row.verdict === "concrete_error") counterexamples.add(row.id);
       if (label === "initial" && row.verdict === "concrete_error") initialErrors.add(row.id);
       if (row.verdict === "supported") notes.delete(row.id);
       else
@@ -54,6 +56,7 @@ export async function verificationFeedback(directory: string) {
   }
   return {
     initialErrors,
+    counterexamples,
     nextAction: (id: string) => [notes.get(id), interrupted].filter(Boolean).join("\n"),
   };
 }

@@ -39,6 +39,11 @@ it("reads the candidate snapshot offline", () => {
     expect(() => accessSync("/workspace/repair-probes",constants.W_OK)).toThrow();
     expect(() => accessSync("/tmp/gh-aw/agent",constants.W_OK)).toThrow();
   }
+  if (existsSync("/baseline")) {
+    expect(JSON.parse(readFileSync("/baseline/data/catalog-snapshot.json", "utf8")).version).toBe(0);
+    expect(() => accessSync("/baseline/repair-probes/protocol.test.ts", constants.W_OK)).toThrow();
+    expect(existsSync("/baseline/node_modules/vite-plus")).toBe(true);
+  }
   expect(canonicalJson(JSON.parse(readFileSync("data/catalog-snapshot.json", "utf8")).version)).toBe("1");
 });
 `,
@@ -201,6 +206,7 @@ try {
     : containerArguments(
         {
           name: "catalog-codex-smoke",
+          baseline: join(directory, "baseline"),
           work: process.cwd(),
           trusted: process.cwd(),
           input,

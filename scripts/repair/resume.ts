@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { stateSchema } from "./state.ts";
+import { investigationRuns, stateSchema } from "./state.ts";
 
 const statePath = process.env.KMODELS_MAINTENANCE_STATE;
 const admissionPath = process.env.KMODELS_REPAIR_ADMISSION;
@@ -14,9 +14,7 @@ const admission = z
 const tasks = state.tasks.filter((task) =>
   admission.candidates.some((candidate) => candidate.id === task.id),
 );
-for (const run of [
-  ...new Set(tasks.flatMap((task) => (task.evidence_run ? [task.evidence_run] : []))),
-].slice(0, 2)) {
+for (const run of investigationRuns(tasks)) {
   const directory = join("/tmp/gh-aw/agent/previous", run);
   await mkdir(directory, { recursive: true });
   const context = process.env.KMODELS_CATALOG_REPAIR_CONTEXT;

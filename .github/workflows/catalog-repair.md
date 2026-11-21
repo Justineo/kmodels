@@ -837,8 +837,8 @@ only after a concrete verified error, one bounded Codex revision.
 
 Every repaired and not_a_defect conclusion is independently verified in a separate isolated GPT
 session before it can close or publish. Preserve complete source receipts, contrary context and
-actual consumer/counterexample checks. The verifier first investigates without your explanation,
-then checks your proposed conclusion. Concrete contradictions may trigger one Sol high + Codex
+actual consumer/counterexample checks. The verifier exercises the same consumer and counterexample against the base
+and proposed trees in a single independent session. Concrete contradictions may trigger one Sol high + Codex
 revision; the revised result is independently checked again. Missing evidence or budget remains
 incomplete. Do not manufacture a patch or a no-defect conclusion to avoid verification.
 `vp node scripts/catalog-repair-tools.ts record CANDIDATE_ID UPDATE_JSON` updates one admitted

@@ -16,6 +16,7 @@ import {
   difficulty,
   boundedIncidentBatch,
   investigationMinutes,
+  idleInvestigation,
   stateSchema,
 } from "./repair/state.ts";
 import {
@@ -346,20 +347,11 @@ if (!repairable) {
     await appendFile(
       safeOutputsPath,
       `${JSON.stringify(
-        auditIncomplete || sourceEvidenceIncomplete || executionIncomplete || deferred.length > 0
-          ? {
-              type: "report_incomplete",
-              reason:
-                execution?.verification_failure === "test_timeout"
-                  ? "Generated catalog verification timed out on both attempts; review the refresh execution logs."
-                  : deferred.length > 0 &&
-                      !auditIncomplete &&
-                      !sourceEvidenceIncomplete &&
-                      !executionIncomplete
-                    ? "Current candidates are deferred by maintenance cooldown; their saved status and next actions remain unresolved for this run."
-                    : "Source, execution or audit evidence is unavailable, invalid or partial; no conclusion about complete coverage is possible.",
-            }
-          : { type: "noop", message: "No deterministic catalog code-repair candidate was found" },
+        idleInvestigation(
+          auditIncomplete || sourceEvidenceIncomplete || executionIncomplete,
+          deferred.length,
+          execution?.verification_failure,
+        ),
       )}\n`,
     );
 }

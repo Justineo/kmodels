@@ -25,6 +25,7 @@ export const taskSchema = z.object({
   run_id: z.string().regex(/^\d+$/).optional(),
   run_attempt: z.number().int().positive().optional(),
   evidence_run: z.string().regex(/^\d+$/).optional(),
+  counterexample_run: z.string().regex(/^\d+$/).optional(),
   code_revision: z
     .string()
     .regex(/^[a-f0-9]{40}$/)
@@ -38,6 +39,35 @@ export const taskSchema = z.object({
     .default([]),
 });
 export type MaintenanceTask = z.infer<typeof taskSchema>;
+
+export function investigationRuns(tasks: readonly MaintenanceTask[]): string[] {
+  const runs = [
+    ...tasks.map((task) => task.counterexample_run),
+    ...tasks.map((task) => task.evidence_run),
+  ];
+  return [...new Set(runs.filter((run): run is string => run !== undefined))].slice(0, 2);
+}
+
+export function idleInvestigation(
+  incomplete: boolean,
+  deferred: number,
+  verificationFailure?: string,
+) {
+  return incomplete
+    ? {
+        type: "report_incomplete",
+        reason:
+          verificationFailure === "test_timeout"
+            ? "Generated catalog verification timed out on both attempts; review the refresh execution logs."
+            : "Source, execution or audit evidence is unavailable, invalid or partial. See the refresh evidence.",
+      }
+    : {
+        type: "noop",
+        message: deferred
+          ? `No investigation is due. ${deferred} deferred candidates retain their status and retry schedule.`
+          : "No deterministic catalog code-repair candidate was found",
+      };
+}
 
 export function priorTakeovers(task: MaintenanceTask | undefined): string[] {
   if (!task || task.takeover_fingerprint !== task.fingerprint) return [];
@@ -210,6 +240,8 @@ export function observeCandidates(
       if (task.fingerprint !== fingerprint) {
         task.fingerprint = fingerprint;
         task.status = "pending";
+        task.reason = candidate.message.slice(0, 8000);
+        task.trigger = candidate.trigger;
         task.next_action =
           "Recheck changed source or implementation; previous conclusions are historical leads.";
         task.coverage = [];

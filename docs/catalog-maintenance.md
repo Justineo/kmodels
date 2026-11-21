@@ -55,16 +55,16 @@ skips publication because main advanced has no new observation to process. Older
 with only the run URL identify the first attempt.
 
 Tasks retain candidate identity, source/implementation fingerprint, attempts, evidence run, coverage,
-reason and next action. A changed fingerprint reopens the question and invalidates saved coverage.
+reason and next action. Relocation tasks track the affected source and failure detail so an unrelated sibling body change cannot reset their cooldown. A changed fingerprint reopens the question and invalidates saved coverage.
 Finishing a run cannot overwrite a newer attempt or results for a changed fingerprint.
 An investigation superseded by a new fingerprint can still supply historical evidence for the
 next run, without changing its status, cooldown or takeover allowance.
 Incident selection respects severity, cooldown and waiting time; seven-day-old work cannot be
 starved by new high-severity work. New failures absent from the accepted snapshot still qualify.
 Blocked work backs off up to 72 hours; a checked no-defect conclusion lasts seven days unless the
-fingerprint changes. The daily provider/global rotation remains independent. Idle incident slots
+fingerprint changes. The daily provider/global rotation remains independent. A cooldown-only batch with complete evidence is idle and leaves its tasks open. Idle incident slots
 resume unfinished periodic reviews even when other incidents are cooling down. Admitted tasks
-can load the investigations from up to two prior runs, including the initial verifier, takeover
+can load investigations from up to two prior runs. A run containing a concrete counterexample takes precedence over a later inconclusive attempt. The restored artifacts include the initial verifier, takeover
 and publication-validation feedback. Candidate check results and interruption notes are leads
 for the next investigation. An unpublished
 proposal explicitly directs the next run to address those findings. Prior evidence is a lead: freshness, implementation applicability and proof must be
@@ -91,9 +91,7 @@ OpenAI is reserved for independent verification and concrete-error takeover, bot
 
 Preparation and DeepSeek investigation reserve USD 0 of OpenAI spend. After admission, a
 serialized budget job reserves up to USD 10 for the entire run attempt, subject to the remaining
-monthly allowance. Each blinded baseline may use half the remaining balance and half the
-remaining calls, up to 24 calls.
-The proposal comparison can use all remaining funds and calls. New
+monthly allowance. One independent comparison can use the remaining allowance to exercise the base and proposal together. New
 reservations stop at USD 110 per UTC month, leaving USD 10 of the USD 120 allocation as headroom.
 Trusted settlement releases unused funds. The inference job has no ledger write token.
 
@@ -159,11 +157,7 @@ reviewed public HTTPS hosts with ordinary redirect and byte bounds. OpenAI respo
 
 Independent verification covers every `repaired` and `not_a_defect` review row, including an
 all-no-defect run. Pending and blocked rows retain their existing meaning. An empty admission
-requires no model call. The first fresh Codex session sees the original checkout and immutable
-admission, before proposer explanations, patches or proof receipts are made available. It acquires
-full original sources, traces consumed contracts and constructs counterexamples. The second fresh
-session receives that assessment and the exact proposed patch, checks its actual consumers and
-returns a structured per-candidate decision. Selected excerpts and changed-file risk heuristics do
+requires no model call. One independent Codex session receives the immutable admission, original checkout and exact proposed patch. It checks the full original sources and runs its own consumer and counterexample against both trees before returning a per-candidate decision. Selected excerpts and changed-file risk heuristics do
 not decide whether verification is required.
 
 A supported conclusion needs hash-bound original evidence and successful consumer and
@@ -183,22 +177,15 @@ the existing repair allowlist and must regenerate the ordinary review/regression
 exact final patch. Its handoff includes the eligible contradictions, affected files, receipts
 and the offline replay of any preserved verifier tests on the rejected proposal. The reviser
 can act on that evidence immediately and must still prove the changed behavior.
-A fresh comparison checks the revised patch. Within the same run it can reuse the blinded
-assessment and its frozen evidence files when the original admission (including base revision)
-and the entire set of candidates under review match. Different scope requires a fresh blinded
-investigation. A comparison may checkpoint candidate-specific next actions and receipt paths
-before returning its full report. Partial notes never authorize publication.
+A fresh session checks the revised patch starting from the original verifier's saved probes.
+Partial notes and earlier counterexamples carry forward as investigation leads.
 
-Independent tests live in the writable `/workspace/repair-probes` mount, backed by the
-session's evidence directory. Its dedicated Vitest configuration runs probes offline against
-the read-only candidate checkout and hydrated snapshot. Before revealing proposer material, the
-controller executes the same blinded tests against the base and the proposed tree. These offline
-replays have read-only evidence, no inference socket, and a three-minute test limit per tree.
-The comparison session receives the probe identities, exit codes and bounded output alongside
-the assessment. A no-op reuses the identical tree's single result. An empty probe list records the absence of a paired test. The reviewer still
-needs source, consumer and counterexample receipts for each supported claim. Takeover alone receives a writable
-candidate checkout. Its structured response can report an incomplete repair and carry the
-missing proof into the next investigation.
+Independent tests live in the writable `/workspace/repair-probes` mount. The same files are
+visible under `/baseline/repair-probes` for running the identical probe against the original
+checkout. The reviewer can correct a probe and run it again within the same session.
+The controller records the probe hashes and replays the final files offline against both
+trees with read-only evidence and a three-minute test limit per tree. A no-op needs one replay.
+Each supported claim still requires successful consumer and counterexample receipts.
 
 Each Codex session runs in a disposable container with networking disabled, no capabilities,
 non-root identity, read-only container filesystem, read-only Git metadata, dependencies and trusted
@@ -237,7 +224,7 @@ matching final patch receipt. Stored data adoption remains a later refresh decis
 
 The observer accepts successful main-branch refresh runs from this repository and
 executes only the trusted main checkout. Public heading, navigation and tariff-column changes
-create discovery tasks even when a parser still succeeds. Cold start establishes a baseline;
+create discovery tasks even when a parser still succeeds. HTML and Markdown observations include the loss of the last tracked feature and changes beyond the first 128 features. Fenced Markdown examples contribute no navigation. Cold start establishes a baseline;
 unchanged structure and amounts alone do not produce these leads. Discovery is deliberately
 bounded, not exhaustive web monitoring or proof of missing facts. Due tasks may dispatch repair
 at most once per six hours, with the dispatch claim persisted first.

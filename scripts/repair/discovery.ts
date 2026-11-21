@@ -1,5 +1,6 @@
 import { load } from "cheerio";
 import { z } from "zod";
+import { markdownProse } from "../../src/catalog/markdown.ts";
 import { digest, type MaintenanceState } from "./state.ts";
 
 /** Structural leads never assert that a tariff exists or that a parser is incorrect. */
@@ -28,10 +29,12 @@ export function sourceShape(body: string): string[] {
   }
   const features = new Set<string>();
   for (const text of texts) {
-    const html = load(text);
+    const prose = markdownProse(text);
+    const html = load(prose);
+    const relevant = /price|pricing|billing|cache|region|tier|model|token|cost/i;
     for (const element of html("h1,h2,h3,h4,th,a[href]").toArray()) {
       const label = html(element).text().replace(/\s+/g, " ").trim();
-      if (/price|pricing|billing|cache|region|tier|model|token|cost/i.test(label))
+      if (relevant.test(label))
         features.add(
           `${element.tagName}:${label.slice(0, 160)}:${html(element).attr("href") ?? ""}`.slice(
             0,
@@ -39,11 +42,17 @@ export function sourceShape(body: string): string[] {
           ),
         );
     }
-    for (const match of text.matchAll(/^#{1,4}\s+(.+)$/gm))
-      if (match[1] && /price|pricing|billing|cache|region|tier|model|token|cost/i.test(match[1]))
-        features.add(match[1].slice(0, 400));
+    for (const match of prose.matchAll(/^#{1,4}[ \t]+(.+)$/gm))
+      if (match[1] && relevant.test(match[1])) features.add(match[1].slice(0, 400));
+    for (const [, label, href] of prose.matchAll(/\[([^\]\n]+)\]\(([^()\s]+)\)/gu))
+      if (label && href && relevant.test(label))
+        features.add(`a:${label.slice(0, 160)}:${href}`.slice(0, 400));
+    for (const [, header] of prose.matchAll(
+      /^(\|[^\n]+\|)[ \t]*\r?\n[ \t]*\|(?:[ \t]*:?-+:?[ \t]*\|)+[ \t]*\r?$/gmu,
+    ))
+      if (header && relevant.test(header)) features.add(`table:${header}`.slice(0, 400));
   }
-  return [...features].sort().slice(0, 128);
+  return [...features].sort();
 }
 export function recordDiscovery(
   state: MaintenanceState,
@@ -53,7 +62,6 @@ export function recordDiscovery(
   now: Date,
 ): void {
   const features = sourceShape(body);
-  if (features.length === 0) return;
   const hash = digest(JSON.stringify(features));
   const previous = state.observations[source];
   state.observations[source] = { hash, observed_at: now.toISOString() };
@@ -65,6 +73,7 @@ export function recordDiscovery(
     existing.fingerprint = hash;
     existing.status = "pending";
     existing.reason = reason;
+    existing.next_action = reason;
     existing.last_seen = now.toISOString();
     existing.coverage = [];
     delete existing.retry_at;

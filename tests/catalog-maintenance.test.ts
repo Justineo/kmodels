@@ -17,6 +17,8 @@ import {
   candidateKey,
   canTakeOver,
   recordAttempt,
+  investigationRuns,
+  idleInvestigation,
   chooseProvider,
   difficulty,
   digest,
@@ -34,7 +36,7 @@ import { askOpenAI, assistanceModel, assistanceRequest } from "../scripts/repair
 import { recordDiscovery } from "../scripts/repair/discovery.ts";
 import { readSharedFile } from "../scripts/repair/files.ts";
 import { takeoverFindings } from "../scripts/repair/takeover.ts";
-import { matchesPublishedRefresh } from "../scripts/repair/maintenance.ts";
+import { fingerprints, matchesPublishedRefresh } from "../scripts/repair/maintenance.ts";
 import { boundedEvidence } from "../scripts/repair/broker.ts";
 import { captureRepairSource } from "../src/catalog/catalog-repair-capture.ts";
 import { researchPublicSource, reviewedPublicSource } from "../src/catalog/public-evidence.ts";
@@ -172,6 +174,23 @@ it("accepts a finish only once for the prepared fingerprint and in run order", (
   expect(task.evidence_run).toBe("11");
 });
 
+it("restores the concrete counterexample after an inconclusive retry and leaves cooldown work open", () => {
+  const { task } = taskState();
+  expect(investigationRuns([{ ...task, counterexample_run: "10", evidence_run: "11" }])).toEqual([
+    "10",
+    "11",
+  ]);
+  expect(investigationRuns([{ ...task, evidence_run: "11" }])).toEqual(["11"]);
+  expect(investigationRuns([{ ...task, counterexample_run: "10", evidence_run: "10" }])).toEqual([
+    "10",
+  ]);
+  expect(idleInvestigation(false, 1)).toMatchObject({
+    type: "noop",
+    message: expect.stringContaining("1 deferred"),
+  });
+  expect(idleInvestigation(true, 1).type).toBe("report_incomplete");
+});
+
 it("records a deployed attempt once and only links adoption of its exact snapshot", () => {
   const { state, task } = taskState();
   task.status = "adopted";
@@ -300,6 +319,77 @@ it("turns structural source changes into leads without declaring a defect or rea
   recordDiscovery(state, "openai", "openai-pricing", first + "<h3>Cached input prices</h3>", now);
   expect(state.tasks[0]).toMatchObject({ status: "pending", trigger: "source_contract_change" });
   expect(state.tasks[0]?.reason).toContain("not a proven defect");
+});
+
+it("observes a late navigation change and loss of the final heading exactly once", () => {
+  const state = emptyState();
+  const observe = (body: string) => recordDiscovery(state, "openai", "openai-pricing", body, now);
+  const headings = Array.from({ length: 128 }, (_, i) => `<h3>Model ${i}</h3>`).join("");
+  observe(headings);
+  observe(headings + "<h3>Token storage</h3>");
+  const task = state.tasks[0];
+  if (!task) throw new Error("Expected navigation discovery");
+  task.status = "blocked";
+  task.next_action = "Wait for a price confirmation.";
+  observe("<p>Moved</p>");
+  expect(task.status).toBe("pending");
+  expect(task.next_action).toContain("openai-pricing");
+  task.status = "blocked";
+  observe("<p>Still moved</p>");
+  expect(task.status).toBe("blocked");
+});
+
+it("discovers Markdown navigation and price columns without reacting to examples or rate changes", () => {
+  const state = emptyState();
+  const observe = (body: string) => recordDiscovery(state, "openai", "openai-pricing", body, now);
+  const table = "| Model | Input |\n|---|---|\n| A | 2 |";
+  observe(table);
+  observe(table.replace("2", "3") + "\n```md\n[Pricing](/example)\n```");
+  expect(state.tasks).toHaveLength(0);
+  observe(table + "\n[Pricing](/metered)");
+  const task = state.tasks[0];
+  if (!task) throw new Error("Expected a navigation lead");
+  const linkChange = task.fingerprint;
+  observe(table.replace("Input", "Cache storage") + "\n[Pricing](/metered)");
+  expect(task.fingerprint).not.toBe(linkChange);
+});
+
+it("keeps an unchanged missing companion on cooldown across unrelated card updates", () => {
+  const item: CatalogRepairCandidate = {
+    ...candidate("nvidia"),
+    trigger: "source_location_change",
+    scope: "source",
+    subject_id: "nvidia-nim-retrieval",
+    source_id: "nvidia-nim-retrieval",
+    message: "embed-qa-4: HTTP 404",
+  };
+  const state = emptyState();
+  const observe = (incident: CatalogRepairCandidate, cards: string) =>
+    observeCandidates(
+      state,
+      [incident],
+      fingerprints(
+        [incident],
+        {
+          sources: {
+            "nvidia-nim-retrieval": { contentHash: "retrieval" },
+            "nvidia-nim-cards": { contentHash: cards },
+          },
+        },
+        "catalog-tree",
+      ),
+      now,
+    );
+  observe(item, "first");
+  const task = state.tasks[0];
+  if (!task) throw new Error("Expected a missing companion");
+  recordOutcome(task, { status: "blocked", reason: "Waiting for the published companion." }, now);
+  observe(item, "second");
+  expect(chooseProvider(state, [item], now)).toBeUndefined();
+  const changed = { ...item, message: "different companion: HTTP 410" };
+  observe(changed, "second");
+  expect(task).toMatchObject({ status: "pending", reason: changed.message });
+  expect(chooseProvider(state, [changed], now)).toBe("nvidia");
 });
 
 function request(purpose: "research" | "repair" = "research") {

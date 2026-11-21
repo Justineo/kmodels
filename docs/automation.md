@@ -193,7 +193,8 @@ Status: implemented
   difficulty routing and the USD 120 monthly allocation. Independent verification, authorized
   takeover and final verification draw from one OpenAI reservation of up to USD 10 per run attempt.
   Optional GPT assistance during DeepSeek investigation is disabled. GPT independently
-  verifies every repaired and no-defect conclusion in fresh Codex sessions. Specific evidenced
+  verifies every repaired and no-defect conclusion against the original and proposed trees in one
+  independent Codex session per proposal. Specific evidenced
   errors permit one Sol high Codex takeover and fresh verification; insufficient evidence cannot
   close a candidate. Threat detection and publication consume only the final verified patch,
   including when a rejected no-defect conclusion becomes a repair. No risk-based bypass applies.

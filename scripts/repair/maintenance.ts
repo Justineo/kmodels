@@ -35,14 +35,14 @@ function env(name: string): string {
   if (!value) throw new Error(`Missing ${name}`);
   return value;
 }
-function fingerprints(
+export function fingerprints(
   candidates: ReturnType<typeof catalogRepairCandidates>,
   state: unknown,
+  tree: string,
 ): Map<string, string> {
   const fetchState = z
     .object({ sources: z.record(z.string(), z.object({ contentHash: z.string().optional() })) })
     .parse(state);
-  const tree = execFileSync("git", ["rev-parse", "HEAD:src/catalog"], { encoding: "utf8" }).trim();
   return new Map(
     candidates.map((candidate) => [
       candidateKey(candidate),
@@ -50,10 +50,15 @@ function fingerprints(
         JSON.stringify({
           trigger: candidate.trigger,
           diagnostics: candidate.diagnostics,
+          ...(candidate.trigger === "source_location_change" && { incident: candidate.message }),
           tree,
           sources: manifests
             .find((manifest) => manifest.provider.id === candidate.provider_id)
-            ?.sources.map((source) => [
+            ?.sources.filter(
+              (source) =>
+                candidate.trigger !== "source_location_change" || source.id === candidate.source_id,
+            )
+            .map((source) => [
               source.id,
               source.url,
               source.extractorVersion,
@@ -85,7 +90,8 @@ async function observe(state: MaintenanceState, published: boolean): Promise<voi
   const report: unknown = JSON.parse(reportText);
   const candidates = catalogRepairCandidates(report);
   const fetchState: unknown = JSON.parse(await readFile("data/fetch-state.json", "utf8"));
-  observeCandidates(state, candidates, fingerprints(candidates, fetchState), new Date());
+  const tree = execFileSync("git", ["rev-parse", "HEAD:src/catalog"], { encoding: "utf8" }).trim();
+  observeCandidates(state, candidates, fingerprints(candidates, fetchState, tree), new Date());
   const catalog = z
     .object({ sources: z.array(z.object({ id: z.string(), extractor_version: z.string() })) })
     .parse(JSON.parse(await readFile("data/catalog.json", "utf8")));
@@ -437,6 +443,12 @@ async function main(): Promise<void> {
             source_versions: {},
           };
           state.tasks.push(task);
+        }
+        if (
+          feedback.counterexamples.has(task.id) &&
+          (!task.counterexample_run || BigInt(run) > BigInt(task.counterexample_run))
+        ) {
+          task.counterexample_run = run;
         }
         if (!recordAttempt(task, prepared, run, attempt, now)) continue;
         if (
