@@ -854,12 +854,12 @@ Use `catalog-repair-review.ts hash PATH` for the whole-file SHA-256. Run each ch
 and explain the observed result. A failed command also produces a receipt. Use it as evidence
 when a fetch produced no body. Keep the original receipts intact.
 
-| Candidate status | Evidence and next action |
-| --- | --- |
-| `repaired` | Source evidence, parser before and passing parser after on the same input, passing `regression after` bound to the final patch. Name any residual gap. |
-| `not_a_defect` | Successful parser replay and an `alternative` check. Source-location, pricing-structure and scheduled provider reviews also require successful `navigation`. |
-| `blocked` | Test an alternative, record the parser result and any required navigation, and set `blocker.kind` to `source`, `contract`, `tooling` or `scope` with a specific `blocker.next_action`. When acquisition prevents replay, attach a failed `fetch` receipt. For a refresh-execution failure, use an `execution` receipt. |
-| `pending` | Record the remaining question and next action. An interrupted run with no repair also needs a top-level `interruption` with `kind`, `reason` and, for `environment`, the failed `check` receipt. Use `budget` only after the admission deadline. |
+| Candidate status | Evidence and next action                                                                                                                                                                                                                                                                                               |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `repaired`       | Source evidence, parser before and passing parser after on the same input, passing `regression after` bound to the final patch. Name any residual gap.                                                                                                                                                                 |
+| `not_a_defect`   | Successful parser replay and an `alternative` check. Source-location, pricing-structure and scheduled provider reviews also require successful `navigation`.                                                                                                                                                           |
+| `blocked`        | Test an alternative, record the parser result and any required navigation, and set `blocker.kind` to `source`, `contract`, `tooling` or `scope` with a specific `blocker.next_action`. When acquisition prevents replay, attach a failed `fetch` receipt. For a refresh-execution failure, use an `execution` receipt. |
+| `pending`        | Record the remaining question and next action. An interrupted run with no repair also needs a top-level `interruption` with `kind`, `reason` and, for `environment`, the failed `check` receipt. Use `budget` only after the admission deadline.                                                                       |
 
 Use `investigation` for diagnostic probe phases. Use a real consumer for `consumer` checks and
 the collection/publication boundary for `transition` checks. A fresh fetch or parser replay
