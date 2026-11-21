@@ -55,7 +55,7 @@ remain independent.
 The website suite rebuilds the full inference and website publication once in a five-minute
 setup hook, outside each consumer assertion's budget. On CI this shared synchronous projection
 can take nearly three minutes; the assertions still enforce schema, parity and byte limits.
-The Vercel request-denominator and Bedrock profile source-Region regressions likewise collect
+The Vercel request-denominator, Bedrock Sol 6.1 card and profile source-Region regressions collect
 their complete reviewed inventories in 30-second setup hooks, then check the affected rows within
 the normal five-second test budget. Keep the full provider fixtures: their independent service
 books satisfy the provider topology contract. Fixture acquisition, assembly and lookup preparation
