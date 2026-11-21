@@ -832,7 +832,8 @@ export function parseCerebrasCatalog(input: Input): SourceParseResult {
   const rows = catalogRows(input, bundle.index.body);
   const cardPaths = new Set(rows.map(({ path }) => path));
   const nonCardModelPaths = new Set(["/models/choose-a-model"]);
-  const cards = new Map<string, string>();
+  const cards = new Map<string, Bundle["documents"][number]>();
+  const duplicatePaths = new Set<string>();
   for (const item of bundle.documents) {
     const pathname = new URL(item.url).pathname.replace(/\.md$/, "");
     if (!pathname.startsWith("/models/")) continue;
@@ -842,13 +843,17 @@ export function parseCerebrasCatalog(input: Input): SourceParseResult {
       continue;
     }
     if (cards.has(pathname)) {
+      duplicatePaths.add(pathname);
       diagnostic(input, "unsupported", "model_page_duplicate", pathname);
       continue;
     }
-    cards.set(pathname, item.body);
+    cards.set(pathname, item);
   }
   const cachePolicy = document(input, bundle, "/capabilities/prompt-caching.md");
-  const scheduled = scheduledDates(input, [bundle.index.body, ...cards.values()].join("\n"));
+  const scheduled = scheduledDates(
+    input,
+    [bundle.index, ...cards.values()].map(({ body }) => body).join("\n"),
+  );
   const references = readCerebrasReferences({
     documents: bundle.documents,
     sourceRef: input.source.id,
@@ -858,18 +863,15 @@ export function parseCerebrasCatalog(input: Input): SourceParseResult {
       : { onReconciliation: input.onPricingReconciliation }),
   });
   const models = rows.map((row) =>
-    catalogCard(input, row, cards.get(row.path), cachePolicy, scheduled, references),
+    catalogCard(input, row, cards.get(row.path)?.body, cachePolicy, scheduled, references),
   );
   for (const [index, row] of rows.entries()) {
     const model = models[index];
-    const documents = bundle.documents.filter(
-      (d) => new URL(d.url).pathname.replace(/\.md$/, "") === row.path,
-    );
-    const document = documents[0];
+    const document = cards.get(row.path);
     if (
       !model ||
       !document ||
-      documents.length !== 1 ||
+      duplicatePaths.has(row.path) ||
       !document.body.split(/\r?\n/).some((line) => line.trim() === "# " + row.name)
     )
       continue;

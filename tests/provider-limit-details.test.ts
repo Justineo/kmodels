@@ -64,6 +64,22 @@ it("distinguishes exact and rounded Cerebras limits at the published account tie
   );
 });
 
+it("keeps the first Cerebras card but withholds tier evidence from duplicate card paths", async () => {
+  const bundle: LinkedBundle = JSON.parse(await fixture("cerebras/inference-current-catalog.json"));
+  const card = bundle.documents.find(({ url }) => url.endsWith("/qwen-3.8-27b.md"));
+  if (!card) throw new Error("Missing Qwen fixture card");
+  const model = (input: LinkedBundle) =>
+    parse("cerebras", "cerebras-catalog", input).models.find((m) => m.model_id === "qwen-3.8-27b");
+  const original = model(bundle);
+  expect(original?.limit_details?.length).toBeGreaterThan(0);
+  const duplicate = model({
+    ...bundle,
+    documents: [...bundle.documents, { url: card.url.replace(/\.md$/, ""), body: "# Unrelated" }],
+  });
+  expect(duplicate?.limit_details).toBeUndefined();
+  expect(duplicate?.limits).toEqual(original?.limits);
+});
+
 async function anthropicBundle(): Promise<LinkedBundle> {
   return {
     index: { url: "https://platform.claude.com/docs/en/models/overview.md", body: "# Models" },

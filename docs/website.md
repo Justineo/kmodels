@@ -565,11 +565,9 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   reads "Varies by endpoint" and each Published endpoints row lists its own values, joined by the
   statement's `applicability.endpoint` path. A binding without a matching published endpoint
   stays under the capability, labelled by its evidenced interface.
-- `src/catalog/capability-presentation.ts` owns this presentation. Each capability statement kind
-  registers the capability it evidences and a function returning its supported option values with
-  an optional default. A new statement kind adds a schema member, a registry entry and its
-  dispatch case; the type checker rejects a missing one. Grouping, merging and endpoint placement
-  are shared, so a new kind needs no presentation rule of its own.
+- `src/catalog/capability-presentation.ts` maps each statement to the capability it evidences
+  and its documented options and defaults. An exhaustive switch checks coverage when the
+  schema gains a statement kind. All kinds share grouping, merging and endpoint placement.
 - Use one `data_version` derived from the accepted catalog/pricing pair and core
   transport version on the manifest, core chunks, model-detail, shared-offer,
   and provider-detail projections. Reject mismatched core chunks before mounting

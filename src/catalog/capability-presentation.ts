@@ -48,61 +48,32 @@ export interface CapabilityRow {
   conflict: boolean;
 }
 
-type StatementOf<K extends CapabilityStatement["kind"]> = Extract<CapabilityStatement, { kind: K }>;
-interface CapabilityDetailKind<K extends CapabilityStatement["kind"]> {
-  capability: CapabilityKey | ((statement: StatementOf<K>) => CapabilityKey);
-  /** Documented native options; an empty list contributes nothing. */
-  values(statement: StatementOf<K>): CapabilityValue[];
-}
-
-/**
- * Every statement kind registers the capability it evidences and its supported values. A new kind
- * needs a schema member, an entry here and its dispatch case; the type checker rejects a missing one.
- */
-export const capabilityDetailKinds: {
-  [K in CapabilityStatement["kind"]]: CapabilityDetailKind<K>;
-} = {
-  capability_support: {
-    capability: (statement) => statement.capability,
-    values: ({ supported }) => [{ value: supported ? "Supported" : "Unsupported" }],
-  },
-  reasoning_effort: {
-    capability: "effort_control",
-    values: ({ supported_values, default_value }) =>
-      supported_values === undefined
-        ? default_value === undefined
-          ? []
-          : [{ value: default_value, isDefault: true }]
-        : supported_values.map((value) =>
-            value === default_value ? { value, isDefault: true } : { value },
-          ),
-  },
-  prompt_cache: {
-    capability: "prompt_cache",
-    values: ({ mode }) => [{ value: mode === "implicit" ? "automatic" : "caller-defined" }],
-  },
-};
-
-function present<K extends CapabilityStatement["kind"]>(
-  kind: CapabilityDetailKind<K>,
-  statement: StatementOf<K>,
-) {
-  return {
-    capability:
-      typeof kind.capability === "function" ? kind.capability(statement) : kind.capability,
-    values: kind.values(statement),
-  };
-}
-
-/** Narrows each statement to its registered kind; a new kind fails here until it is added. */
-function presentation(statement: CapabilityStatement) {
+/** Map each statement to its model capability and the native options documented for it. */
+function presentation(statement: CapabilityStatement): {
+  capability: CapabilityKey;
+  values: CapabilityValue[];
+} {
   switch (statement.kind) {
     case "capability_support":
-      return present(capabilityDetailKinds.capability_support, statement);
-    case "reasoning_effort":
-      return present(capabilityDetailKinds.reasoning_effort, statement);
+      return {
+        capability: statement.capability,
+        values: [{ value: statement.supported ? "Supported" : "Unsupported" }],
+      };
+    case "reasoning_effort": {
+      const { supported_values, default_value } = statement;
+      const options = supported_values ?? (default_value === undefined ? [] : [default_value]);
+      return {
+        capability: "effort_control",
+        values: options.map((value) =>
+          value === default_value ? { value, isDefault: true } : { value },
+        ),
+      };
+    }
     case "prompt_cache":
-      return present(capabilityDetailKinds.prompt_cache, statement);
+      return {
+        capability: "prompt_cache",
+        values: [{ value: statement.mode === "implicit" ? "automatic" : "caller-defined" }],
+      };
     default:
       return statement satisfies never;
   }
