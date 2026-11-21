@@ -17,7 +17,6 @@ import ollama from "@lobehub/icons-static-svg/icons/ollama.svg?raw";
 import openAi from "@lobehub/icons-static-svg/icons/openai.svg?raw";
 import together from "@lobehub/icons-static-svg/icons/together-color.svg?raw";
 import vercel from "@lobehub/icons-static-svg/icons/vercel.svg?raw";
-import xai from "@lobehub/icons-static-svg/icons/xai.svg?raw";
 import github from "@lobehub/icons-static-svg/icons/github.svg?raw";
 import arrowRight from "lucide-static/icons/arrow-right.svg?raw";
 import arrowUp from "lucide-static/icons/arrow-up.svg?raw";
@@ -36,6 +35,7 @@ import x from "lucide-static/icons/x.svg?raw";
 import databricks from "../assets/provider-icons/databricks.svg?raw";
 import sagemaker from "../assets/provider-icons/amazon-sagemaker.svg?raw";
 import microsoftFoundry from "../assets/provider-icons/microsoft-foundry.svg?raw";
+import spaceXsi from "../assets/provider-icons/spacexsi.svg?raw";
 import typesafe from "../assets/provider-icons/typesafe.svg?raw";
 import type { DarkProviderIconId, ProviderIconId, UiIconName } from "./manifest.ts";
 import { svgSymbol } from "./svg.ts";
@@ -81,7 +81,7 @@ const providerSources = {
   typesafe,
   vercel,
   vertex: googleCloud,
-  xai,
+  xai: spaceXsi,
 } as const satisfies Readonly<Record<ProviderIconId, string>>;
 
 const darkProviderSources = {

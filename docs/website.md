@@ -450,6 +450,9 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   directly on both the select and its complete `::picker(select)` rule so
   production CSS minification preserves the picker enhancement. The visual
   value mirror is pointer-transparent.
+- The website displays SpaceXSI for the `xai` provider, including when a published
+  catalog still carries the xAI label. Provider filters and model links use the
+  catalog's stable IDs.
 - The secondary filters use `<dialog popover="auto">` for non-modal top-layer behavior and light
   dismissal. Keep its title/actions outside its scroll viewport, and keep the toolbar trigger free
   of selection counts.
@@ -673,6 +676,7 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
 
 - Compile reviewed Lucide utility icons and Lobe provider marks into one hidden build-time SVG sprite. Visible icons use `<use>`.
 - Use Together AI's standalone color mark in the square provider icon slot. Its horizontal brand wordmark loses legibility at that size.
+- Use the standalone SpaceXSI mark from the [official developer docs](https://docs.x.ai/developers/models) for the `xai` provider. Preserve its proportions and theme-aware fill.
 - Scope definition IDs per symbol so gradients remain stable.
 - Use reviewed local assets when Lobe is missing or stale: Microsoft Foundry uses the current Microsoft architecture mark; Databricks uses official Lava 600 Simple Icons geometry; Amazon SageMaker AI uses the supplied AWS Architecture Service Icons (2025-07-31) mark, preserving its green background and white artwork. TypeSafe AI uses the supplied path with its original proportions and 0.86 opacity; `currentColor` follows the provider icon's black/light and white/dark theme colors.
 - Provider marks keep reviewed brand colors. Monochrome marks have explicit light/dark variants; Cerebras remains orange. Kimi uses its complete black mark on light surfaces and color mark on dark surfaces.

@@ -57,7 +57,10 @@ const initialRoute = parseRouteSearch(location.search);
 const props = defineProps<{ catalog: WebsiteCatalog }>();
 detailsState.dataVersion = props.catalog.data_version;
 
-const { providers, generated_at: generatedAt } = props.catalog;
+const { providers: catalogProviders, generated_at: generatedAt } = props.catalog;
+const providers = catalogProviders.map((provider) =>
+  provider.id === "xai" ? { ...provider, name: "SpaceXSI" } : provider,
+);
 const catalogUpdateUrl = __KMODELS_CATALOG_UPDATE_URL__;
 const models = props.catalog.models;
 const query = ref(initialRoute.query);
