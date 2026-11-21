@@ -317,9 +317,10 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   evidence are preserved independently of this display grouping.
   Time allowances use the largest exact readable unit. Fixed metadata, driver
   definitions, and invariant explanations stay out of model details.
-- Keep the Pricing section mounted after a detail request fails. Show a clear
-  unavailable state with an in-place retry instead of removing the section when
-  loading ends without a usable detail payload.
+- Keep the Pricing section mounted after a detail request fails. Model and service
+  pricing failures share an alert with a “Refresh page” button. Reloading the current
+  URL preserves the selected model and loads the current catalog and JavaScript modules
+  together when a deployment has replaced assets used by an open tab.
 - Model-associated charges and independently callable provider services share one collapsed
   `Other charges & services` disclosure and one `PricingServiceOffer` card. Both use the same heading,
   kind, context controls, current/upcoming timeline, rate grid, notes and charge definitions. Resource
@@ -337,8 +338,8 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   Opening the disclosure loads provider resource metadata and the first 12 visible offer bodies.
   Pagination reveals another 12; a search can load remaining metadata chunks but hydrates only visible
   matches. Small lists omit search and paging controls. Offers already available through the model
-  are excluded from the independent list by exact ID. Failed offer loads remain retryable individually
-  without reloading successful siblings. Canonical books retain their original scopes and evidence.
+  are excluded from the independent list by exact ID. A failed offer shows its alert in its
+  own card so loaded siblings remain readable. Canonical books retain their original scopes and evidence.
 - A representative preview requires one validity-free normalized fiat value
   whose combined applicability covers the complete numeric offer-state scope
   after model binding and any categorical value required by every offer-state

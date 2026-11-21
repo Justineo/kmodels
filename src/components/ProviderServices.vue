@@ -58,6 +58,5 @@ async function load(): Promise<void> {
     :active
     :excluded-offer-ids
     :preferred-region
-    @retry="load"
   />
 </template>

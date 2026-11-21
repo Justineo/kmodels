@@ -483,11 +483,6 @@ detailsState.close = () => {
   selectedModelUid.value = undefined;
 };
 detailsState.navigate = selectRelativeModel;
-detailsState.retryModel = () => {
-  const model = selectedModel.value;
-  if (model === undefined) return;
-  void loadModelDetail(model);
-};
 
 watch(
   selectedModel,

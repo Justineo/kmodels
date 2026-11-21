@@ -15,6 +15,7 @@ import type {
 import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
 import InferencePrices from "./InferencePrices.vue";
 import PricingServiceOffer from "./PricingServiceOffer.vue";
+import PricingStatus from "./PricingStatus.vue";
 import ProviderServices from "./ProviderServices.vue";
 import RelativeTime from "./RelativeTime.vue";
 import UiIcon from "./UiIcon.vue";
@@ -29,8 +30,6 @@ const props = defineProps<{
   error: string | undefined;
   inferencePrices?: WebsiteInferencePrice[] | undefined;
 }>();
-
-const emit = defineEmits<{ retry: [] }>();
 
 const selectedMechanismId = ref("");
 const selectedCapacityIds = ref<Record<string, string>>({});
@@ -177,25 +176,18 @@ watch(hasOtherCharges, (available) => {
       </p>
     </header>
 
-    <div v-if="model.pricing.outcome === 'not_applicable'" class="pricing-outcome">
-      <strong>Not applicable</strong>
-      <span>This provider publishes no public pricing offer for this model.</span>
-    </div>
-
-    <div v-else-if="model.pricing.outcome === 'unknown'" class="pricing-outcome">
-      <strong>Pricing unknown</strong>
-      <span>No reliable public pricing offer is currently available.</span>
-    </div>
-
-    <div v-else-if="loading" class="pricing-empty" aria-live="polite">
-      <span>Loading pricing…</span>
-    </div>
-
-    <div v-else-if="error" class="pricing-outcome" role="alert">
-      <strong>Pricing unavailable</strong>
-      <span>{{ error }}</span>
-      <button type="button" @click="emit('retry')">Retry</button>
-    </div>
+    <PricingStatus
+      v-if="model.pricing.outcome === 'not_applicable'"
+      heading="Not applicable"
+      message="This provider publishes no public pricing offer for this model."
+    />
+    <PricingStatus
+      v-else-if="model.pricing.outcome === 'unknown'"
+      heading="Pricing unknown"
+      message="No reliable public pricing offer is currently available."
+    />
+    <PricingStatus v-else-if="loading" aria-live="polite" message="Loading pricing…" />
+    <PricingStatus v-else-if="error" heading="Pricing unavailable" :message="error" refresh />
 
     <template v-else-if="detail">
       <InferencePrices
@@ -286,12 +278,11 @@ watch(hasOtherCharges, (available) => {
           />
         </section>
 
-        <div
+        <PricingStatus
           v-else-if="supplementaryOffers.length > 0 && capacityGroups.length === 0"
-          class="pricing-outcome no-base-offer"
-        >
-          <strong>No model inference rate shown</strong>
-        </div>
+          class="no-base-offer"
+          heading="No model inference rate shown"
+        />
       </template>
     </template>
     <div v-if="hasOtherCharges" class="detail-disclosure additional-costs">
@@ -387,40 +378,6 @@ watch(hasOtherCharges, (available) => {
   margin: var(--space-4) 0 0;
   padding: 0;
   border: 0;
-}
-
-.pricing-outcome,
-.pricing-empty {
-  display: grid;
-  gap: var(--space-1);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-subtle);
-}
-
-.pricing-outcome span,
-.pricing-empty span {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-body);
-}
-
-.pricing-outcome button {
-  width: max-content;
-  min-height: var(--control-height-default);
-  margin-top: var(--space-1);
-  padding-inline: var(--space-3);
-  border: var(--stroke-hairline) solid var(--color-border-default);
-  border-radius: var(--radius-md);
-  color: var(--color-text-primary);
-  background: var(--color-surface);
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-medium);
-}
-
-.pricing-outcome button:hover {
-  border-color: var(--color-border-interactive);
-  background: var(--color-surface-hover);
 }
 
 .base-rates {

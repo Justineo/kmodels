@@ -5,6 +5,7 @@ import type {
   WebsiteProviderPricingOffer,
 } from "../catalog/website-schema.ts";
 import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
+import PricingStatus from "./PricingStatus.vue";
 import type { PricingRegion, WebsitePricingContext } from "../catalog/website-pricing-context.ts";
 
 const props = defineProps<{
@@ -15,7 +16,6 @@ const props = defineProps<{
   preferredRegion?: PricingRegion | undefined;
   pricingContext?: WebsitePricingContext | undefined;
 }>();
-const emit = defineEmits<{ retry: [] }>();
 const pricing = computed(() => ("rates" in props.offer ? props.offer : undefined));
 const kind = computed(() => {
   if (pricing.value?.group === "optional_service")
@@ -49,9 +49,7 @@ const state = computed(() =>
       :pricing-context
       explain-charges
     />
-    <p v-else-if="error" class="service-status" role="alert">
-      {{ error }} <button type="button" @click="emit('retry')">Retry</button>
-    </p>
+    <PricingStatus v-else-if="error" heading="Pricing unavailable" :message="error" refresh />
     <p v-else class="service-status" aria-live="polite">Loading pricing…</p>
     <p
       v-if="pricing && pricing.unnormalized_count > pricing.unnormalized.length"

@@ -543,7 +543,8 @@ describe("provider pricing details", () => {
     });
     expect(failed).toContain('role="alert"');
     expect(failed).toContain("Pricing is temporarily unavailable.");
-    expect(failed).toContain("Retry");
+    expect(failed).toContain("Pricing unavailable");
+    expect(failed).toContain("Refresh page");
     expect(failed).not.toContain('class="rate-grid fact-grid"');
   });
 

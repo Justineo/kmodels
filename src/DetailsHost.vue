@@ -15,7 +15,6 @@ import ModelDetails from "./components/ModelDetails.vue";
     :pricing-target="detailsState.pricingTarget"
     @close="detailsState.close"
     @navigate="detailsState.navigate"
-    @retry="detailsState.retryModel"
     @pricing-target-reached="detailsState.pricingTarget = undefined"
   />
 </template>

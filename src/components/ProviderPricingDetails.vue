@@ -11,6 +11,7 @@ import type {
   WebsiteProviderPricingOffer,
 } from "../catalog/website-schema.ts";
 import PricingServiceOffer from "./PricingServiceOffer.vue";
+import PricingStatus from "./PricingStatus.vue";
 import RelativeTime from "./RelativeTime.vue";
 import type { PricingRegion } from "../catalog/website-pricing-context.ts";
 
@@ -24,7 +25,6 @@ const props = defineProps<{
   excludedOfferIds: readonly string[];
   preferredRegion?: PricingRegion | undefined;
 }>();
-const emit = defineEmits<{ retry: [] }>();
 const resources = ref<WebsiteProviderPricingDetail["resources"]>([]);
 const nextChunk = ref(1);
 const loadingMore = ref(false);
@@ -115,11 +115,6 @@ async function loadOffer(summary: WebsiteProviderPricingOffer): Promise<void> {
   }
 }
 
-function retryOffer(summary: WebsiteProviderPricingOffer): void {
-  offerLoads.value.delete(summary.id);
-  void loadOffer(summary);
-}
-
 async function fillVisibleEntries(): Promise<void> {
   const detail = props.detail;
   if (detail === undefined || !props.active || loadingMore.value) return;
@@ -153,9 +148,7 @@ async function fillVisibleEntries(): Promise<void> {
 <template>
   <div class="provider-service-offers">
     <p v-if="loading" class="service-status" aria-live="polite">Loading other service pricing…</p>
-    <p v-else-if="error" class="service-status" role="alert">
-      {{ error }} <button type="button" @click="emit('retry')">Retry</button>
-    </p>
+    <PricingStatus v-else-if="error" heading="Pricing unavailable" :message="error" refresh />
     <template v-else-if="detail">
       <p v-if="entries.length > 0" class="service-status">
         Provider services are offered independently; their published scope does not establish
@@ -182,11 +175,13 @@ async function fillVisibleEntries(): Promise<void> {
         :resource-title="entry.resourceTitle"
         :error="offerLoads.get(entry.summary.id)?.error"
         :preferred-region
-        @retry="retryOffer(entry.summary)"
       />
-      <p v-if="chunkError" class="service-status" role="alert">
-        {{ chunkError }} <button type="button" @click="fillVisibleEntries">Retry</button>
-      </p>
+      <PricingStatus
+        v-if="chunkError"
+        heading="Pricing unavailable"
+        :message="chunkError"
+        refresh
+      />
       <button
         v-if="hasMore"
         class="load-more-services"

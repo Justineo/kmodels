@@ -37,7 +37,6 @@ const emit = defineEmits<{
   close: [];
   navigate: [offset: -1 | 1];
   pricingTargetReached: [];
-  retry: [];
 }>();
 
 const dialog = useTemplateRef<HTMLDialogElement>("dialog");
@@ -388,7 +387,6 @@ onUnmounted(() => {
               :detail="detail?.pricing"
               :loading="loading"
               :error="error"
-              @retry="emit('retry')"
             />
           </div>
         </div>

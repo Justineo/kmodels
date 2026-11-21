@@ -16,7 +16,6 @@ interface DetailsState {
   pricingTarget: string | undefined;
   close: () => void;
   navigate: (offset: -1 | 1) => void;
-  retryModel: () => void;
 }
 
 export const detailsState = reactive<DetailsState>({
@@ -30,5 +29,4 @@ export const detailsState = reactive<DetailsState>({
   pricingTarget: undefined,
   close: () => undefined,
   navigate: () => undefined,
-  retryModel: () => undefined,
 });

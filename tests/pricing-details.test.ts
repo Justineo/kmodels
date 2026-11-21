@@ -651,7 +651,7 @@ describe("model pricing details", () => {
     expect(html).not.toContain("Runtime input tokens");
   });
 
-  it("keeps a retryable pricing state when detail loading fails", async () => {
+  it("offers a page refresh when model pricing fails to load", async () => {
     const html = await renderComponent(PricingDetails, {
       ...pricingDetailsContext,
       detail: undefined,
@@ -660,6 +660,7 @@ describe("model pricing details", () => {
 
     expect(html).toContain("Pricing unavailable");
     expect(html).toContain("Model details are temporarily unavailable.");
-    expect(html).toContain("Retry");
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("Refresh page");
   });
 });
