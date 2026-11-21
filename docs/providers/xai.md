@@ -108,8 +108,10 @@ unqualified `api_endpoints` summary does not erase that independent, explicitly 
 `No text output limit` becomes `no_separate_cap` for `text_output_tokens` with the exact bound
 endpoint. The inspector can annotate Maximum output while the finite context window remains
 independent. Ordinary request defaults, including the Responses reference's visible-output
-default, are not emitted as model maxima. Changelog prose and version-prefix inheritance do not
-extend this table grammar to other models or sellers.
+default, are not emitted as model maxima. In the absence of a model table, a model-specific
+API launch can independently establish the absence of a separate text-output cap. Match the
+exact launch heading, availability statement, output claim and corresponding model overview
+link. That statement has model scope and no endpoint attribution. Omitted limits remain unknown.
 
 Evidence identifies the actual Models page and complete `llms-full.txt` body with its exact native
 section locator and original observation clock. It does not label the full-document hash with an

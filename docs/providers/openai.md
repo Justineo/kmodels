@@ -1,5 +1,21 @@
 # OpenAI
 
+GPT-Live session duration uses separate active and paused WebRTC standby rates. Each billed
+interval has one state and its own duration quantity. Read the denominator from each rate cell.
+Eligible background Responses requests have a completion-window condition on Standard model
+token prices. The pricing announcement owns the model list and discounts; the background guide
+must confirm each window and its eligibility. Preserve context, currency and deployment scope
+when deriving a discount. Ordinary processing retains its own price.
+
+When a launch announcement explicitly restricts tool calling to one protocol, publish the
+supported and excluded interfaces alongside the model's capability flag. A specialized model
+missing from the general card index may still have an exact context limit in the Chat
+Completions search guide. Its Responses tool limit applies to a different product.
+Read text output from the native Chat Completions example and its documented response.
+For historical API launches, join exact model identity and first availability. GPT-4's
+announcement dates its first developer invitations. The GPT-3.5 Turbo article now displays
+an edit date. Its original first-party API announcement supplies the launch date.
+
 Status: current
 
 ## Offer boundary

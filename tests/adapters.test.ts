@@ -2157,7 +2157,7 @@ describe("Cohere adapters", () => {
     expect(value.sources).toMatchObject([
       {
         url: "https://docs.cohere.com/docs/models.md",
-        extractorVersion: "cohere-catalog-v19",
+        extractorVersion: "cohere-catalog-v20",
         extractor: {
           kind: "cohere-catalog",
           minModels: 40,
@@ -7411,7 +7411,7 @@ describe("xAI adapter", () => {
 
   it("cross-checks official prices independently of unused model API reference fields", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v31");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v32");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);
@@ -9555,7 +9555,7 @@ describe("Cerebras adapter", () => {
 
   it("extracts field-local response, terminal-stream, and Batch result inputs", async () => {
     expect(source("cerebras-catalog")).toMatchObject({
-      extractorVersion: "cerebras-catalog-v21",
+      extractorVersion: "cerebras-catalog-v22",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     const result = await catalogSource();
@@ -12118,7 +12118,7 @@ describe("Kimi adapters", () => {
     });
     expect(source("kimi-international-catalog")).toMatchObject({
       url: "https://platform.kimi.ai/docs/models",
-      extractorVersion: "kimi-catalog-v6",
+      extractorVersion: "kimi-catalog-v7",
     });
     expect(source("kimi-international-pricing")).toMatchObject({
       url: "https://platform.kimi.ai/docs/pricing/chat",
@@ -12876,6 +12876,21 @@ describe("Kimi adapters", () => {
       replacement_model_ids: ["kimi-k3"],
     });
     const international = parse(source("kimi-international-catalog"), globalBody);
+    for (const [records, market, sourceId] of [
+      [international, "International", "kimi-international-catalog"],
+      [models, "China", "kimi-catalog"],
+    ] as const) {
+      expect(
+        records
+          .filter((m) => m.access_conditions)
+          .map((m) => m.model_id)
+          .sort(),
+      ).toEqual(["kimi-k2.6", "kimi-k2.7-code", "kimi-k2.7-code-highspeed"]);
+      for (const item of records.filter((m) => m.access_conditions))
+        expect(item.access_conditions).toEqual([
+          { kind: "registered_before", month_day: "11-01", market, source_ref: sourceId },
+        ]);
+    }
     expect(international.map(({ model_id }) => model_id)).toEqual(
       models.map(({ model_id }) => model_id),
     );

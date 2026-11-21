@@ -231,11 +231,14 @@ class TransientFetchError extends SourceFetchError {
 
 const sourceRetryBudgetMs = 5 * 60_000;
 
-async function retryTransient<T>(operation: () => Promise<T>, request?: string): Promise<T> {
+async function retryTransient<T>(
+  operation: (attempt: number) => Promise<T>,
+  request?: string,
+): Promise<T> {
   const deadline = Date.now() + sourceRetryBudgetMs;
   for (let attempts = 1; ; attempts += 1) {
     try {
-      return await operation();
+      return await operation(attempts);
     } catch (error) {
       if (!(error instanceof TransientFetchError))
         throw error instanceof Error ? error : new Error("Unknown source fetch failure");
@@ -996,12 +999,13 @@ async function fetchGoogleModelGarden(
   return body;
 }
 
-async function request(source: SourceManifest, json?: string): Promise<Response> {
+async function request(source: SourceManifest, json?: string, usePool = true): Promise<Response> {
   let url = checkedUrl(source.url, source);
   for (let redirect = 0; redirect <= 4; redirect += 1) {
     // JumpStart has hundreds of small public specs on one reviewed S3 origin.
     // Native fetch reuses connections instead of starting a curl/TLS connection per spec.
     const pooledSageMaker =
+      usePool &&
       source.auth === undefined &&
       json === undefined &&
       url.hostname === "jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com" &&
@@ -1060,8 +1064,9 @@ async function readLimited(response: Response, limit: number): Promise<string> {
 
 async function attemptFetch(
   source: SourceManifest,
+  attempt: number,
 ): Promise<{ payload: FetchPayload; link: string | undefined }> {
-  const response = await request(source);
+  const response = await request(source, undefined, attempt < 3);
   if (response.status === 429 || response.status >= 500)
     throw new TransientFetchError(
       `Transient HTTP ${response.status}`,
@@ -1136,7 +1141,7 @@ async function fetchPost(
 async function fetchResponse(
   source: SourceManifest,
 ): Promise<{ payload: FetchPayload; link: string | undefined }> {
-  return retryTransient(() => attemptFetch(source));
+  return retryTransient((attempt) => attemptFetch(source, attempt));
 }
 
 async function fetchPayload(source: SourceManifest): Promise<FetchPayload> {
@@ -1666,6 +1671,41 @@ function documentEntry(
     ...(document.optional === undefined ? {} : { optional: document.optional }),
     ...(document.claimLocal === undefined ? {} : { claimLocal: document.claimLocal }),
   };
+}
+
+async function fetchMistralGuides(
+  source: SourceManifest,
+  archiveUrl: string,
+  entries: readonly DocumentEntry[],
+  concurrency: number,
+): Promise<(FetchedDocument | DependencyFailure)[]> {
+  const archive = await fetchPayload(
+    linkedSource(
+      source,
+      `${source.id}/guide-archive`,
+      checkedUrl(archiveUrl, source),
+      8 * 1024 * 1024,
+      "markdown",
+    ),
+  ).catch(() => undefined);
+  const documents = new Map<string, string | undefined>();
+  if (archive && /^# Mistral AI — full documentation\r?\n/.test(archive.body)) {
+    const wanted = new Set(entries.map(({ url }) => url.href));
+    const sections = archive.body.split(/^\[[^\r\n]+\]\r?\nSource: (\S+)\r?\n/m);
+    for (let index = 1; index < sections.length; index += 2) {
+      const url = sections[index];
+      if (url === undefined || !wanted.has(url)) continue;
+      const body = sections[index + 1]?.trim();
+      documents.set(url, !documents.has(url) && body?.startsWith("# ") ? body : undefined);
+    }
+  }
+  return mapConcurrent(entries, concurrency, (entry) => {
+    const url = entry.url.href;
+    const body = documents.get(url);
+    return body === undefined || Buffer.byteLength(body) > entry.maxResponseBytes
+      ? fetchDocumentEntry(source, entry)
+      : Promise.resolve({ key: entry.key, url, payload: generatedFetchResult(body) });
+  });
 }
 
 async function fetchTogetherModelLibrary(
@@ -3026,13 +3066,24 @@ export async function fetchSource(
     throw new Error("Reviewed companion URL contained unsupported URL components");
   if (new Set(configured.map(({ key }) => key)).size !== configured.length)
     throw new Error("Linked document keys must be unique");
-  const configuredPromise = mapConcurrent(configured, crawl.concurrency, (entry) =>
-    fetchDocumentEntry(source, entry),
-  );
-  const [index, configuredDocuments] = await Promise.all([
+  const mistralGuides =
+    crawl.mistralGuideArchive === undefined
+      ? []
+      : configured.filter(
+          ({ url }) => url.origin === "https://docs.mistral.ai" && url.pathname.endsWith(".md"),
+        );
+  const [directDocuments, archivedGuides, index] = await Promise.all([
+    mapConcurrent(
+      configured.filter((entry) => !mistralGuides.includes(entry)),
+      crawl.concurrency,
+      (entry) => fetchDocumentEntry(source, entry),
+    ),
+    crawl.mistralGuideArchive === undefined || mistralGuides.length === 0
+      ? []
+      : fetchMistralGuides(source, crawl.mistralGuideArchive, mistralGuides, crawl.concurrency),
     fetchPayload(indexSource),
-    configuredPromise,
   ]);
+  const configuredDocuments = [...directDocuments, ...archivedGuides];
   if (source.extractor.kind === "bedrock-catalog") {
     const page = configuredDocuments.find(
       (d) => "payload" in d && d.url === "https://aws.amazon.com/bedrock/pricing/",
@@ -3117,6 +3168,51 @@ export async function fetchSource(
       claimLocal: true,
     };
   });
+  let historicalCardFailure: string | undefined;
+  if (source.extractor.kind === "gemini-catalog") {
+    const directory = configuredDocuments.find(
+      (d) => "key" in d && d.key.endsWith("/model-directory"),
+    );
+    const lifecycle = configuredDocuments.find(
+      (d) => "key" in d && d.key.endsWith("/deprecations"),
+    );
+    if (directory && "payload" in directory && lifecycle && "payload" in lifecycle) {
+      const ids = new Set(
+        [
+          ...(geminiStudioMarkdown(lifecycle.payload.body) ?? lifecycle.payload.body).matchAll(
+            /(?:`|<code[^>]*>)([a-z0-9.-]+)(?:`|<\/code>)/g,
+          ),
+        ].map((match) => match[1]),
+      );
+      const known = new Set(
+        discovered.map(({ url }) => url.pathname.split("/").at(-1)?.replace(/\.md$/, "")),
+      );
+      const companions = linkedUrls(
+        directory.payload.body,
+        source,
+        /^\/docs\/models\/[a-z0-9.-]+\.md$/,
+      )
+        .filter((url) => url.origin === "https://aistudio.google.com")
+        .flatMap((url): DocumentEntry[] => {
+          const id = url.pathname.split("/").at(-1)?.replace(/\.md$/, "");
+          return id && ids.has(id) && !known.has(id)
+            ? [
+                {
+                  key: source.id + "/historical/" + id,
+                  url,
+                  format: "markdown",
+                  maxResponseBytes: crawl.maxDocumentBytes ?? source.maxResponseBytes,
+                  optional: true,
+                  claimLocal: true,
+                },
+              ]
+            : [];
+        });
+      if (companions.length <= crawl.maxDocuments) discovered.push(...companions);
+      else
+        historicalCardFailure = `Historical model card count exceeded discovery limit (${companions.length} > ${crawl.maxDocuments})`;
+    }
+  }
   const entries = [...discovered, ...configured];
   if (new Set(entries.map((entry) => entry.key)).size !== entries.length)
     throw new Error("Linked document keys must be unique");
@@ -3126,6 +3222,13 @@ export async function fetchSource(
   const dependencyFailures = [...discoveredDocuments, ...configuredDocuments].filter(
     (document): document is DependencyFailure => "dependency_id" in document,
   );
+  if (historicalCardFailure)
+    dependencyFailures.push({
+      dependency_id: source.id + "/historical-model-cards",
+      impact: "claim",
+      outcome: "fetch_failed",
+      message: historicalCardFailure,
+    });
   const fetched = (documents: (FetchedDocument | DependencyFailure)[]) =>
     documents.filter((document): document is FetchedDocument => "payload" in document);
   let documents = fetched([...discoveredDocuments, ...configuredDocuments]);

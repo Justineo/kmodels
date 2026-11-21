@@ -1005,6 +1005,44 @@ describe("OpenAI adapters", () => {
       ["anchor", "2025-08-08"],
     ]);
   });
+  it("preserves positive and negative tool support on the exact announced interfaces", () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-changelog");
+    if (!source) throw new Error("Missing OpenAI changelog");
+    const link = (id: string) => `[${id}](https://developers.openai.com/api/docs/models/${id})`;
+    const announcement = (ids: string[]) =>
+      parseSource({
+        provider: provider(value),
+        source,
+        observedAt,
+        catalogModels: ["a", "b", "sibling"].map((id) => openAiModel(id, ["text_generation"])),
+        body: [
+          "## August, 2025",
+          "### Aug 8",
+          "Feature · Model: sibling",
+          ids.map(link).join(" and ") +
+            ". Both models support the Responses API and Chat Completions. Tool calling requires the Responses API.",
+        ].join("\n"),
+      }).models;
+    const pair = announcement(["a", "b"]);
+    for (const id of ["a", "b"])
+      expect(pair.find((m) => m.model_id === id)?.capability_details?.[0]?.statements).toEqual([
+        expect.objectContaining({
+          kind: "capability_support",
+          capability: "tool_call",
+          applicability: { interface: "Responses", endpoint: "v1/responses" },
+          supported: true,
+        }),
+        expect.objectContaining({
+          kind: "capability_support",
+          capability: "tool_call",
+          applicability: { interface: "Chat Completions", endpoint: "v1/chat/completions" },
+          supported: false,
+        }),
+      ]);
+    expect(pair.find((m) => m.model_id === "sibling")?.capability_details).toBeUndefined();
+    expect(announcement(["a", "a"]).some((m) => m.capability_details)).toBe(false);
+  });
   it("dates exact model launches from release statements without inheriting family or feature dates", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-changelog");
@@ -1648,6 +1686,96 @@ describe("OpenAI adapters", () => {
         unit: "minute",
       }),
     ]);
+  });
+  it("keeps separately metered session states and their published units", () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (!source) throw new Error("Missing pricing source");
+    const parse = (standby: string) =>
+      parseSource({
+        provider: provider(value),
+        source,
+        observedAt,
+        catalogModels: [openAiModel("gpt-live-1", ["speech_to_speech"])],
+        body: [
+          "GPT-Live",
+          "### Pricing Table data",
+          "| Model | Active rate | Standby rate |",
+          "| --- | --- | --- |",
+          "| gpt-live-1 | $0.05 / minute | " + standby + " |",
+        ]
+          .join("\n\n")
+          .replaceAll("|\n\n|", "|\n|"),
+      }).models[0];
+    expect(parse("$0.02 / minute")?.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          price: "0.05",
+          unit: "minute",
+          conditions: expect.objectContaining({ session_state: "active" }),
+        }),
+        expect.objectContaining({
+          price: "0.02",
+          unit: "minute",
+          conditions: expect.objectContaining({ session_state: "webrtc_standby" }),
+        }),
+      ]),
+    );
+    expect(parse("$0.02 / hour")?.price_facts).toHaveLength(1);
+  });
+  it("requires matching guide percentages before discounting eligible Standard token rates", () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (!source) throw new Error("Missing pricing source");
+    const catalogModels = ["gpt-6.2-sol", "gpt-other"].map((id) =>
+      openAiModel(id, ["text_generation"]),
+    );
+    const body = [
+      "For GPT‑6.2 Sol, model token rates for [eligible background requests](https://developers.openai.com/api/docs/guides/background) are 30% below Standard for the 2‑hour completion window and 40% below Standard for the 8‑hour completion window.",
+      "Flagship models",
+      "Standard",
+      "| Model | Short context input | Short context output |",
+      "| --- | --- | --- |",
+      "| gpt-6.2-sol | $10 | $20 |",
+      "| gpt-other | $10 | $20 |",
+    ].join("\n");
+    const guide =
+      "Discounted completion windows are in public beta on GPT-6.2 Sol. Responses API requests. Discounted windows require Standard processing. Leave `stream` unset or set it to `false`.\n| `2h` | A | 30% below Standard |\n| `8h` | B | 40% below Standard |";
+    const parse = (text: string) =>
+      parseSource({
+        provider: provider(value),
+        source,
+        observedAt,
+        catalogModels,
+        body: JSON.stringify({
+          index: { url: source.url, body },
+          documents: [
+            { url: "https://developers.openai.com/api/docs/guides/background.md", body: text },
+          ],
+        }),
+      }).models;
+    const rates = parse(guide);
+    expect(
+      rates
+        .find((m) => m.model_id === "gpt-6.2-sol")
+        ?.price_facts.filter((f) => f.meter === "input_text")
+        .map((f) => [f.conditions.completion_window, Number(f.price)])
+        .sort(),
+    ).toEqual([
+      ["2h", 7],
+      ["8h", 6],
+      ["ordinary", 10],
+    ]);
+    expect(
+      rates
+        .find((m) => m.model_id === "gpt-other")
+        ?.price_facts.every((f) => !f.conditions.completion_window),
+    ).toBe(true);
+    expect(
+      parse(guide.replace("30%", "31%"))
+        .flatMap((m) => m.price_facts)
+        .some((f) => f.derived),
+    ).toBe(false);
   });
   it("prices the specialized context and cache-write table", async () => {
     const value = manifest("openai");

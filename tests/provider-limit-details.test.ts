@@ -27,6 +27,42 @@ function parse(providerId: string, sourceId: string, bundle: LinkedBundle) {
   });
   return { ...result, findings };
 }
+it("distinguishes exact and rounded Cerebras limits at the published account tier", async () => {
+  const bundle = JSON.parse(await fixture("cerebras/inference-current-catalog.json"));
+  const result = parse("cerebras", "cerebras-catalog", bundle);
+  const statements = (id: string) =>
+    result.models.find((m) => m.model_id === id)?.limit_details?.flatMap((g) => g.statements);
+  expect(statements("qwen-3.8-27b")).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        kind: "maximum",
+        quantity: "context_tokens",
+        account_tier: "Free Trial",
+        tokens: 65536,
+      }),
+      expect.objectContaining({
+        kind: "maximum",
+        quantity: "output_tokens",
+        account_tier: "Free Trial",
+        tokens: 32768,
+      }),
+      expect.objectContaining({
+        kind: "maximum",
+        quantity: "output_tokens",
+        account_tier: "Paid tiers and trial customers",
+        tokens: 40960,
+      }),
+    ]),
+  );
+  expect(statements("gpt-oss-120b")).toContainEqual(
+    expect.objectContaining({
+      kind: "published_maximum_label",
+      quantity: "output_tokens",
+      account_tier: "Free",
+      label: "32k tokens",
+    }),
+  );
+});
 
 async function anthropicBundle(): Promise<LinkedBundle> {
   return {
@@ -152,6 +188,22 @@ it("publishes the owned xAI no-cap state with exact document evidence and finite
       content_hash: sha256(bundle.documents[0]?.body ?? ""),
     }),
   );
+});
+it("binds a model-wide release-note output claim only to the named model and overview", async () => {
+  const bundle = await xaiBundle();
+  const doc = bundle.documents.find((d) => d.url === "https://docs.x.ai/llms-full.txt");
+  if (!doc) throw new Error("Missing release notes");
+  const get = () =>
+    parse("xai", "xai-models", bundle).models.find((m) => m.model_id === "grok-4.6");
+  expect(get()?.limit_details?.[0]?.statements).toEqual([
+    expect.objectContaining({ kind: "no_separate_cap", quantity: "text_output_tokens" }),
+  ]);
+  expect(get()?.limits.max_output_tokens).toBeUndefined();
+  doc.body = doc.body.replace(
+    "[Grok 4.6 overview](/developers/grok-4-6)",
+    "[Grok 4.7 overview](/developers/grok-4-7)",
+  );
+  expect(get()?.limit_details).toBeUndefined();
 });
 
 it.each(["gemini-4-carbon", "gemini-4-argon", "gemini-4-hydrogen"])(

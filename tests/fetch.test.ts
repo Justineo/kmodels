@@ -552,6 +552,39 @@ it("retains distinct Anthropic reference paths sharing the overview filename", a
   expect(transport.calls.filter((url) => url.endsWith("/overview.md"))).toHaveLength(3);
 });
 
+it("reads only the exact Mistral archive section and falls back for ambiguous guides", async () => {
+  const source = reviewedPublicSource("mistral-pricing");
+  const crawl = source.linkedDocuments;
+  const priority = crawl?.documents?.find(({ id }) => id === "priority-tier");
+  const cache = crawl?.documents?.find(({ id }) => id === "prompt-caching");
+  if (!crawl?.mistralGuideArchive || !priority || !cache) throw new Error("Missing Mistral guides");
+  const ok = (body: string) => `HTTP/1.1 200 OK\r\n\r\n${body}`;
+  transport.responses.set(source.url, [ok("<html>Pricing</html>")]);
+  transport.responses.set(crawl.mistralGuideArchive, [
+    ok(
+      [
+        "# Mistral AI — full documentation",
+        `[Priority Tier]\nSource: ${priority.url}\n\n# Priority Tier\nReviewed policy`,
+        "[Unrelated]\nSource: https://docs.mistral.ai/unrelated.md\n\nUnrelated prose",
+        ...["First", "Second"].map(
+          (label) => `[Caching]\nSource: ${cache.url}\n\n# Caching\n${label}`,
+        ),
+      ].join("\n\n"),
+    ),
+  ]);
+  transport.responses.set(cache.url, [ok("# Direct caching guide")]);
+  const result = await fetchSource({
+    ...source,
+    linkedDocuments: { ...crawl, documents: [priority, cache] },
+  });
+  expect(linkedBundleSchema.parse(JSON.parse(result.body)).documents).toEqual([
+    { url: priority.url, body: "# Priority Tier\nReviewed policy" },
+    { url: cache.url, body: "# Direct caching guide" },
+  ]);
+  expect(transport.calls).not.toContain(priority.url);
+  expect(result.dependencyFailures).toBeUndefined();
+});
+
 it("keeps the Anthropic root when an optional commercial companion fails", async () => {
   const source = reviewedPublicSource("anthropic-models");
   const crawl = source.linkedDocuments;
@@ -1147,7 +1180,7 @@ describe("linked source fetch", () => {
       }
     },
   );
-  it.each(["recover", "exhaust", "oversize"])(
+  it.each(["recover", "recover_fresh_connection", "exhaust", "oversize"])(
     "handles SageMaker body-stream failures with bounded retries: %s",
     async (scenario) => {
       vi.spyOn(Math, "random").mockReturnValue(0);
@@ -1160,6 +1193,12 @@ describe("linked source fetch", () => {
       ]);
       let specAttempts = 0;
       const responses: Response[] = [];
+      const cacheHost = "jumpstart-cache-prod-us-west-2.s3.us-west-2.amazonaws.com";
+      transport.responses.set(cacheHost, [
+        scenario === "recover_fresh_connection"
+          ? 'HTTP/1.1 200 OK\r\n\r\n{"model_id":"fixture-model","version":"1.0","provider":"Publisher"}'
+          : "HTTP/1.1 503 Service Unavailable\r\n\r\nunavailable",
+      ]);
       vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
         const url = input instanceof Request ? input.url : input.toString();
         if (url.endsWith("/models_manifest.json"))
@@ -1190,7 +1229,7 @@ describe("linked source fetch", () => {
         responses.push(response);
         return response;
       });
-      if (scenario === "recover") {
+      if (scenario === "recover" || scenario === "recover_fresh_connection") {
         const result = await fetchSource(source);
         expect(JSON.parse(result.body)).toMatchObject([
           { id: "fixture-model", model_card: { publisher: "Publisher" } },
@@ -1199,11 +1238,9 @@ describe("linked source fetch", () => {
         expect(specAttempts).toBe(2);
       } else {
         await expect(fetchSource(source)).rejects.toThrow(
-          scenario === "oversize"
-            ? "Response exceeded byte limit"
-            : "Source response body transfer failed or timed out",
+          scenario === "oversize" ? "Response exceeded byte limit" : "Transient HTTP 503",
         );
-        expect(specAttempts).toBe(scenario === "oversize" ? 1 : 3);
+        expect(specAttempts).toBe(scenario === "oversize" ? 1 : 2);
       }
       expect(responses.every(({ body }) => body?.locked === false)).toBe(true);
     },

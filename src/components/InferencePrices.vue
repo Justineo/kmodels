@@ -103,18 +103,22 @@ const baseCommercialMatch = computed(() => {
         commercialChoices.value,
       );
 });
-const fixedNativeSelections = computed(() => {
+const unfilteredConditionOptions = computed(() => {
   const price = toRaw(selectedPrice.value);
-  const current = baseCommercialMatch.value;
   const initial = unselectedMatch.value;
-  if (price?.matching === undefined || current === undefined || initial === undefined) return [];
-  // Only the unfiltered domain establishes a fixed field; dependent singletons stay editable.
-  const options = inferencePriceOptions(
+  if (price?.matching === undefined || initial === undefined) return [];
+  return inferencePriceOptions(
     price.matching,
     initial,
     price.pricing_options ?? [],
     evaluatedAt.value,
-  ).filter(
+  );
+});
+const fixedNativeSelections = computed(() => {
+  const current = baseCommercialMatch.value;
+  if (current === undefined) return [];
+  // Only the unfiltered domain establishes a fixed field; dependent singletons stay editable.
+  const options = unfilteredConditionOptions.value.filter(
     ({ dimension }) =>
       !current.available_choices.some(
         (choice) =>

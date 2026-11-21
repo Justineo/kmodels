@@ -70,7 +70,11 @@ the independent metadata-only overlay retains its optional, claim-local behavior
 credentials are not needed for these price companions.
 
 The public tables supply exact USD token rates and the listed audio duration and character
-rates. Cached input is an independent quantity where Together publishes a cached rate.
+rates. Labeled standard and realtime transcription prices are distinct USD-per-audio-minute
+rates. The realtime tariff uses the realtime execution selector, including for realtime-only
+models. It has no synchronous response usage binding. Discounted Batch transcription uses the
+standard amount for the same model. An absent or ambiguous standard rate on a discounted
+model rejects the candidate. Cached input is an independent quantity where Together publishes a cached rate.
 US-only token pricing joins a unique exact catalog label in the dedicated US table and
 keeps its endpoint selector separate from the standard endpoint. Exact API IDs bind these
 offers through the shared inference-price lookup.

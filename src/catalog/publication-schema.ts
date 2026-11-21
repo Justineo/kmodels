@@ -59,6 +59,7 @@ export const publishedModelVariantSchema = providerModelSchema
     raw_type: true,
     routes: true,
     account_availability: true,
+    access_conditions: true,
     first_seen_at: true,
     last_seen_at: true,
     observed_at: true,

@@ -55,6 +55,13 @@ record has been refreshed.
 
 ## Scoped capability details
 
+Detail chunk version 13 adds explicit capability support by interface, market-specific
+registration conditions and account-tier model limits. A rounded published maximum retains
+its native label separately from an exact numeric limit. Writers select this version only
+when one of those facts occurs. Website
+consumers can interpret support or exclusion independently of the coarse model flag. The
+legacy audit envelope and v1 semantic profiles continue to omit these internal details.
+
 The optional internal `capability_details` field uses the same bounded, source-owned claim and
 document revision structure as `limit_details`. Each field has independent bounds and claims.
 Capability details allow ten groups within the same 16 KiB limit. This accommodates three

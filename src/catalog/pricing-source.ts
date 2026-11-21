@@ -84,6 +84,8 @@ const sourcePriceConditionsInputSchema = z.strictObject({
   endpoint: z.string().optional(),
   deployment_scope: z.string().optional(),
   service_tier: z.string().optional(),
+  session_state: z.string().optional(),
+  completion_window: z.string().optional(),
   speed: z.string().optional(),
   inference_geo: z.string().optional(),
   route_provider: z.string().optional(),

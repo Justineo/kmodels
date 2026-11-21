@@ -696,7 +696,14 @@ function applyLifecycle(models: Map<string, ProviderModel>, input: Input, body: 
           item.release_date = released ?? item.release_date;
           item.retired_at = shutdown ?? item.retired_at;
           item.replacement_model_ids = unique([...item.replacement_model_ids, ...replacements]);
-          item.status = retired ? "retired" : shutdown === undefined ? "active" : "deprecated";
+          const redirected =
+            replacements.length > 0 &&
+            /automatically routes API requests to/i.test(text(cells.eq(3).text()));
+          item.status = retired
+            ? "retired"
+            : shutdown !== undefined || redirected
+              ? "deprecated"
+              : "active";
           item.release_stage = preview ? "preview" : item.release_stage;
           item.tasks = orderedTasks([...item.tasks, ...sectionOperations(section, id)]);
         });
@@ -918,7 +925,9 @@ function applyGemmaFreePricing(
 }
 
 function explicitModalities(value: string): Modality[] {
-  return media(value).filter((modality) => modality !== "embedding" && modality !== "pdf");
+  // A bundled output can be mentioned alongside its billable parent in the same cell.
+  const billed = value.replace(/\b(?:audio|video|image|text)\s+included\b/gi, "");
+  return media(billed).filter((modality) => modality !== "embedding" && modality !== "pdf");
 }
 
 function priceModalities(row: string, descriptor: string, fallback: Modality[]): Modality[] {
@@ -2298,12 +2307,47 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
     document(bundle, "/gemma/docs/core/model_card_4"),
   );
   applyLifecycle(models, input, document(bundle, "/gemini-api/docs/deprecations"));
+  // Lifecycle owns identity and routing. Unlisted cards describe the original model only.
+  for (const page of bundle.documents) {
+    const id = /^https:\/\/aistudio\.google\.com\/docs\/models\/([a-z0-9.-]+)\.md$/.exec(
+      page.url,
+    )?.[1];
+    const target = id ? models.get(id) : undefined;
+    if (!target || versionIds.has(target.model_id)) continue;
+    try {
+      const matches = pageModels(input, page.body, undefined).filter(
+        ({ model }) => model.model_id === id,
+      );
+      if (matches.length !== 1 || !matches[0]) {
+        input.onContractFinding?.(contractExtensionEvidence(["/historical-model-card/" + id]));
+        continue;
+      }
+      const { modalities, capabilities, limits } = matches[0].model;
+      Object.assign(target, { modalities, capabilities, limits });
+    } catch {
+      input.onContractFinding?.(contractExtensionEvidence(["/historical-model-card/" + id]));
+    }
+  }
   for (const [id, aliases] of versionIds) {
     const item = models.get(id);
     if (item !== undefined)
       item.aliases = unique(aliases.filter((alias) => alias !== id && !models.has(alias)));
   }
   applyChangelog(models, document(bundle, "/gemini-api/docs/changelog"));
+  const researchGuide = optionalDocument(bundle, "/docs/deep-research.md");
+  if (researchGuide) {
+    const limits = studioSection(researchGuide, "Limitations") ?? "";
+    const versions = studioSection(researchGuide, "Supported Versions") ?? "";
+    if (
+      /You cannot currently provide custom Function Calling tools\s+but you can use remote MCP/.test(
+        limits,
+      )
+    )
+      for (const match of versions.matchAll(/^\* \*\*[^*]+\*\* \(`([a-z0-9.-]+)`\):/gm)) {
+        const model = models.get(match[1] ?? "");
+        if (model?.capabilities.tool_call === "unknown") model.capabilities.tool_call = false;
+      }
+  }
   const interactionsOverview = document(bundle, "/gemini-api/docs/interactions-overview");
   const interactionsApi =
     optionalDocument(bundle, "/api-reference/interactions-api/create-interaction") ??

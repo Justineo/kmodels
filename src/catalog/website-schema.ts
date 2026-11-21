@@ -23,7 +23,7 @@ import {
 import { pricingLimits } from "./pricing-constants.ts";
 
 export const WEBSITE_DETAIL_CHUNK_MAX_BYTES = 2 * 1024 * 1024;
-import { modelCardSchema, deploymentSpecSchema } from "./model-metadata.ts";
+import { modelCardSchema, deploymentSpecSchema, accessConditionSchema } from "./model-metadata.ts";
 import {
   deliveryModes,
   modalities,
@@ -624,6 +624,7 @@ const websiteModelDetailShape = {
 };
 
 const websiteClaimDetailsShape = {
+  access_conditions: z.array(accessConditionSchema).optional(),
   limit_details: websiteLimitDetailsSchema.optional(),
   capability_details: websiteCapabilityDetailsSchema.optional(),
 };
@@ -663,6 +664,22 @@ const websiteStoredModelDetailSchemaV11 = websiteStoredModelDetailSchemaV7.exten
 
 const websiteStoredModelDetailSchema =
   websiteStoredModelDetailBaseSchema.extend(websiteClaimDetailsShape);
+export function requiresWebsiteDetail13(
+  model: Pick<
+    WebsiteStoredModelDetail,
+    "limit_details" | "capability_details" | "access_conditions"
+  >,
+): boolean {
+  return Boolean(
+    model.access_conditions?.length ||
+    model.capability_details?.some((g) =>
+      g.statements.some((s) => s.kind === "capability_support"),
+    ) ||
+    model.limit_details?.some((g) =>
+      g.statements.some((s) => s.account_tier || s.kind === "published_maximum_label"),
+    ),
+  );
+}
 
 const websiteDetailChunkSchemaV7 = z.strictObject({
   schema_version: z.literal(7),
@@ -698,7 +715,20 @@ export const websiteDetailChunkSchema = z.discriminatedUnion("schema_version", [
   }),
   websiteDetailChunkSchemaV7.extend({
     schema_version: z.literal(12),
-    details: z.array(websiteStoredModelDetailSchema),
+    details: z.array(
+      websiteStoredModelDetailSchema
+        .omit({ access_conditions: true })
+        .refine((model) => !requiresWebsiteDetail13(model), "Scoped support requires schema 13"),
+    ),
+  }),
+  websiteDetailChunkSchemaV7.extend({
+    schema_version: z.literal(13),
+    details: z
+      .array(websiteStoredModelDetailSchema)
+      .refine(
+        (details) => details.some(requiresWebsiteDetail13),
+        "Version 13 requires scoped support, access or tier limits",
+      ),
   }),
 ]);
 

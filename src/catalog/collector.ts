@@ -611,6 +611,14 @@ function applyFields(
           ),
         )
       : current.availability,
+    access_conditions:
+      fields.has("access_conditions") && incoming.access_conditions?.length
+        ? mergeBy(
+            current.access_conditions,
+            incoming.access_conditions,
+            (c) => c.source_ref + "\u0000" + c.market + "\u0000" + c.kind,
+          )
+        : current.access_conditions,
     source_refs: [...new Set([...current.source_refs, ...incoming.source_refs])],
     observed_at: incoming.observed_at,
     last_seen_at: incoming.last_seen_at,
@@ -656,6 +664,9 @@ export function retainSourceFacts(
           ({ source_ref }) => source_ref === source.id,
         ),
         routes: old.routes?.filter(({ source_ref }) => source_ref === source.id),
+        access_conditions: old.access_conditions?.filter(
+          ({ source_ref }) => source_ref === source.id,
+        ),
         limit_details: undefined,
         capability_details: undefined,
         source_refs: [],

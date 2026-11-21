@@ -13,6 +13,11 @@ export { parseOpenAiAccounting } from "./openai-accounting.ts";
 import { decimalsEqual, multiplyDecimal, rawPricingFact } from "./pricing.ts";
 import { applyOpenAiCardRules } from "./openai-card-rules.ts";
 import { addOpenAiEffort } from "./openai-effort.ts";
+import {
+  addCapabilityDetailGroup,
+  limitTokenCount,
+  modelDocumentEvidence,
+} from "./source-model-details.ts";
 import { addOpenAiCacheModes } from "./openai-cache-modes.ts";
 import { openAiContainerMinimum } from "./openai-container-pricing.ts";
 import { openAiSearchContent } from "./openai-search-content.ts";
@@ -807,6 +812,57 @@ function openAiPricingModelId(name: string): string {
   return name.toLowerCase().replaceAll(" ", "-");
 }
 
+function backgroundWindowPolicy(body: string, guide: string) {
+  const prose = normalizedText(markdownProse(body)).replaceAll("‑", "-");
+  const statements = [
+    ...prose.matchAll(
+      /For ((?:GPT-[\w.]+ \w+(?:, and |, | and )?)+), model token rates for \[eligible background requests\]\([^)]+\) are (\d+)% below Standard for the (\d+)-hour completion window and (\d+)% below Standard for the (\d+)-hour completion window\./g,
+    ),
+  ];
+  const statement = statements[0];
+  const eligibility = normalizedText(markdownProse(guide));
+  if (
+    statements.length !== 1 ||
+    !statement?.[1] ||
+    !eligibility.includes("Discounted windows require Standard processing") ||
+    !eligibility.includes("Leave `stream` unset or set it to `false`") ||
+    !eligibility.includes("Responses API requests")
+  )
+    return;
+  const windows = new Map<string, number>();
+  for (const [hours, percent] of [
+    [statement[3], statement[2]],
+    [statement[5], statement[4]],
+  ]) {
+    if (!hours || !percent || Number(percent) <= 0 || Number(percent) >= 100 || Number(hours) <= 0)
+      return;
+    const window = hours + "h";
+    if (
+      !guide
+        .split("\n")
+        .some(
+          (line) =>
+            line.startsWith("| `" + window + "`") &&
+            line.split("|").at(-2)?.trim() === percent + "% below Standard",
+        )
+    )
+      return;
+    windows.set(window, Number(percent));
+  }
+  if (windows.size !== 2) return;
+  const models = new Set(statement[1].split(/, and |, | and /).map(openAiPricingModelId));
+  const eligibilityList =
+    /Discounted completion windows are in public beta on (GPT-[\w.-]+ [\w-]+(?:, and GPT-[\w.-]+ [\w-]+|, GPT-[\w.-]+ [\w-]+| and GPT-[\w.-]+ [\w-]+)*)\./.exec(
+      eligibility,
+    )?.[1];
+  const eligibleModels = new Set(
+    eligibilityList?.split(/, and |, | and /).map(openAiPricingModelId),
+  );
+  if (models.size !== eligibleModels.size || [...models].some((id) => !eligibleModels.has(id)))
+    return;
+  return { models, windows };
+}
+
 function openAiUltrafastSchedule(declarations: ReadonlySet<string>) {
   const [declaration] = declarations;
   if (declarations.size !== 1 || declaration === undefined) return;
@@ -1162,6 +1218,7 @@ function openAiUltrafastRegions(body: string, modelId: string): readonly string[
 }
 
 export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
+  let backgroundGuide = "";
   let containerChangelog = "";
   let fastGuide = "";
   let ultrafastGuide = "";
@@ -1175,6 +1232,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
       return documents.length === 1 ? (documents[0]?.body ?? "") : "";
     };
     containerChangelog = documentBody("changelog");
+    backgroundGuide = documentBody("guides/background");
     fastGuide = documentBody("guides/fast-mode");
     ultrafastGuide = documentBody("guides/ultrafast-mode");
     residencyGuide = documentBody("guides/data-residency");
@@ -1295,6 +1353,9 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
     "Access is limited to approved internal research through the [trusted-access program]",
   );
   const { tables, ultrafastDeclarations } = openAiPricingTables(input.body, record);
+  const background = backgroundWindowPolicy(input.body, backgroundGuide);
+  if (!background && input.body.includes("[eligible background requests]"))
+    record({ disposition: "unresolved", reason_code: "background_window_policy_unresolved" });
   const ultrafastSchedule = openAiUltrafastSchedule(ultrafastDeclarations);
   const missingUltrafastRows = new Map<OpenAiUltrafastPeriod, Set<string>>();
   if (ultrafastSchedule !== undefined) {
@@ -1723,6 +1784,29 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
         }
         return [rate];
       });
+      const windowRates = publishedRates.flatMap((rate): SourcePriceFact[] => {
+        if (
+          !background?.models.has(modelId) ||
+          rate.unit !== "million_tokens" ||
+          !["input_text", "cache_read_text", "output_text", "cache_write_text"].includes(rate.meter)
+        )
+          return [rate];
+        const ordinary = {
+          ...rate,
+          conditions: { ...rate.conditions, completion_window: "ordinary" },
+        };
+        if (rate.conditions.service_tier !== "standard") return [ordinary];
+        return [
+          ordinary,
+          ...[...background.windows].map(([window, discount]) => ({
+            ...rate,
+            conditions: { ...rate.conditions, endpoint: "v1/responses", completion_window: window },
+            price: multiplyDecimal(rate.price, multiplyDecimal(String(100 - discount), "0.01")),
+            derived: true,
+            derivation: `${discount}% below the applicable Standard model token rate for eligible ${window} background Responses requests`,
+          })),
+        ];
+      });
       const fullyFree =
         target.tasks.includes("moderation") &&
         rawPriceFacts.length === 0 &&
@@ -1746,7 +1830,7 @@ export function parseOpenAiPricing(input: ParseInput): SourceParseResult {
         tasks: target.tasks,
         status: currentProgramIds.has(modelId) ? "active" : "unknown",
         pricing_state: publishedRates.length === 0 ? "unknown" : fullyFree ? "free" : "numeric",
-        price_facts: fullyFree ? [] : publishedRates,
+        price_facts: fullyFree ? [] : windowRates,
         raw_price_facts: rawPriceFacts,
         ...(stateFacts.length === 0 ? {} : { state_facts: stateFacts }),
       };
@@ -2094,6 +2178,72 @@ export function parseOpenAiCatalog(input: ParseInput): SourceParseResult {
     })
     .sort((left, right) => left.uid.localeCompare(right.uid));
   addOpenAiCacheModes(input, cards, bundle);
+  const searchGuides = bundle.documents.filter(
+    ({ url }) => url === "https://developers.openai.com/api/docs/guides/tools-web-search",
+  );
+  if (searchGuides.length === 1 && searchGuides[0]) {
+    const $ = load(searchGuides[0].body);
+    const section = $("article h4#chat-completions-api").nextUntil("h1,h2,h3,h4");
+    const table = section.find("table");
+    if (
+      table.length === 1 &&
+      table
+        .find("thead th")
+        .map((_i, e) => $(e).text().trim())
+        .get()
+        .join("|") === "Model|Context window|Limitation"
+    ) {
+      for (const row of table.find("tbody tr").toArray()) {
+        const cells = $(row).children("td");
+        const id = cells.eq(0).find("code").text().trim();
+        const limit = limitTokenCount(cells.eq(1).text().trim());
+        if (
+          !/^[a-z0-9.-]+$/.test(id) ||
+          !limit ||
+          cells.eq(2).text().trim() !== "Uses the Chat Completions search model path"
+        )
+          continue;
+        let model = models.find((m) => m.model_id === id);
+        if (!model) {
+          model = baseModel({
+            providerId: input.provider.id,
+            id,
+            name: id,
+            sourceId: input.source.id,
+            observedAt: input.observedAt,
+          });
+          models.push(model);
+        }
+        model.limits.context_tokens ??= limit;
+        if (
+          $('article [data-group="api-mode"][data-id="chat"]')
+            .toArray()
+            .some(
+              (e) =>
+                $(e)
+                  .find("code")
+                  .toArray()
+                  .some((code) =>
+                    $(code)
+                      .text()
+                      .includes('"' + id + '"'),
+                  ) &&
+                $(e)
+                  .find("li")
+                  .toArray()
+                  .some((li) =>
+                    $(li).text().includes("message.content with the text result from the model"),
+                  ),
+            )
+        )
+          model.modalities.output = unique([...model.modalities.output, "text"]);
+        model.tasks = unique([...model.tasks, "text_generation"]);
+        const endpoint = { name: "Chat Completions", path: "v1/chat/completions" };
+        if (!model.api_endpoints?.some((e) => e.path === endpoint.path))
+          model.api_endpoints = [...(model.api_endpoints ?? []), endpoint];
+      }
+    }
+  }
   const inventory = openAiSnapshotModels({
     models,
     cards,
@@ -2271,6 +2421,11 @@ const openAiAbbreviatedMonths = new Map(
 );
 
 function openAiReleasedModels(line: string, date: string, followsFeature: boolean): string[] {
+  const generalRelease =
+    /^Released \[[^\]]+\]\(https:\/\/developers\.openai\.com\/api\/docs\/models\/([a-z0-9.-]+)\) in general availability in the API\.?$/.exec(
+      line,
+    );
+  if (generalRelease?.[1]) return [generalRelease[1]];
   const direct =
     /^Released \[([a-z0-9._-]+)\]\(https:\/\/developers\.openai\.com\/api\/docs\/models\/([a-z0-9._-]+)\), our newest model in the \2 series\.$/.exec(
       line,
@@ -2301,11 +2456,75 @@ export function parseOpenAiChangelog(input: ParseInput): ProviderModel[] {
     throw new Error("OpenAI changelog requires the collected catalog");
   const known = new Map(input.catalogModels.map((model) => [model.model_id, model]));
   const releases = new Map<string, string>();
+  const toolScopes = new Map<string, string>();
+  let body = input.body;
+  if (body.trimStart().startsWith("{")) {
+    const bundle = linkedBundleSchema.parse(JSON.parse(body));
+    body = bundle.index.body;
+    const document = (url: string) => {
+      const matches = bundle.documents.filter((d) => d.url === url);
+      return matches.length === 1 ? matches[0]?.body : undefined;
+    };
+    const gpt4 = load(document("https://openai.com/index/gpt-4-research/") ?? "");
+    const heading = gpt4('[data-article-hero-copy-region="headline"]').text().replaceAll("‑", "-");
+    const date = /^([A-Z][a-z]+) (\d{1,2}), (\d{4})$/.exec(
+      gpt4('[data-article-hero-copy-region="meta"] p').text().trim(),
+    );
+    const month = openAiMonths.get(date?.[1] ?? "");
+    if (
+      date?.[2] &&
+      month &&
+      heading === "GPT-4" &&
+      known.has("gpt-4") &&
+      gpt4("p")
+        .toArray()
+        .some((p) =>
+          /get access to the GPT.4 API.*start inviting some developers today/u.test(gpt4(p).text()),
+        )
+    ) {
+      const when = z.iso
+        .date()
+        .safeParse(`${date[3]}-${String(month).padStart(2, "0")}-${date[2].padStart(2, "0")}`);
+      if (when.success) releases.set("gpt-4", when.data);
+    }
+    const article = load(
+      document("https://openai.com/index/introducing-chatgpt-and-whisper-apis/") ?? "",
+    );
+    const id = /model family we are releasing today, ([a-z0-9.-]+),/.exec(article("p").text())?.[1];
+    const message = document("https://community.openai.com/posts/127404.json");
+    if (id && known.has(id) && message) {
+      let payload: unknown;
+      try {
+        payload = JSON.parse(message);
+      } catch {
+        input.onContractFinding?.(contractExtensionEvidence(["/changelog/chat-api-announcement"]));
+      }
+      const post = z
+        .object({
+          id: z.literal(127404),
+          topic_id: z.literal(80485),
+          post_number: z.literal(1),
+          username: z.literal("logankilpatrick"),
+          created_at: z.iso.datetime(),
+          cooked: z.string(),
+        })
+        .safeParse(payload);
+      if (post.success) {
+        const announcement = load(post.data.cooked);
+        if (
+          announcement("p").text().includes("the ChatGPT API and Whisper API are now available") &&
+          announcement('a[href="https://openai.com/blog/introducing-chatgpt-and-whisper-apis"]')
+            .length === 1
+        )
+          releases.set(id, post.data.created_at.slice(0, 10));
+      }
+    }
+  }
   let year: string | undefined;
   let month: number | undefined;
   let date: string | undefined;
   let featureLead = false;
-  for (const rawLine of markdownProse(input.body).split(/\r?\n/)) {
+  for (const rawLine of markdownProse(body).split(/\r?\n/)) {
     const line = normalizedText(rawLine);
     if (!line) continue;
     const followsFeature = featureLead;
@@ -2339,6 +2558,19 @@ export function parseOpenAiChangelog(input: ParseInput): ProviderModel[] {
       continue;
     }
     if (date === undefined) continue;
+    if (
+      line.includes(
+        "Both models support the Responses API and Chat Completions. Tool calling requires the Responses API.",
+      )
+    ) {
+      const ids = [
+        ...line.matchAll(
+          /\[[^\]]+\]\(https:\/\/developers\.openai\.com\/api\/docs\/models\/([a-z0-9.-]+)\)/g,
+        ),
+      ].map((m) => m[1]);
+      if (ids.length === 2 && new Set(ids).size === 2)
+        for (const id of ids) if (id && known.has(id)) toolScopes.set(id, line);
+    }
     const ids = featureLead
       ? [...line.matchAll(/(?:^| · )Model: ([a-z0-9._-]+)(?= · |$)/g)].map((match) => match[1])
       : openAiReleasedModels(line, date, followsFeature);
@@ -2351,11 +2583,11 @@ export function parseOpenAiChangelog(input: ParseInput): ProviderModel[] {
   if (releases.size === 0) throw new Error("OpenAI changelog contained no known model releases");
   if (input.source.extractor.kind !== "openai-changelog")
     throw new Error("Invalid OpenAI changelog extractor");
-  return [...releases]
-    .map(([modelId, releaseDate]) => {
+  return [...new Set([...releases.keys(), ...toolScopes.keys()])]
+    .map((modelId) => {
       const target = known.get(modelId);
       if (target === undefined) throw new Error("OpenAI changelog lost its catalog binding");
-      return {
+      const model: ProviderModel = {
         ...baseModel({
           providerId: input.provider.id,
           id: modelId,
@@ -2365,8 +2597,33 @@ export function parseOpenAiChangelog(input: ParseInput): ProviderModel[] {
           observedAt: input.observedAt,
         }),
         tasks: target.tasks,
-        release_date: releaseDate,
+        release_date: releases.get(modelId),
       };
+      const excerpt = toolScopes.get(modelId);
+      if (excerpt) {
+        addCapabilityDetailGroup(input, model, {
+          claim: "tool_call_endpoints",
+          statements: [
+            { name: "Responses", path: "v1/responses", supported: true },
+            { name: "Chat Completions", path: "v1/chat/completions", supported: false },
+          ].map(({ name, path, supported }) => ({
+            kind: "capability_support",
+            capability: "tool_call",
+            scope: name,
+            applicability: { interface: name, endpoint: path },
+            supported,
+          })),
+          evidence: [
+            modelDocumentEvidence(
+              input,
+              { url: input.source.url, body },
+              "Model launch: tool calling",
+              excerpt,
+            ),
+          ],
+        });
+      }
+      return model;
     })
     .sort((left, right) => left.uid.localeCompare(right.uid));
 }

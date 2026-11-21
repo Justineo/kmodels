@@ -1450,11 +1450,16 @@ export function parseMistralCatalog(input: Input): SourceParseResult {
     )
   )
     endpointsByFeature.delete("realtime-transcriptions");
-  const companion = (path: string, markdownPath: string): string =>
-    (optionalDocument(markdown ? markdownPath : path) ?? "").replace(/\s+/g, " ");
+  const companion = (path: string, markdownPath: string, previousPath?: string): string =>
+    (
+      optionalDocument(markdown ? markdownPath : path) ??
+      (markdown && previousPath !== undefined ? optionalDocument(previousPath) : undefined) ??
+      ""
+    ).replace(/\s+/g, " ");
   const discounts = {
     cache: companion(
       "/mistralai/platform-docs-public/main/src/content/en/docs/studio/conversations/advanced/prompt-caching/page.mdx",
+      "/inference/conversations/advanced/prompt-caching.md",
       "/studio/conversations/advanced/prompt-caching.md",
     ).includes("Cached prompt tokens are billed at 10% of the standard input token price"),
     batch: /50% discount/i.test(

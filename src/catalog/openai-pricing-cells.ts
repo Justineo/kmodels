@@ -171,6 +171,17 @@ export function openAiModelPriceCells(
     columns.every((column) => table.headers.includes(column));
   if (table.section === "GPT-Live sessions" && headers === "Model|Price per minute")
     return [make("Price per minute", "session_runtime", "minute", {})];
+  if (table.section === "GPT-Live sessions" && hasColumns("Model", "Active rate", "Standby rate"))
+    return (["Active rate", "Standby rate"] as const).map((label) => {
+      const quote = make(label, "session_runtime", "minute", {
+        session_state: label === "Active rate" ? "active" : "webrtc_standby",
+      });
+      if (!quote.value.endsWith(" / minute")) {
+        delete quote.unit;
+        quote.rawUnit = label;
+      }
+      return quote;
+    });
   if (headers.startsWith("Model|Short context input|")) {
     return table.headers.slice(1).map((header) => {
       const match = header.match(/^(?:(Short|Long) context )?(.+)$/);

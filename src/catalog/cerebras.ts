@@ -3,6 +3,8 @@ import { readCerebrasReferences } from "./cerebras-accounting.ts";
 import { linkedBundleSchema as bundleSchema, type LinkedBundle as Bundle } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { markdownProse, markdownSection } from "./markdown.ts";
+import { addLimitDetailGroup, modelDocumentEvidence } from "./source-model-details.ts";
+import type { LimitStatement } from "./model-limit-details.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { publishedRate, scaleDecimal } from "./pricing.ts";
@@ -858,6 +860,67 @@ export function parseCerebrasCatalog(input: Input): SourceParseResult {
   const models = rows.map((row) =>
     catalogCard(input, row, cards.get(row.path), cachePolicy, scheduled, references),
   );
+  for (const [index, row] of rows.entries()) {
+    const model = models[index];
+    const documents = bundle.documents.filter(
+      (d) => new URL(d.url).pathname.replace(/\.md$/, "") === row.path,
+    );
+    const document = documents[0];
+    if (
+      !model ||
+      !document ||
+      documents.length !== 1 ||
+      !document.body.split(/\r?\n/).some((line) => line.trim() === "# " + row.name)
+    )
+      continue;
+    const summaries = [
+      ...markdownProse(document.body).matchAll(/^Model ID: `([^`]+)`\. ([^\r\n]+)$/gm),
+    ].filter((m) => m[1] === row.id);
+    const summary = summaries[0]?.[2];
+    if (!summary || summaries.length !== 1) continue;
+    const statements: LimitStatement[] = [];
+    const excerpts: string[] = [];
+    for (const match of summary.matchAll(/\b(Context window|Max(?:imum)? output): ([^.]+)\./g)) {
+      const exact =
+        /^[\d,]+K tokens \(([\d,]+)\) for Free Trial and [\d,]+K tokens \(([\d,]+)\) for paid tiers and trial customers$/i.exec(
+          match[2] ?? "",
+        );
+      const rounded = /^([\d]+k tokens) \(free tier\), ([\d]+k tokens) \(paid\)$/i.exec(
+        match[2] ?? "",
+      );
+      const pair = exact ?? rounded;
+      if (!pair?.[1] || !pair[2]) continue;
+      const isContext = match[1] === "Context window";
+      for (const [tier, value] of [
+        [exact ? "Free Trial" : "Free", pair[1]],
+        [exact ? "Paid tiers and trial customers" : "Paid", pair[2]],
+      ] as const) {
+        const scope = {
+          quantity: isContext ? "context_tokens" : "output_tokens",
+          measurement: isContext ? "shared_context" : "per_response",
+          account_tier: tier,
+          scope: tier + " — " + match[1],
+        } as const;
+        if (!exact) statements.push({ ...scope, kind: "published_maximum_label", label: value });
+        else if (/^(?:[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)$/.test(value))
+          statements.push({ ...scope, kind: "maximum", tokens: Number(value.replaceAll(",", "")) });
+      }
+      excerpts.push(match[0]);
+    }
+    if (statements.length)
+      addLimitDetailGroup(input, model, {
+        claim: "account_tier_limits",
+        statements,
+        evidence: [
+          modelDocumentEvidence(
+            input,
+            document,
+            "Model ID / Context window and maximum output by account tier",
+            row.id + ". " + excerpts.join(" "),
+          ),
+        ],
+      });
+  }
   const result = bounded(input, "cerebras-catalog", models);
   reconcileRates(input, result);
   return {

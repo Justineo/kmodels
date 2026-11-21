@@ -1273,6 +1273,18 @@ function rateApplicability(
   const predicates: PriceCondition[] = [];
   const providerDimensions = [
     {
+      key: "session_state",
+      definition:
+        "Billable state of the measured session interval; WebRTC standby requires paused inference",
+      resolution_phase: "outcome",
+    },
+    {
+      key: "completion_window",
+      definition:
+        "Effective completion window for token pricing: ordinary processing or a discounted Standard background Responses request with the specified window and streaming disabled",
+      resolution_phase: "request",
+    },
+    {
       key: "billing_unit",
       definition:
         "Applicable billing measure among explicitly published alternative denominations of the same output; select one, never add alternatives",

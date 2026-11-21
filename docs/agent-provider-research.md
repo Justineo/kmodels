@@ -19,6 +19,26 @@ optimization and behavior-preserving refactoring. The [collection contract](coll
    charge must survive a nearby free-price sentence. Use the pair relevant to the change.
 5. **Close on evidence.** Carry the exact missing fact or failed assertion into the next attempt.
    Track the published code, the snapshot that adopted it and the matching deployment receipt.
+6. **Reconcile every counterexample in a comparison.** Keep the exact seller, model version,
+   field, unit, condition and observation time in a local ledger. Check sibling rows and a
+   counterexample through the public lookup. A numeric-output-limit comparison must distinguish
+   an explicit absence of a separate cap, a shared context budget, and an unknown numeric cap.
+   Third-party booleans, probe results, weights release dates and snapshot names need independent
+   evidence for the hosted model and field before adoption.
+
+Read price cells as claims about billed quantities. A component included in a quoted bundle
+does not create a second charge. Preserve its wording and test an independently billed sibling.
+Partition session time by the provider's billed state, and apply completion-window discounts
+only to eligible model token rates, endpoint and served tier. Keep ordinary tariffs disjoint
+from the discount and verify both values with the consumer's selectors.
+
+For metadata, use a model card for the identity it describes, a lifecycle record for redirects,
+and an endpoint-specific claim for feature restrictions. A compatibility ID may remain callable
+after its original model is deprecated. A missing directory link need not erase a historical
+card. Bind enrichment to a separately admitted identity and keep historical capabilities away
+from its successor. Join release announcements to the exact hosted model and announcement date;
+a changelog update, a family launch on another platform or the date of an article edit cannot
+establish first API availability.
 
 <details>
 <summary>Checks for specific provider and consumer contracts</summary>
@@ -74,6 +94,10 @@ optimization and behavior-preserving refactoring. The [collection contract](coll
    describe a deployable model without establishing a public hosted route.
 
 ## Verify acquisition
+
+When a public notice limits access by registration date or market, preserve its cohort, comparison
+and published date precision separately from per-account access and the model's retirement date.
+A planned shutdown year cannot supply a missing registration year.
 
 - Probe the URL with the collector's actual transport and authentication scheme. Check the
   final URL, HTTP status, content type, and a small structural sample. A browser view, a curl

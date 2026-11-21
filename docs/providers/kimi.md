@@ -193,7 +193,10 @@ without that statement is `retired`. Document-level `>` retirement blockquotes a
 bundle still carries them their date and replacement link apply to the matching row, and a `>` line
 naming a model with a discontinuation the parser cannot read fails the source instead of being
 skipped. K2.6, K2.7 Code and K2.7 Code HighSpeed are therefore `deprecated` — closed to new
-registrations, still served to earlier users, with a full shutdown announced only as an expectation
+registrations. The exact regional row supplies a `registered_before` access condition for each
+market. Both publications specify November 1 without a registration year. Preserve the exclusive
+month/day cutoff independently from the shutdown estimate and the caller's unknown account status.
+These models are still served to earlier users, with a full shutdown announced only as an expectation
 (December 2026) that is not recorded as a date. K2.5 and every Moonshot V1 variant are `retired`, and
 the catalog no longer publishes their shutdown date. Their former price pages no longer publish rate
 tables, so they have no current offers, while deprecated models still bind their published rates.

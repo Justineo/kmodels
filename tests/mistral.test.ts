@@ -2240,7 +2240,9 @@ describe("Mistral adapters", () => {
           documents: expect.arrayContaining([
             expect.objectContaining({
               id: "prompt-caching",
-              url: expect.stringMatching(/\/studio\/conversations\/advanced\/prompt-caching\.md$/),
+              url: expect.stringMatching(
+                /\/inference\/conversations\/advanced\/prompt-caching\.md$/,
+              ),
             }),
             expect.objectContaining({
               id: "batch-processing",
@@ -2263,7 +2265,7 @@ describe("Mistral adapters", () => {
         id: "mistral-pricing",
         url: "https://docs.mistral.ai/inference/pricing",
         extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v16",
+        extractorVersion: "mistral-pricing-v17",
         fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
         type: "website",
         scope: "global",

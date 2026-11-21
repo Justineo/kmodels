@@ -448,6 +448,19 @@ describe("Together AI Serverless", () => {
     });
   });
 
+  it("rejects a discounted transcription row without an unambiguous standard minute rate", () => {
+    for (const price of [
+      "$0.0035 per audio min (realtime only)",
+      "$0.0015 per audio min (standard), $0.0035 per audio min (standard)",
+      "$0.0015 per audio hour (standard), $0.0035 per audio min (realtime)",
+    ]) {
+      const body = togetherCatalog.replace("$0.01 per audio min", price);
+      expect(() => parse("together", togetherBundle(body))).toThrow(
+        /discounted audio model lacks a standard audio-minute rate/,
+      );
+    }
+  });
+
   it("enriches exact public rows and compiles prices without admitting private inventory", async () => {
     vi.stubEnv("TOGETHER_API_KEY", "fixture");
     try {
@@ -457,8 +470,15 @@ describe("Together AI Serverless", () => {
         { id: "Example/ASR", type: "transcribe", context_length: 1 },
         { id: "Example/Inventory-Only", type: "chat", context_length: 65536 },
       ]);
+      const catalog = togetherCatalog.replace(
+        "$0.01 per audio min |",
+        [
+          "\\$0.0015 per audio min (standard), \\$0.0035 per audio min (realtime) |",
+          "| Realtime only | Example/Realtime | Speech-to-Text | \\$0.0045 per audio min (realtime only) |",
+        ].join("\n"),
+      );
       vi.mocked(fetchSource).mockImplementation(async ({ id }) =>
-        payload(id === "together-api" ? api : togetherBundle(togetherCatalog, true)),
+        payload(id === "together-api" ? api : togetherBundle(catalog, true)),
       );
       const result = await collectProvider(
         providerManifest("together"),
@@ -551,18 +571,16 @@ describe("Together AI Serverless", () => {
           .reason,
       ).toBe("no_applicable_price");
       expect(lookup(whisper)).toMatchObject({
-        execution_modes: ["batch", "request"],
+        execution_modes: ["batch", "realtime", "request"],
         requires_execution_mode_choice: true,
         missing_conditions: [{ namespace: "kmodels", value: "execution" }],
       });
-      for (const [value, denominator] of [
-        ["standard", "6000"],
-        ["batch", "12000"],
+      for (const [execution_mode, numerator, denominator] of [
+        ["request", "1", "40000"],
+        ["batch", "1", "80000"],
+        ["realtime", "7", "120000"],
       ] as const) {
-        const selected = lookup({
-          ...whisper,
-          execution_mode: value === "batch" ? "batch" : "request",
-        });
+        const selected = lookup({ ...whisper, execution_mode });
         expect(selected.status).toBe("matched");
         expect(selected.missing_conditions).toEqual([]);
         expect(selected.candidates.every(({ offer }) => offer.offer_key === "public")).toBe(true);
@@ -572,8 +590,16 @@ describe("Together AI Serverless", () => {
               term.kind === "rate" ? term.variants.map(({ price }) => price.value) : [],
             ),
           ),
-        ).toEqual([{ numerator: "1", denominator }]);
+        ).toEqual([{ numerator, denominator }]);
       }
+      const realtime = { provider_id: "together", model_id: "Example/Realtime" };
+      expect(result.models.find(({ model_id }) => model_id === realtime.model_id)).toMatchObject({
+        api_endpoints: [{ name: "Realtime transcription", path: "/v1/realtime" }],
+        delivery_modes: ["realtime"],
+      });
+      expect(lookup({ ...realtime, execution_mode: "realtime" }).status).toBe("matched");
+      for (const execution_mode of ["request", "batch"] as const)
+        expect(lookup({ ...realtime, execution_mode }).reason).toBe("no_applicable_price");
     } finally {
       vi.unstubAllEnvs();
     }

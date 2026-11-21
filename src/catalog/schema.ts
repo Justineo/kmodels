@@ -9,9 +9,9 @@ import {
   modelTasks,
 } from "./catalog-vocabulary.ts";
 import { sourcePricingEvidenceSchema } from "./source-pricing-policy.ts";
-import { modelCardSchema, deploymentSpecSchema } from "./model-metadata.ts";
+import { modelCardSchema, deploymentSpecSchema, accessConditionSchema } from "./model-metadata.ts";
 import { limitDetailsSchema } from "./model-limit-details.ts";
-import { capabilityDetailsSchema } from "./model-capability-details.ts";
+import { capabilityDetailsSchema, modelCapabilitiesSchema } from "./model-capability-details.ts";
 
 const dateTime = z.iso.datetime({ offset: true });
 const modelDate = z.union([
@@ -38,7 +38,7 @@ export const deliveryModeEvidenceSchema = z.object({
   kind: z.enum(["capability", "endpoint", "provider_type"]),
 });
 export const modalitySchema = z.enum(modalities);
-export const triStateSchema = z.union([z.boolean(), z.literal("unknown")]);
+export { triStateSchema } from "./model-capability-details.ts";
 export const modelLifecycleSchema = z.enum(modelLifecycles);
 export const modelReleaseStageSchema = z.enum(modelReleaseStages);
 export const sourceKindSchema = z.enum(["api", "website", "repository"]);
@@ -93,20 +93,7 @@ export const providerModelSchema = z.object({
     .optional(),
   routes: z.array(modelRouteSchema).optional(),
   modalities: z.object({ input: z.array(modalitySchema), output: z.array(modalitySchema) }),
-  capabilities: z.object({
-    reasoning: triStateSchema,
-    tool_call: triStateSchema,
-    structured_output: triStateSchema,
-    streaming: triStateSchema,
-    batch: triStateSchema,
-    prompt_cache: triStateSchema,
-    fine_tuning: triStateSchema,
-    citations: triStateSchema.default("unknown"),
-    code_execution: triStateSchema.default("unknown"),
-    context_management: triStateSchema.default("unknown"),
-    effort_control: triStateSchema.default("unknown"),
-    computer_use: triStateSchema.default("unknown"),
-  }),
+  capabilities: modelCapabilitiesSchema,
   limits: z.object(modelLimitsShape),
   limit_details: limitDetailsSchema.optional(),
   capability_details: capabilityDetailsSchema.optional(),
@@ -127,6 +114,14 @@ export const providerModelSchema = z.object({
     .optional(),
   scope: z.enum(modelScopes),
   account_availability: z.literal("unknown"),
+  access_conditions: z
+    .array(
+      accessConditionSchema.extend({
+        source_ref: z.string().min(1),
+      }),
+    )
+    .min(1)
+    .optional(),
   first_seen_at: dateTime,
   last_seen_at: dateTime,
   observed_at: dateTime,
@@ -203,7 +198,13 @@ export const catalogEnvelopeSchema = z.object({
   generated_at: dateTime,
   data: z.object({
     providers: z.array(providerSchema),
-    models: z.array(providerModelSchema.omit({ limit_details: true, capability_details: true })),
+    models: z.array(
+      providerModelSchema.omit({
+        limit_details: true,
+        capability_details: true,
+        access_conditions: true,
+      }),
+    ),
     sources: z.array(sourceRecordSchema),
     coverage: z.array(coverageSchema),
   }),

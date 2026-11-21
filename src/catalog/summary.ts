@@ -42,6 +42,7 @@ const semanticModelFields = [
   "availability",
   "scope",
   "account_availability",
+  "access_conditions",
   "source_refs",
 ] as const satisfies readonly (keyof ProviderModel)[];
 

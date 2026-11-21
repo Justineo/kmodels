@@ -1,5 +1,10 @@
 # Cerebras
 
+Keep the published account tier on context and output maxima. The Qwen card gives exact token
+counts for Free Trial and for paid tiers and trial customers. The GPT OSS card gives rounded
+labels for Free and Paid. Preserve those labels verbatim alongside the independently sourced
+numeric PAYG summary. Rate limits in tokens per minute have a different meaning.
+
 ## Offer boundary
 
 [Shared ownership rules](../commercial-topology.md#offers-and-dimensions) govern this provider.

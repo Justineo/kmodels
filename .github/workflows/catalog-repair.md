@@ -85,8 +85,10 @@ network:
     - api.ngc.nvidia.com
     - cloud.google.com
     - cohere.com
+    - community.openai.com
     - console.groq.com
     - developers.openai.com
+    - openai.com
     - docs.api.nvidia.com
     - docs.aws.amazon.com
     - docs.cloud.google.com

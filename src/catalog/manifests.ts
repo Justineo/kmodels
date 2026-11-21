@@ -107,7 +107,7 @@ export type Extractor =
   | { kind: "deepseek-updates"; minModels: number; maxModels: number }
   | { kind: "deepseek-api"; minModels: number; maxModels: number }
   | { kind: "kimi-openapi"; baseUrl: string; minModels: number; maxModels: number }
-  | { kind: "kimi-catalog"; minModels: number; maxModels: number }
+  | { kind: "kimi-catalog"; market: string; minModels: number; maxModels: number }
   | {
       kind: "kimi-pricing";
       region: string;
@@ -121,6 +121,7 @@ export type Extractor =
 
 export interface LinkedDocuments {
   path: RegExp;
+  mistralGuideArchive?: string;
   includeScripts?: boolean;
   indexFormat?: "html" | "markdown" | "typescript" | "mixed";
   nestedIndexes?: {
@@ -168,6 +169,7 @@ export type SourceField =
   | "pricing"
   | "pricing_inputs"
   | "availability"
+  | "access_conditions"
   | "status"
   | "release_stage"
   | "deprecated_at"
@@ -495,7 +497,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "together-serverless" },
-        extractorVersion: "together-serverless-v5",
+        extractorVersion: "together-serverless-v6",
         fields: [
           "model_id",
           "name",
@@ -844,7 +846,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-catalog" },
-        extractorVersion: "openai-catalog-v18",
+        extractorVersion: "openai-catalog-v19",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
         fields: [
           "model_id",
@@ -878,6 +880,14 @@ export const manifests = [
           requestSuffix: ".md",
           documents: optionalFixedDocuments([
             [
+              "chat-search",
+              "https://developers.openai.com/api/docs/guides/tools-web-search",
+              2,
+              "html",
+              true,
+              true,
+            ],
+            [
               "prompt-cache-modes",
               "https://developers.openai.com/api/docs/guides/prompt-caching.md",
               1,
@@ -897,13 +907,38 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-changelog" },
-        extractorVersion: "openai-changelog-v4",
-        fields: ["release_date"],
-        allowedHosts: ["developers.openai.com"],
+        extractorVersion: "openai-changelog-v5",
+        fields: ["release_date", "capability_details"],
+        allowedHosts: ["developers.openai.com", "openai.com", "community.openai.com"],
         maxResponseBytes: mebibytes(8),
         scope: "global",
         exhaustive: false,
         role: "supplement",
+        linkedDocuments: {
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 3,
+          documents: optionalFixedDocuments([
+            ["gpt4-launch", "https://openai.com/index/gpt-4-research/", 1, "html", true, true],
+            [
+              "chat-api-launch",
+              "https://openai.com/index/introducing-chatgpt-and-whisper-apis/",
+              1,
+              "html",
+              true,
+              true,
+            ],
+            [
+              "chat-api-announcement",
+              "https://community.openai.com/posts/127404.json",
+              1,
+              "json",
+              true,
+              true,
+            ],
+          ]),
+        },
       },
       {
         id: "openai-deprecations",
@@ -974,7 +1009,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-pricing" },
-        extractorVersion: "openai-pricing-v30",
+        extractorVersion: "openai-pricing-v31",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing", "status"],
         allowedHosts: ["developers.openai.com"],
@@ -991,6 +1026,14 @@ export const manifests = [
             [
               "container-billing-changelog",
               "https://developers.openai.com/api/docs/changelog.md",
+              1,
+              "markdown",
+              true,
+              true,
+            ],
+            [
+              "background",
+              "https://developers.openai.com/api/docs/guides/background.md",
               1,
               "markdown",
               true,
@@ -2547,7 +2590,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-catalog", minModels: 50, maxModels: 160 },
-        extractorVersion: "gemini-catalog-v18",
+        extractorVersion: "gemini-catalog-v19",
         fields: [
           "model_id",
           "name",
@@ -2589,6 +2632,15 @@ export const manifests = [
           maxDocumentBytes: mebibytes(1),
           documents: fixedDocuments([
             ["deprecations", "https://ai.google.dev/gemini-api/docs/deprecations"],
+            ["model-directory", "https://aistudio.google.com/llms.txt", 1, "markdown", true, true],
+            [
+              "deep-research-tools",
+              "https://aistudio.google.com/docs/deep-research.md",
+              1,
+              "markdown",
+              true,
+              true,
+            ],
             ["changelog", "https://ai.google.dev/gemini-api/docs/changelog"],
             ["gemma-api", "https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api"],
             ["gemma-card", "https://ai.google.dev/gemma/docs/core/model_card_4", 2],
@@ -2660,7 +2712,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-pricing" },
-        extractorVersion: "gemini-pricing-v19",
+        extractorVersion: "gemini-pricing-v20",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing", "pricing_inputs"],
         headers: [{ name: "Accept-Language", value: "en-US,en;q=0.9" }],
@@ -3225,7 +3277,7 @@ export const manifests = [
           minModels: 40,
           maxModels: 70,
         },
-        extractorVersion: "cohere-catalog-v19",
+        extractorVersion: "cohere-catalog-v20",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -3244,7 +3296,7 @@ export const manifests = [
           "retired_at",
           "replacement_model_ids",
         ],
-        allowedHosts: ["docs.cohere.com"],
+        allowedHosts: ["docs.cohere.com", "cohere.com"],
         maxResponseBytes: mebibytes(48),
         scope: "global",
         exhaustive: false,
@@ -3270,6 +3322,38 @@ export const manifests = [
               true,
             ],
             ["changelog", "https://docs.cohere.com/v2/changelog", 3, undefined, true, true],
+            [
+              "aya-expanse-launch",
+              "https://cohere.com/blog/aya-expanse-connecting-our-world",
+              2,
+              "html",
+              true,
+              true,
+            ],
+            [
+              "release-command-vision",
+              "https://docs.cohere.com/changelog/2025-07-31-command-a-vision",
+              2,
+              undefined,
+              true,
+              true,
+            ],
+            [
+              "release-command-reasoning",
+              "https://docs.cohere.com/changelog/2025-08-21-command-a-reasoning",
+              2,
+              undefined,
+              true,
+              true,
+            ],
+            [
+              "release-command-translate",
+              "https://docs.cohere.com/changelog/2025-08-28-command-a-translate",
+              2,
+              undefined,
+              true,
+              true,
+            ],
             [
               "release-command-a",
               "https://docs.cohere.com/changelog/command-a",
@@ -3483,7 +3567,7 @@ export const manifests = [
           minModels: 50,
           maxModels: 90,
         },
-        extractorVersion: "mistral-catalog-v23",
+        extractorVersion: "mistral-catalog-v24",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -3511,6 +3595,7 @@ export const manifests = [
         role: "catalog",
         linkedDocuments: {
           path: /^\/models\/[a-z0-9-]+$/,
+          mistralGuideArchive: "https://docs.mistral.ai/llms-full.txt",
           indexFormat: "markdown",
           requestSuffix: ".md",
           minDocuments: 55,
@@ -3520,7 +3605,7 @@ export const manifests = [
           documents: fixedDocuments([
             [
               "prompt-caching",
-              "https://docs.mistral.ai/studio/conversations/advanced/prompt-caching.md",
+              "https://docs.mistral.ai/inference/conversations/advanced/prompt-caching.md",
               1,
               undefined,
               true,
@@ -3582,7 +3667,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "mistral-pricing", minCards: 13, maxCards: 50 },
-        extractorVersion: "mistral-pricing-v16",
+        extractorVersion: "mistral-pricing-v17",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["pricing", "pricing_inputs"],
         allowedHosts: ["mistral.ai", "docs.mistral.ai", "raw.githubusercontent.com"],
@@ -3595,6 +3680,7 @@ export const manifests = [
         retainOmittedFacts: true,
         linkedDocuments: {
           path: /^(?:\/models\/(?:model-cards\/)?[a-z0-9-]+\/?|\/_next\/static\/chunks\/[a-zA-Z0-9_-]+\.js)$/,
+          mistralGuideArchive: "https://docs.mistral.ai/llms-full.txt",
           includeScripts: true,
           indexFormat: "html",
           minDocuments: 0,
@@ -3622,7 +3708,7 @@ export const manifests = [
             ["api-schema", "https://docs.mistral.ai/openapi.yaml", 2, undefined, true, true],
             [
               "prompt-caching",
-              "https://docs.mistral.ai/studio/conversations/advanced/prompt-caching.md",
+              "https://docs.mistral.ai/inference/conversations/advanced/prompt-caching.md",
               1,
               undefined,
               true,
@@ -3864,7 +3950,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "xai-catalog", minModels: 10, maxModels: 50 },
-        extractorVersion: "xai-catalog-v31",
+        extractorVersion: "xai-catalog-v32",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -4296,9 +4382,10 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "cerebras-catalog", minModels: 1, maxModels: 100 },
-        extractorVersion: "cerebras-catalog-v21",
+        extractorVersion: "cerebras-catalog-v22",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
         fields: [
+          "limit_details",
           "model_id",
           "name",
           "description",
@@ -4824,9 +4911,10 @@ export const manifests = [
         access: "public",
         format: "markdown",
         stability: "semi_structured",
-        extractor: { kind: "kimi-catalog", minModels: 15, maxModels: 30 },
-        extractorVersion: "kimi-catalog-v6",
+        extractor: { kind: "kimi-catalog", market: "China", minModels: 15, maxModels: 30 },
+        extractorVersion: "kimi-catalog-v7",
         fields: [
+          "access_conditions",
           "model_id",
           "description",
           "tasks",
@@ -4851,9 +4939,10 @@ export const manifests = [
         access: "public",
         format: "markdown",
         stability: "semi_structured",
-        extractor: { kind: "kimi-catalog", minModels: 15, maxModels: 30 },
-        extractorVersion: "kimi-catalog-v6",
+        extractor: { kind: "kimi-catalog", market: "International", minModels: 15, maxModels: 30 },
+        extractorVersion: "kimi-catalog-v7",
         fields: [
+          "access_conditions",
           "model_id",
           "description",
           "tasks",

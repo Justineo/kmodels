@@ -49,6 +49,7 @@ import {
   WEBSITE_DETAIL_CHUNK_MAX_BYTES,
   websiteCatalogIndexSchema,
   websiteDetailChunkSchema,
+  requiresWebsiteDetail13,
   websiteOfferChunkSchema,
   websiteProviderPricingChunkSchema,
   websitePricingDetailSchema,
@@ -361,12 +362,16 @@ function websiteDeferredAssets(
         storedDetails,
         (values, chunk) =>
           websiteDetailChunkSchema.parse({
-            schema_version: values.some(
-              ({ limit_details, capability_details, inference_prices }) =>
-                limit_details?.length || capability_details?.length || inference_prices?.length,
-            )
-              ? 12
-              : 7,
+            schema_version: values.some(requiresWebsiteDetail13)
+              ? 13
+              : values.some(
+                    ({ limit_details, capability_details, inference_prices }) =>
+                      limit_details?.length ||
+                      capability_details?.length ||
+                      inference_prices?.length,
+                  )
+                ? 12
+                : 7,
             data_version: dataVersion,
             provider_id: provider.id,
             chunk,
@@ -681,6 +686,15 @@ function websiteModelDetailFromView(
       ? {}
       : { max_output_tokens: model.limits.max_output_tokens }),
     scope: model.scope,
+    ...(model.access_conditions?.length
+      ? {
+          access_conditions: model.access_conditions.map(({ kind, market, month_day }) => ({
+            kind,
+            market,
+            month_day,
+          })),
+        }
+      : {}),
     ...(model.availability === undefined
       ? {}
       : { deployment_availability: deploymentAvailability }),
