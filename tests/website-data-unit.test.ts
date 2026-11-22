@@ -435,7 +435,8 @@ describe("website data projection", () => {
     expect(fiveMinutes).not.toEqual(driver(minimum("600", "/usage/seconds")));
     expect(fiveMinutes).not.toHaveProperty("quantity_methods");
     expect(JSON.stringify(fiveMinutes)).not.toContain("/usage/seconds");
-    expect(JSON.stringify(fiveMinutes)).not.toContain("minimum");
+    expect(fiveMinutes.minimum).toBe("5 minutes per request");
+    expect(fiveMinutes).not.toHaveProperty("calculation");
   });
 
   it("uses reviewed provider vocabulary labels and keeps a generic fallback", () => {

@@ -16,7 +16,7 @@ export interface ProjectionInput {
   pricing: PricingCatalogEnvelope;
   catalogAssetSource: string;
   pricingAssetChunks: readonly string[];
-  inference?: InferencePricingPublication;
+  inference?: InferencePricingPublication | undefined;
 }
 
 export interface PairProjections {
@@ -59,12 +59,19 @@ export function websiteDataVersionForCatalog(
   );
 }
 
-export async function projectCatalogPair(input: ProjectionInput): Promise<PairProjections> {
-  const dataVersion = websiteDataVersionForCatalog(
+export function websiteDataVersionForPair(
+  input: Pick<ProjectionInput, "catalog" | "pricing" | "inference">,
+): string {
+  const version = websiteDataVersionForCatalog(
     input.catalog,
     input.pricing.pricing_data_version,
     input.inference?.source,
   );
+  return input.pricing.data.books.length ? sha256(`${version}\0service-prices-v1`) : version;
+}
+
+export async function projectCatalogPair(input: ProjectionInput): Promise<PairProjections> {
+  const dataVersion = websiteDataVersionForPair(input);
   // Projection indexes are temporary even when the caller retains the old pair.
   // End the synchronous cache scope before asynchronous encoding/compression.
   const { uiAssets, exportAssets } = withPricingCanonicalCache(() =>

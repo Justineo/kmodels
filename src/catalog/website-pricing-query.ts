@@ -14,6 +14,7 @@ import type {
   WebsitePriceApplicability,
   WebsitePriceDimension,
   WebsitePricingOffer,
+  WebsitePricingSelector,
 } from "./website-schema.ts";
 
 type WebsiteRateRow = WebsitePricingOffer["rates"][number];
@@ -33,6 +34,95 @@ export interface WebsiteProjectedRate {
 export interface WebsiteRateQuery {
   rates: WebsiteProjectedRate[];
   unresolved_dimensions: WebsitePriceDimension[];
+}
+
+export interface ServiceRule {
+  operation: Extract<WebsitePricingSelector, { kind: "categorical" }>["values"][number];
+  state: WebsitePricingOffer["states"][number];
+  rates: { row: WebsiteRateRow; currency?: string }[];
+  allowances: WebsitePricingOffer["allowances"];
+}
+
+/** Compare small operation tariffs only when every displayed context has one exact outcome. */
+export function projectServiceRules(
+  offer: WebsitePricingOffer,
+  selectors: readonly WebsitePricingSelector[],
+  modelRef: string | undefined,
+  fixed: readonly PricingSelection[],
+  instant: string,
+): ServiceRule[] | undefined {
+  const operation = selectors.find(
+    (s) => s.dimension.namespace === "kmodels" && s.dimension.value === "operation",
+  );
+  const currency = selectors.find(
+    (s) => s.dimension.namespace === "kmodels" && s.dimension.value === "billing_currency",
+  );
+  if (
+    operation?.kind !== "categorical" ||
+    operation.values.length < 2 ||
+    operation.values.length > 4 ||
+    (currency && (currency.kind !== "categorical" || currency.values.length > 3)) ||
+    selectors.some((s) => s !== operation && s !== currency) ||
+    offer.unnormalized_count ||
+    offer.contributions.length ||
+    [...offer.states, ...offer.rates, ...offer.allowances].some(
+      (row) => row.validity && publishedValidityStatus(row.validity, instant) === "unresolved",
+    )
+  )
+    return;
+
+  const rules: ServiceRule[] = [];
+  const usedAllowances = new Set<string>();
+  const match = (
+    row: { applicability: WebsitePriceApplicability },
+    selections: readonly PricingSelection[],
+  ) => evaluate(row.applicability, modelRef, selections).state;
+  for (const option of operation.values) {
+    if (option.schedule) return;
+    const context: PricingSelection[] = [
+      ...fixed,
+      { kind: "categorical", dimension: operation.dimension, value: option.value },
+    ];
+    const states = offer.states.filter((row) => match(row, context) !== "false");
+    const state = states[0];
+    if (states.length !== 1 || !state) return;
+    const metered = state.state === "numeric";
+    const allowances = offer.allowances.filter((row) => match(row, context) !== "false");
+    if (!metered && (allowances.length || match(state, context) !== "true")) return;
+    if (allowances.some((row) => match(row, context) !== "true" || usedAllowances.has(row.key)))
+      return;
+    for (const row of allowances) usedAllowances.add(row.key);
+    const rates: ServiceRule["rates"] = [];
+    for (const denomination of currency?.values ?? [undefined]) {
+      const selections =
+        currency && denomination
+          ? [
+              ...context,
+              {
+                kind: "categorical" as const,
+                dimension: currency.dimension,
+                value: denomination.value,
+              },
+            ]
+          : context;
+      const possible = offer.rates.filter((row) => match(row, selections) !== "false");
+      if (match(state, selections) !== "true" || possible.length !== (metered ? 1 : 0)) return;
+      const row = possible[0];
+      if (!row) continue;
+      if (match(row, selections) !== "true") return;
+      if (denomination && match(row, context) !== "true")
+        rates.push({ row, currency: denomination.label });
+      else if (!rates.some((rate) => rate.row === row)) rates.push({ row });
+    }
+    rules.push({ operation: option, state, rates, allowances });
+  }
+  // The ordinary rate view already shows an invariant price once across all operations.
+  if (
+    rules.every((rule) => rule.state.state === "numeric" && rule.allowances.length === 0) &&
+    projectWebsiteRateQuery(offer, modelRef, fixed).unresolved_dimensions.length === 0
+  )
+    return;
+  return rules;
 }
 
 export function projectWebsiteRateQuery(

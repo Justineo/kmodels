@@ -1,4 +1,5 @@
 import { canonicalJsonHash } from "./canonical-json.ts";
+import { serviceOfferTitle } from "../pricing/condition-presentation.ts";
 import { storeInferencePrices } from "./website-inference-storage.ts";
 import { canonicalJsonKey, compareUtf8, uniqueCanonicalValues } from "./canonical-value.ts";
 import { modelLifecycles, modelReleaseStages, modelTasks } from "./catalog-vocabulary.ts";
@@ -43,6 +44,7 @@ import type {
   UsageSignal,
 } from "./pricing-schema.ts";
 import { standardUsageSignalDetails } from "./pricing-vocabulary.ts";
+import { standardUsageSignalUnit } from "./pricing-signal-unit.ts";
 import type { RecurringTimeSchedule } from "./pricing-temporal.ts";
 import type { Catalog, ProviderModel } from "./schema.ts";
 import {
@@ -766,11 +768,21 @@ function websitePricingDetail(
       ...(mechanismRefs === undefined || mechanismRefs.length === 0 ? {} : { mechanismRefs }),
       observedAt: view.snapshot?.observed_at,
     });
+    const resource =
+      group === "optional_service" || group === "automatic_component" || group === "standalone"
+        ? view.books.find((book) => book.offers.includes(offer))
+        : undefined;
     const links =
       mechanismRefs === undefined ? [] : websiteMechanismLinks(view, offer, projected.selectors);
     const choice = group === "capacity" ? capacityChoice(offer, projected) : undefined;
     return {
       ...projected,
+      title: serviceOfferTitle(
+        resource?.scope.kind === "provider_resource"
+          ? resourceTitle(resource.name, resource.scope.resource_key)
+          : undefined,
+        projected.title,
+      ),
       ...(links.length === 0 ? {} : { mechanism_links: links }),
       ...(choice === undefined ? {} : { capacity_choice: choice }),
     };
@@ -857,6 +869,10 @@ function capacityChoice(
   };
 }
 
+function resourceTitle(name: string | undefined, key: string): string {
+  return name ?? formatSentenceCase(key.replaceAll("-", "_"));
+}
+
 function websiteProviderPricingResources(
   pricing: PricingCatalog,
   providerId: string,
@@ -877,7 +893,7 @@ function websiteProviderPricingResources(
         throw new Error(`Provider resource ${book.book_key} lost its scope`);
       return {
         id: book.id,
-        title: book.name ?? formatSentenceCase(book.scope.resource_key.replaceAll("-", "_")),
+        title: resourceTitle(book.name, book.scope.resource_key),
         kind:
           book.scope.resource_kind.namespace === "kmodels"
             ? formatSentenceCase(book.scope.resource_kind.value)
@@ -991,11 +1007,13 @@ function websiteOffer(
       });
     } else if (term.kind === "allowance") {
       term.variants.forEach((variant, index) => {
+        const terms = [...new Set(variant.observations.flatMap(({ raw }) => raw.fragment ?? []))];
         allowances.push({
           key: `${term.id}:allowance:${index}`,
           value: formatAllowanceBenefit(variant.benefit),
           target: allowanceTarget(variant.target, offer, atoms),
           reset: resetLabel(variant.reset),
+          ...(terms.length ? { published_terms: terms } : {}),
           ...scopeFields(variant, labels),
         });
       });
@@ -1675,9 +1693,26 @@ function chargeDriver(
   const signal = usageSignalDetails(binding.signal, atoms);
   const aggregation = aggregationDetails(binding.aggregation, atoms);
   const quantityKey = quantitySemanticsKey(binding);
+  const methods = binding.quantity_methods;
+  const calculation = methods?.length === 1 ? methods[0]?.calculation : undefined;
+  const minimum = calculation?.nodes[1];
+  const simpleMinimum =
+    calculation?.nodes.length === 2 &&
+    calculation.result === 1 &&
+    calculation.nodes[0]?.op === "signal" &&
+    minimum?.op === "minimum" &&
+    minimum.input === 0
+      ? formatAllowanceBenefit({
+          kind: "quantity",
+          quantity: { value: minimum.value, unit: signal.unit },
+        })
+      : undefined;
   return {
     label: signal.label,
     definition: signal.definition,
+    ...(simpleMinimum
+      ? { minimum: `${simpleMinimum} per ${aggregation.label.toLowerCase()}` }
+      : {}),
     aggregation: aggregation.label,
     ...(aggregation.definition === undefined
       ? {}
@@ -1709,12 +1744,14 @@ function quantitySemanticsKey(binding: ChargeBinding): string | undefined {
 }
 
 function usageSignalDetails(signal: UsageSignal, atoms: ProviderAtomIndex) {
-  if (signal.namespace === "kmodels") return standardUsageSignalDetails[signal.value];
+  if (signal.namespace === "kmodels")
+    return { ...standardUsageSignalDetails[signal.value], unit: standardUsageSignalUnit(signal) };
   const atom = providerAtom(atoms, signal.provider_id, "usage_signal", signal.value);
   if (atom.kind !== "usage_signal") throw new Error(`Invalid usage signal ${signal.value}`);
   return {
     label: atom.label ?? formatSentenceCase(signal.value),
     definition: atom.definition,
+    unit: atom.unit,
     resolution_phase: atom.resolution_phase,
   };
 }

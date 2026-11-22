@@ -34,6 +34,10 @@ const whenKnown = {
       <dt>When known</dt>
       <dd>{{ whenKnown[driver.resolution_phase] }}</dd>
     </div>
+    <div v-if="driver.minimum">
+      <dt>Minimum billable usage</dt>
+      <dd>{{ driver.minimum }}</dd>
+    </div>
   </dl>
 </template>
 

@@ -1,16 +1,46 @@
-import type { PriceDimension, PriceCategoricalValue } from "../catalog/pricing-schema.ts";
+import type { PriceCategoricalValue } from "../catalog/pricing-schema.ts";
 import type { WebsitePricingSelector } from "../catalog/website-schema.ts";
 
-export function isWebAssistedCodeExecution(
-  dimension: PriceDimension,
+export function serviceOfferTitle(resource: string | undefined, offer: string): string {
+  if (!resource) return offer;
+  return offer === "Public rates" || resource.toLowerCase() === offer.toLowerCase()
+    ? resource
+    : `${resource} · ${offer}`;
+}
+
+const webToolRequirement =
+  "Requires web_search_20260209 or web_fetch_20260209, or a later version. Tokens and successful web searches are billed separately.";
+
+export function serviceOperationCopy(
   value: PriceCategoricalValue,
-): boolean {
+  label: string,
+): {
+  label: string;
+  detail?: string;
+} {
+  if (value.namespace === "provider") {
+    if (value.provider_id === "anthropic" && value.value === "web-assisted")
+      return { label: "Request includes web search or web fetch", detail: webToolRequirement };
+    if (value.provider_id === "deepseek") {
+      if (value.value === "server_tools") return { label: "Called by the model" };
+      if (value.value === "standalone") return { label: "Direct API call" };
+    }
+    if (value.value === "standalone") return { label: "Used on its own" };
+  }
+  return { label };
+}
+
+export function isCodeExecutionSelector(selector: WebsitePricingSelector): boolean {
   return (
-    dimension.namespace === "kmodels" &&
-    dimension.value === "operation" &&
-    value.namespace === "provider" &&
-    value.provider_id === "anthropic" &&
-    value.value === "web-assisted"
+    selector.dimension.namespace === "kmodels" &&
+    selector.dimension.value === "operation" &&
+    selector.kind === "categorical" &&
+    selector.values.some(
+      ({ value }) =>
+        value.namespace === "provider" &&
+        value.provider_id === "anthropic" &&
+        value.value === "web-assisted",
+    )
   );
 }
 
@@ -24,14 +54,10 @@ export function pricingConditionHeading(selector: WebsitePricingSelector): {
 } {
   const { label } = selector;
   if (selector.dimension.namespace !== "kmodels") return { label };
-  if (
-    selector.kind === "categorical" &&
-    selector.values.some(({ value }) => isWebAssistedCodeExecution(selector.dimension, value))
-  )
+  if (isCodeExecutionSelector(selector))
     return {
       label: "Code execution",
-      description:
-        "Code execution is included when the request contains web_search_20260209 or web_fetch_20260209, or a later version of either tool. Tokens and successful web searches are billed separately.",
+      description: `Code execution has no extra charge with qualifying web tools. ${webToolRequirement}`,
     };
   const dashscope =
     selector.kind === "categorical" &&

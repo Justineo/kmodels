@@ -4,6 +4,7 @@ import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value
 import type { CommercialChoice } from "../catalog/pricing-schema.ts";
 import { queryWebsiteCommercialOffer } from "../catalog/website-commercial-query.ts";
 import { commercialConditionDimension } from "../pricing/commercial-vocabulary.ts";
+import PricingServiceRules from "./PricingServiceRules.vue";
 import {
   formatConditionValue,
   formatDimension,
@@ -22,6 +23,7 @@ import {
   projectWebsitePricingNotes,
   projectWebsitePricingTimeline,
   projectWebsiteRateQuery,
+  projectServiceRules,
 } from "../catalog/website-pricing-query.ts";
 import type {
   WebsitePriceApplicability,
@@ -51,7 +53,7 @@ import {
 const props = defineProps<{
   offer: WebsitePricingOffer;
   modelRef?: string | undefined;
-  explainCharges?: boolean;
+  service?: boolean;
   boundSelectors?: readonly PricingSelection[] | undefined;
   showCandidateRates?: boolean;
   matchedRows?: readonly string[] | undefined;
@@ -213,6 +215,30 @@ const fixedSelectionValues = computed(() =>
     ...(props.hideConditions ? [] : commercialQuery.value.selectors),
   ]),
 );
+const serviceRules = computed(() => {
+  if (
+    !props.service ||
+    commercialQuery.value.unresolved_choices.length ||
+    commercialOptions.value.some(
+      (option) =>
+        !commercialContext.value.fixed_choices.some(
+          (fixed) =>
+            fixed.dimension === option.dimension &&
+            canonicalJson(fixed.value) === canonicalJson(option.value),
+        ),
+    )
+  )
+    return;
+  return projectServiceRules(
+    displayOffer.value,
+    configurableSelectors.value,
+    props.modelRef,
+    fixedSelectionValues.value,
+    viewingUpcoming.value && timeline.value.upcoming
+      ? timeline.value.upcoming.effective_at
+      : liveNow.value,
+  );
+});
 const followedRegion = computed(() => {
   const region = props.preferredRegion;
   if (region === undefined) return;
@@ -245,6 +271,17 @@ const rateSelectors = computed(() => {
       fixedSelectionValues.value,
     ).unresolved_dimensions.map(canonicalJson),
   );
+  if (props.service) {
+    for (const row of [
+      ...displayOffer.value.states.filter((row) => row.state !== "numeric"),
+      ...displayOffer.value.allowances,
+      ...displayOffer.value.contributions,
+    ]) {
+      const result = evaluate(row.applicability, fixedSelectionValues.value);
+      if (result.state === "missing")
+        for (const dimension of result.missing_dimensions) keys.add(canonicalJson(dimension));
+    }
+  }
   return selectors.value.filter(
     (selector) => fixedPricingSelection(selector) !== undefined || keys.has(selector.key),
   );
@@ -325,7 +362,10 @@ const pricingNoteGroups = computed(() => {
   return [...groups.values()];
 });
 const showOfferStates = computed(
-  () => visibleStates.value.length > 0 && unfilteredOffer.value.states.length > 1,
+  () =>
+    visibleStates.value.length > 0 &&
+    (unfilteredOffer.value.states.length > 1 ||
+      (props.service && visibleStates.value.some((row) => row.state !== "numeric"))),
 );
 const showUnmatchedRates = computed(
   () =>
@@ -336,6 +376,7 @@ const showUnmatchedRates = computed(
 const showPublishedStatus = computed(
   () =>
     displayOffer.value.rates.length === 0 &&
+    !(props.service && unfilteredOffer.value.states.length) &&
     !showOfferStates.value &&
     displayOffer.value.state_summary !== "Metered pricing" &&
     displayOffer.value.state_summary !== "Incomplete" &&
@@ -408,10 +449,10 @@ function matches(applicability: WebsitePriceApplicability): boolean {
   return evaluate(applicability).state === "true";
 }
 
-function evaluate(applicability: WebsitePriceApplicability) {
+function evaluate(applicability: WebsitePriceApplicability, selections = selectionValues.value) {
   return props.modelRef === undefined
-    ? evaluateApplicability(applicability, selectionValues.value)
-    : evaluateModelApplicability(applicability, props.modelRef, selectionValues.value);
+    ? evaluateApplicability(applicability, selections)
+    : evaluateModelApplicability(applicability, props.modelRef, selections);
 }
 
 function matchingRows<
@@ -589,7 +630,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
       Commercial selection evidence is incomplete for this offer.
     </p>
     <PricingControls
-      v-if="!hideConditions"
+      v-if="!hideConditions && !serviceRules"
       :prefix="offer.id"
       :inferred="commercialContext.fixed_choices"
       :choices="commercialOptions"
@@ -618,8 +659,9 @@ function showNoteScope(scope: ScopeCopy): boolean {
       }}
     </p>
 
+    <PricingServiceRules v-if="serviceRules" :items="serviceRules" />
     <section
-      v-if="visibleRates.length > 0 || showUnmatchedRates"
+      v-else-if="visibleRates.length > 0 || showUnmatchedRates"
       class="offer-section"
       aria-label="Published rates"
     >
@@ -638,7 +680,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
       <p v-else class="context-prompt">No rates match the selected context.</p>
     </section>
 
-    <div v-if="showPublishedStatus" class="published-status">
+    <div v-if="!serviceRules && showPublishedStatus" class="published-status">
       <small>Status</small>
       <strong>{{ displayOffer.state_summary }}</strong>
     </div>
@@ -655,7 +697,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
       <span>See Pricing notes for the published details.</span>
     </div>
 
-    <section v-if="visibleAllowances.length > 0" class="offer-section">
+    <section v-if="!serviceRules && visibleAllowances.length > 0" class="offer-section">
       <header class="pricing-subheading"><h6>Included usage</h6></header>
       <div class="allowance-list">
         <div v-for="allowance in visibleAllowances" :key="allowance.key">
@@ -663,6 +705,10 @@ function showNoteScope(scope: ScopeCopy): boolean {
             <span class="allowance-value">{{ allowance.value }}</span>
             <small>{{ allowance.target }} · {{ allowance.reset }}</small>
             <small v-if="allowance.qualifier">{{ allowance.qualifier }}</small>
+            <details v-if="allowance.published_terms?.length">
+              <summary>Allowance terms</summary>
+              <small v-for="term in allowance.published_terms" :key="term">{{ term }}</small>
+            </details>
           </div>
         </div>
       </div>
@@ -689,8 +735,10 @@ function showNoteScope(scope: ScopeCopy): boolean {
       </div>
     </section>
 
-    <section v-if="showOfferStates" class="offer-section">
-      <header class="pricing-subheading"><h6>Pricing states</h6></header>
+    <section v-if="!serviceRules && showOfferStates" class="offer-section">
+      <header v-if="!service || visibleStates.length > 1" class="pricing-subheading">
+        <h6>Pricing states</h6>
+      </header>
       <div class="state-list">
         <div
           v-for="state in visibleStates"
@@ -700,7 +748,9 @@ function showNoteScope(scope: ScopeCopy): boolean {
         >
           <span class="state-marker"></span>
           <div>
-            <span class="state-label">{{ state.label }}</span>
+            <span class="state-label">{{
+              service && state.state === "included" ? "No extra charge" : state.label
+            }}</span>
             <small v-if="state.qualifier">{{ state.qualifier }}</small>
           </div>
         </div>
@@ -733,7 +783,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
       </div>
     </details>
 
-    <details v-if="explainCharges && chargeDrivers.length > 0" class="pricing-disclosure">
+    <details v-if="service && chargeDrivers.length > 0" class="pricing-disclosure">
       <summary>
         <span><UiIcon name="chevron-right" />What this rate charges for</span>
       </summary>

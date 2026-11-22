@@ -229,6 +229,11 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   mechanism and its rate block does not repeat that title. Supplementary offers use the user-facing
   kinds `Service charge`, `Included feature`, `Automatic charge`, or `Separate service`; they do not
   expose the schema term `optional`. Account plans and prepaid commitments are omitted.
+  Service cards lead with the resource name. Compare short, fully resolved operation tariffs
+  directly, including their currencies and allowances. Label an included service charge
+  **No extra charge** and a published free state **Free**. Keep the unit on numeric zero prices.
+  Overlapping scopes and unresolved prices use the normal selectors and pricing notes.
+  See [Service prices](commercial-topology.md#service-prices) for the projection rules.
   Offer choices show one
   reviewed title; they omit generated book labels, repeated default `Metered pricing` copy, and
   explanatory prose already implied by the control. Multiple mechanism choices form a compact

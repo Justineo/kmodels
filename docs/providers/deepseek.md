@@ -161,8 +161,9 @@ does not itself establish an extra service charge. Anthropic wildcard rewriting 
 not pricing or catalog identity.
 
 Search and Fetch have independent provider-service books, with no inferred model compatibility.
-Each has a standalone API offer and a separate offer for model-triggered server-side use. The
-standalone offer publishes one request tariff per currency; the guide states that a standalone
+Each book has one public offer with separate operation conditions for direct API calls and
+model-triggered server tools. Direct calls have one request tariff per billing currency.
+The guide states that a standalone
 request is billable only when it returns a result, and that searches calling the Search and Fetch
 APIs directly from the client are billed at the same prices (for example DeepSeek Harness with the
 DeepSeek Search API as the web search provider, and Codex Alpha Search). The linked Codex
@@ -377,9 +378,9 @@ the three applicable published rates, and their verified pricing-input methods. 
 definitions preserve the holiday rule. They do not
 show balance, concurrency, settlement, routing, provisioning, training or storage. Provider details
 show the independent Search and Fetch offers under the same `Other charges & services` disclosure
-and offer-card layout used for other providers' model-associated services. Both invocation mechanisms
-retain their own currency choices and validity timeline; the current declaration publishes no
-upcoming change.
+and offer-card layout used for other providers' model-associated services. Each card shows the
+model-invoked tool's free state alongside the direct API's CNY and USD prices per successful
+request when both operations are effective. The existing timeline controls the transition.
 This is provider context, not an assertion of model compatibility. Identical USD/CNY policy notes
 appear once when their scopes cover the complete offer; distinct rates retain their currency
 selector. The website presents rates rather than calculating a total or deciding the

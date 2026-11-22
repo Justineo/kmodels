@@ -334,6 +334,7 @@ const websiteStateRowSchema = z.strictObject({
 
 const websiteChargeDriverSchema = z.strictObject({
   label: nonEmpty,
+  minimum: nonEmpty.optional(),
   definition: nonEmpty,
   aggregation: nonEmpty,
   aggregation_definition: nonEmpty.optional(),
@@ -357,6 +358,7 @@ const websiteAllowanceRowSchema = z.strictObject({
   value: z.string().min(1),
   target: z.string().min(1),
   reset: z.string().min(1),
+  published_terms: z.array(nonEmpty).min(1).optional(),
   ...scopeFields,
 });
 

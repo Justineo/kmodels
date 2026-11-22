@@ -284,6 +284,44 @@ topology. It does not ask for usage quantities or show a total. Known parameters
 rate remain visible. Cost-driver definitions stay out of model details; exact source wording remains
 available as evidence.
 
+### Service prices
+
+Use the service book's resource name as the card heading in both model details and the provider
+service list. Show an offer name when it distinguishes a commercial relationship. For a service
+with a single public offer, the reader should see the service, the condition and the charge.
+
+Build each display row from the existing offer for the selected model, plan and date. Keep the
+applicability of its state, rates and allowances together. The row is a way to read the offer and
+has no price identity of its own. Use provider vocabulary for the human-readable condition and
+its source-backed qualification. For example, Anthropic's code execution condition describes
+which tool versions the request contains. DeepSeek's Search condition describes who invokes
+Search. Both use the operation dimension, with different meanings for its values.
+
+| Published evidence                                                         | What the reader sees                                                                          |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Numeric unit price, including an explicit zero                             | Amount, currency and billing unit for the named meter                                         |
+| Included service charge                                                    | **No extra charge** for the named service under the stated condition                          |
+| Explicit free state                                                        | **Free** for the named service under the stated condition                                     |
+| Allowance targeting a metered charge                                       | Quantity, pool and reset period beside the applicable rate, with shared pools identified once |
+| External billing, custom quote, unpublished price or unsupported operation | The specific status with its scope; a missing match remains unresolved                        |
+
+Show alternatives together when each row can state a complete, readable rule. Use “otherwise”
+only for an evidenced complement. Two observed values alone do not establish exhaustive coverage.
+Preserve independent conditions where they matter. DeepSeek's direct API price depends on currency
+and a successful request, while its server-tool free state can be read without choosing a currency.
+The compact comparison covers two to four operations with at most three billing currencies.
+Each operation and currency combination must resolve to one state and, when metered, one exact
+rate. An allowance must belong to one operation and apply across its displayed currencies.
+An identical metered price covering every operation appears once in the normal rate view.
+Keep the existing controls for overlapping conditions or combinations that need further input.
+Preserve qualifiers and incomplete pricing notes wherever they can change a displayed outcome.
+
+Examples include [Anthropic Code Execution](providers/anthropic.md#code-execution)
+with its organization allowance and container minimum, [DeepSeek Search and Fetch](providers/deepseek.md)
+with dated operation-specific billing, and [Gemini grounding](providers/gemini.md) with shared
+allowances. Each displayed rule should agree with the existing query for the same context.
+Preserve distinct answers for an explicit zero unit price, an included charge, and an unknown price.
+
 ## Validation and migration
 
 Stable identity derives from provider, book, offer, term, and semantic applicability—not amount,

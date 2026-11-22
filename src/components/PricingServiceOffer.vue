@@ -7,6 +7,7 @@ import type {
 import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
 import PricingStatus from "./PricingStatus.vue";
 import type { PricingRegion, WebsitePricingContext } from "../catalog/website-pricing-context.ts";
+import { isCodeExecutionSelector, serviceOfferTitle } from "../pricing/condition-presentation.ts";
 
 const props = defineProps<{
   offer: WebsitePricingOffer | WebsiteProviderPricingOffer;
@@ -17,29 +18,28 @@ const props = defineProps<{
   pricingContext?: WebsitePricingContext | undefined;
 }>();
 const pricing = computed(() => ("rates" in props.offer ? props.offer : undefined));
+const title = computed(() => {
+  // Older model detail chunks only carry the offer name.
+  const resource =
+    props.resourceTitle ??
+    (props.offer.title === "Public rates" && pricing.value?.selectors.some(isCodeExecutionSelector)
+      ? "Code Execution"
+      : undefined);
+  return serviceOfferTitle(resource, props.offer.title);
+});
 const kind = computed(() => {
   if (pricing.value?.group === "optional_service")
     return props.offer.state_summary === "Included" ? "Included feature" : "Service charge";
   if (pricing.value?.group === "automatic_component") return "Automatic charge";
   return "Separate service";
 });
-const state = computed(() =>
-  ["Metered pricing", "Included"].includes(props.offer.state_summary)
-    ? undefined
-    : props.offer.state_summary,
-);
 </script>
 
 <template>
   <article class="rate-offer" :data-kind="pricing?.group ?? 'standalone'">
     <header class="rate-offer-heading">
-      <div>
-        <small class="rate-kind"
-          >{{ kind }}<template v-if="resourceTitle"> · {{ resourceTitle }}</template></small
-        >
-        <h5>{{ offer.title }}</h5>
-      </div>
-      <small v-if="state" class="offer-state">{{ state }}</small>
+      <small class="rate-kind">{{ kind }}</small>
+      <h5>{{ title }}</h5>
     </header>
     <PricingOfferBreakdown
       v-if="pricing"
@@ -47,7 +47,7 @@ const state = computed(() =>
       :model-ref
       :preferred-region
       :pricing-context
-      explain-charges
+      service
     />
     <PricingStatus v-else-if="error" heading="Pricing unavailable" :message="error" refresh />
     <p v-else class="service-status" aria-live="polite">Loading pricing…</p>
@@ -67,10 +67,8 @@ const state = computed(() =>
 }
 
 .rate-offer-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
+  display: grid;
+  gap: var(--space-0-5);
 }
 
 .rate-offer-heading h5 {
@@ -79,14 +77,7 @@ const state = computed(() =>
   font-size: var(--font-size-body);
 }
 
-.rate-offer-heading > div {
-  display: grid;
-  min-width: 0;
-  gap: var(--space-0-5);
-}
-
 .rate-kind,
-.offer-state,
 .service-status {
   color: var(--color-text-muted);
   font-size: var(--font-size-meta);
@@ -97,9 +88,5 @@ const state = computed(() =>
   font-weight: var(--font-weight-medium);
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
-}
-
-.offer-state {
-  text-align: right;
 }
 </style>

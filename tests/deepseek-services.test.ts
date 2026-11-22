@@ -8,6 +8,8 @@ import { catalogSchema } from "../src/catalog/schema.ts";
 import { capturePricingReplaySources } from "../src/catalog/pricing-compilation.ts";
 import { websitePublication } from "../src/catalog/website-data.ts";
 import { projectWebsitePricingTimeline } from "../src/catalog/website-pricing-query.ts";
+import PricingServiceOffer from "../src/components/PricingServiceOffer.vue";
+import { renderComponent } from "./render-component.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
 const fixture = (name: string) =>
@@ -235,6 +237,17 @@ describe("DeepSeek native Search and Fetch charges", () => {
       expect(granted.current.states.map((state) => state.state)).toEqual(["free", "numeric"]);
       expect(granted.next_change_at).toBeUndefined();
       expect(granted.upcoming).toBeUndefined();
+      const html = await renderComponent(PricingServiceOffer, {
+        offer: granted.current,
+        resourceTitle: resource.title,
+      });
+      expect(html).toContain("Called by the model");
+      expect(html).toContain("Direct API call");
+      expect(html).toContain("Free");
+      expect(html).toContain("CNY 5");
+      expect(html).toContain("USD 0.75");
+      expect(html).toContain("HTTP 200");
+      expect(html).not.toMatch(/Public rates|<fieldset|No rates match/);
     }
   });
   it("uses the price pages for amounts while keeping guide quotes explicitly excluded", async () => {

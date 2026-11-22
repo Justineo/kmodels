@@ -7,7 +7,7 @@ import {
 import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
 import { formatDecimal, formatSentenceCase } from "./presentation.ts";
 import { commercialValueLabel } from "../pricing/commercial-vocabulary.ts";
-import { isWebAssistedCodeExecution } from "../pricing/condition-presentation.ts";
+import { serviceOperationCopy } from "../pricing/condition-presentation.ts";
 import { scaleDecimal } from "./pricing.ts";
 import { applicabilityContainedIn, unionApplicabilities } from "./pricing-canonical.ts";
 import {
@@ -744,7 +744,8 @@ export function formatConditionValue(
   value: PriceCategoricalValue,
   label?: string,
 ): string {
-  if (isWebAssistedCodeExecution(dimension, value)) return "With web search or fetch";
+  if (dimension.namespace === "kmodels" && dimension.value === "operation")
+    return serviceOperationCopy(value, label ?? formatCategoricalValue(value)).label;
   if (
     dimension.namespace === "kmodels" &&
     dimension.value === "speed" &&

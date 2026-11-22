@@ -48,7 +48,7 @@ import { validatePricingCatalog } from "./pricing-validation.ts";
 import { defaultProjectionPaths, type ProjectionPaths } from "./projection-paths.ts";
 import {
   projectCatalogPair,
-  websiteDataVersionForCatalog,
+  websiteDataVersionForPair,
   type PairProjections,
 } from "./projections.ts";
 import { catalogSchema, migrateCatalogStorage, type Catalog } from "./schema.ts";
@@ -641,14 +641,7 @@ function validatePairProjections(
     projections.exports.manifest.pair_id !== candidate.pairId
   )
     throw new Error("Projection assets do not match the accepted catalog pair");
-  if (
-    projections.ui.manifest.data_version !==
-    websiteDataVersionForCatalog(
-      candidate.catalog,
-      candidate.pricing.pricing_data_version,
-      candidate.inference?.source,
-    )
-  )
+  if (projections.ui.manifest.data_version !== websiteDataVersionForPair(candidate))
     throw new Error("UI assets have an invalid data version");
   if (projections.exports.manifest.data_version !== candidate.pairId)
     throw new Error("Export assets have an invalid data version");

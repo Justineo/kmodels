@@ -357,14 +357,15 @@ describe("provider pricing details", () => {
   it("uses the shared context controls for conditional service pricing", async () => {
     const html = await renderComponent(PricingOfferBreakdown, {
       offer: pricingOffer(),
-      explainCharges: true,
+      service: true,
     });
 
     expect(html).toMatch(/<legend\b[^>]*>Usage conditions<\/legend>/);
     expect(html).toContain("Promotion");
     expect(html).toContain("Yes");
     expect(html).toContain("No");
-    expect(html).toContain("2 pricing states");
+    expect(html).not.toContain("2 pricing states");
+    expect(html).not.toContain('class="published-status"');
     expect(html).not.toContain("/pricing/index.json");
   });
 
@@ -406,7 +407,7 @@ describe("provider pricing details", () => {
       },
     }));
     vi.setSystemTime(new Date("2026-10-20T00:00:00.000Z"));
-    const before = await renderComponent(PricingOfferBreakdown, { offer, explainCharges: true });
+    const before = await renderComponent(PricingOfferBreakdown, { offer, service: true });
     expect(before).toContain("$0<");
     expect(before).toContain(`datetime="${transition}"`);
     expect(before).toContain("Upcoming rates");
@@ -415,7 +416,7 @@ describe("provider pricing details", () => {
     expect(before).not.toContain("Future billing qualification");
 
     vi.setSystemTime(new Date(transition));
-    const after = await renderComponent(PricingOfferBreakdown, { offer, explainCharges: true });
+    const after = await renderComponent(PricingOfferBreakdown, { offer, service: true });
     expect(after).toContain("$0.75");
     expect(after).not.toContain("Upcoming rates");
     expect(after).not.toContain("Validity-qualified");
