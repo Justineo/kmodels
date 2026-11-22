@@ -118,7 +118,8 @@ case. A spent candidate cannot block a new case for a sibling. A separate public
 continuation still requires all ordinary gates.
 
 The Codex gateway accepts at most 60 serial Responses calls per stage, each bounded to 160 KB
-of text and 4,096 output tokens, and at most 40 public source acquisitions. The gateway admits
+of text and 4,096 output tokens, and at most 40 public source acquisitions. A revision can use
+up to 30 calls, leaving at least 30 for its final independent verification. The gateway admits
 one source acquisition and one Responses call concurrently so a slow acquisition cannot block
 the verifier's next inference call. Each route serves requests in arrival order with up to eight
 waiting for up to three minutes. A full queue returns HTTP 429 and an expired wait returns

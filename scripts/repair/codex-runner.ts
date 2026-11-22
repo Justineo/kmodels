@@ -738,7 +738,7 @@ async function main(): Promise<void> {
         takeoverKeys = Object.fromEntries(eligible.map(({ id, key }) => [id, key]));
         takeoverAttempted = true;
         await saveDecision("concrete_error");
-        gateway.startPhase(remaining - 1_000_000, 24);
+        gateway.startPhase(remaining - 1_000_000, 30);
         const text = await run(
           "takeover",
           work,
