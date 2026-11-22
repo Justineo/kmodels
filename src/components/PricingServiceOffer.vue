@@ -7,7 +7,7 @@ import type {
 import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
 import PricingStatus from "./PricingStatus.vue";
 import type { PricingRegion, WebsitePricingContext } from "../catalog/website-pricing-context.ts";
-import { isCodeExecutionSelector, serviceOfferTitle } from "../pricing/condition-presentation.ts";
+import { serviceOfferTitle } from "../pricing/condition-presentation.ts";
 
 const props = defineProps<{
   offer: WebsitePricingOffer | WebsiteProviderPricingOffer;
@@ -18,15 +18,9 @@ const props = defineProps<{
   pricingContext?: WebsitePricingContext | undefined;
 }>();
 const pricing = computed(() => ("rates" in props.offer ? props.offer : undefined));
-const title = computed(() => {
-  // Older model detail chunks only carry the offer name.
-  const resource =
-    props.resourceTitle ??
-    (props.offer.title === "Public rates" && pricing.value?.selectors.some(isCodeExecutionSelector)
-      ? "Code Execution"
-      : undefined);
-  return serviceOfferTitle(resource, props.offer.title);
-});
+const title = computed(() =>
+  serviceOfferTitle(props.resourceTitle, props.offer.title, pricing.value?.selectors),
+);
 </script>
 
 <template>

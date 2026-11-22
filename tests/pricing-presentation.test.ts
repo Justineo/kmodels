@@ -12,6 +12,7 @@ import {
   formatBillingMode,
   formatDenomination,
   formatDimension,
+  formatConditionValue,
   formatRateUnit,
   formatUnitExpression,
   isWholeNumberDimension,
@@ -186,6 +187,21 @@ const tokenPrice: UnitPrice = {
 };
 
 describe("canonical pricing presentation", () => {
+  it("scopes reviewed wording to the provider, dimension and value", () => {
+    const value = { namespace: "provider", provider_id: "deepseek", value: "standalone" } as const;
+    const operation = { namespace: "kmodels", value: "operation" } as const;
+    expect(formatConditionValue(operation, value)).toBe("Successful direct API call");
+    expect(formatConditionValue(operation, { ...value, provider_id: "test" }, "Independent")).toBe(
+      "Independent",
+    );
+    expect(
+      formatConditionValue(
+        { namespace: "provider", provider_id: "deepseek", value: "operation" },
+        value,
+        "Independent",
+      ),
+    ).toBe("Independent");
+  });
   it.each([
     ["free", "0"],
     ["not_published", "Unpublished"],

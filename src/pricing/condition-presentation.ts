@@ -1,49 +1,71 @@
-import type { PriceCategoricalValue } from "../catalog/pricing-schema.ts";
+import { canonicalJsonKey } from "../catalog/canonical-value.ts";
+import type { PriceCategoricalValue, PriceDimension } from "../catalog/pricing-schema.ts";
 import type { WebsitePricingSelector } from "../catalog/website-schema.ts";
 
-export function serviceOfferTitle(resource: string | undefined, offer: string): string {
+export function serviceOfferTitle(
+  resource: string | undefined,
+  offer: string,
+  legacySelectors?: readonly WebsitePricingSelector[],
+): string {
+  // Older model chunks sometimes omit the resource title. Keep their established name.
+  if (
+    !resource &&
+    offer === "Public rates" &&
+    legacySelectors?.some(
+      (s) =>
+        s.dimension.namespace === "kmodels" &&
+        s.dimension.value === "operation" &&
+        s.kind === "categorical" &&
+        s.values.some(
+          ({ value }) =>
+            value.namespace === "provider" &&
+            value.provider_id === "anthropic" &&
+            value.value === "web-assisted",
+        ),
+    )
+  )
+    return "Code Execution";
   if (!resource) return offer;
   return offer === "Public rates" || resource.toLowerCase() === offer.toLowerCase()
     ? resource
     : `${resource} · ${offer}`;
 }
 
-const webToolRequirement =
-  "Requires web_search_20260209 or web_fetch_20260209, or a later version. Tokens and successful web searches are billed separately.";
-
-export function serviceOperationCopy(
-  value: PriceCategoricalValue,
-  label: string,
-): {
+interface ConditionWording {
+  provider: string;
+  dimension: PriceDimension;
+  value: string;
   label: string;
-  detail?: string;
-} {
-  if (value.namespace === "provider") {
-    if (value.provider_id === "anthropic" && value.value === "web-assisted")
-      return {
-        label: "Request includes qualifying web search or web fetch",
-        detail: webToolRequirement,
-      };
-    if (value.provider_id === "deepseek") {
-      if (value.value === "server_tools") return { label: "Model tool call" };
-      if (value.value === "standalone") return { label: "Successful direct API call" };
-    }
-    if (value.value === "standalone") return { label: "Used on its own" };
-  }
-  return { label };
+  description?: string;
 }
 
-export function isCodeExecutionSelector(selector: WebsitePricingSelector): boolean {
-  return (
-    selector.dimension.namespace === "kmodels" &&
-    selector.dimension.value === "operation" &&
-    selector.kind === "categorical" &&
-    selector.values.some(
-      ({ value }) =>
-        value.namespace === "provider" &&
-        value.provider_id === "anthropic" &&
-        value.value === "web-assisted",
-    )
+const operation = { namespace: "kmodels", value: "operation" } as const;
+const reviewedValues: readonly ConditionWording[] = [
+  { provider: "anthropic", dimension: operation, value: "standalone", label: "Used on its own" },
+  {
+    provider: "anthropic",
+    dimension: operation,
+    value: "web-assisted",
+    label: "Request includes qualifying web search or web fetch",
+    description:
+      "Requires web_search_20260209 or web_fetch_20260209, or a later version. Tokens and successful web searches are billed separately.",
+  },
+  { provider: "deepseek", dimension: operation, value: "server_tools", label: "Model tool call" },
+  {
+    provider: "deepseek",
+    dimension: operation,
+    value: "standalone",
+    label: "Successful direct API call",
+  },
+];
+
+export function conditionWording(dimension: PriceDimension, value: PriceCategoricalValue) {
+  if (value.namespace !== "provider") return;
+  return reviewedValues.find(
+    (entry) =>
+      entry.provider === value.provider_id &&
+      entry.value === value.value &&
+      canonicalJsonKey(entry.dimension) === canonicalJsonKey(dimension),
   );
 }
 
@@ -57,11 +79,6 @@ export function pricingConditionHeading(selector: WebsitePricingSelector): {
 } {
   const { label } = selector;
   if (selector.dimension.namespace !== "kmodels") return { label };
-  if (isCodeExecutionSelector(selector))
-    return {
-      label: "Web tool use",
-      description: `Code execution has no extra charge with qualifying web tools. ${webToolRequirement}`,
-    };
   const dashscope =
     selector.kind === "categorical" &&
     selector.values.some(

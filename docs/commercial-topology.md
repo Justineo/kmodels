@@ -309,7 +309,8 @@ Services use the same condition controls and rate grid as model usage pricing. E
 selected conditions together. A remaining condition appears when it can change a price, state,
 allowance or additional charge. A lookup that already resolves can show its result immediately.
 For DeepSeek, choosing a model tool call resolves the free state; a direct API call still requires
-the billing currency. Keep the published meter, unit, qualifications and allowance scope attached
+the billing currency. Reviewed provider wording can label or explain a condition value. It has no
+role in selecting a control, deciding applicability or calculating the price. Keep the published meter, unit, qualifications and allowance scope attached
 to each result. A service summary identifies the conditions or a resolved price before expansion.
 
 Examples include [Anthropic Code Execution](providers/anthropic.md#code-execution)

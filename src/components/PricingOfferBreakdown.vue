@@ -7,10 +7,7 @@ import {
   commercialConditionDimension,
   commercialDimensionLabels,
 } from "../pricing/commercial-vocabulary.ts";
-import {
-  pricingConditionHeading,
-  serviceOperationCopy,
-} from "../pricing/condition-presentation.ts";
+import { pricingConditionHeading, conditionWording } from "../pricing/condition-presentation.ts";
 import {
   formatConditionValue,
   formatDimension,
@@ -401,15 +398,13 @@ const serviceSummary = computed(() => {
     return state.state === "included" ? "No extra charge" : state.label;
   return "View pricing";
 });
-const operationDetail = computed(() => {
-  for (const selected of selectionValues.value)
-    if (
-      selected.kind === "categorical" &&
-      selected.dimension.namespace === "kmodels" &&
-      selected.dimension.value === "operation"
-    )
-      return serviceOperationCopy(selected.value, selected.value.value).detail;
-});
+const conditionDescriptions = computed(() =>
+  selectionValues.value.flatMap((selection) =>
+    selection.kind === "categorical"
+      ? (conditionWording(selection.dimension, selection.value)?.description ?? [])
+      : [],
+  ),
+);
 
 watch([() => props.offer.id, () => props.modelRef], () => {
   inputs.value = {};
@@ -792,7 +787,9 @@ function showNoteScope(scope: ScopeCopy): boolean {
       </div>
     </section>
 
-    <p v-if="operationDetail" class="context-prompt">{{ operationDetail }}</p>
+    <p v-for="description in conditionDescriptions" :key="description" class="context-prompt">
+      {{ description }}
+    </p>
 
     <details v-if="visibleUnnormalized.length > 0" class="pricing-disclosure">
       <summary>
