@@ -26,7 +26,10 @@ const operations = priceStates.map((state, index) => {
   return { state, label: labels[state], key, value, applicability };
 });
 
-function mixedService(metered: (typeof operations)[number]): PricingPerformanceCase {
+function mixedService(
+  metered: (typeof operations)[number],
+  availableOperations = operations,
+): PricingPerformanceCase {
   const offer: WebsitePricingOffer = {
     id: "a".repeat(64),
     title: "Service",
@@ -54,10 +57,10 @@ function mixedService(metered: (typeof operations)[number]): PricingPerformanceC
         label: "Operation",
         dimension,
         key: JSON.stringify(dimension),
-        values: operations.map(({ key, value }) => ({ key, value, label: key })),
+        values: availableOperations.map(({ key, value, label }) => ({ key, value, label })),
       },
     ],
-    states: operations.map(({ key, state, label, applicability }) => ({
+    states: availableOperations.map(({ key, state, label, applicability }) => ({
       key,
       state,
       label,
@@ -131,4 +134,36 @@ export async function checkServicePricing(page: Page) {
   assert.deepEqual(cleared.rates, []);
   assert.deepEqual(await page.locator(".state-label:visible").allTextContents(), []);
   assert.deepEqual(cleared.controls, initial.controls);
+
+  const included = operations.find(({ state }) => state === "included");
+  assert(included);
+  await page.evaluate(
+    (subject) => window.pricingBenchmark.mount(subject, "offer"),
+    mixedService(metered, [metered, included]),
+  );
+  const group = page.getByRole("radiogroup", { name: "Operation" });
+  const meteredSegment = group.locator("label", { hasText: metered.label });
+  const includedSegment = group.locator("label", { hasText: included.label });
+  const [meteredBox, includedBox] = await Promise.all([
+    meteredSegment.boundingBox(),
+    includedSegment.boundingBox(),
+  ]);
+  assert(meteredBox && includedBox);
+  assert(includedBox.width < meteredBox.width, "Each segment should fit its own label");
+  assert(
+    await group.evaluate(
+      (track) => track.getBoundingClientRect().width < (track.parentElement?.clientWidth ?? 0),
+    ),
+    "The radio group should fit its segments within the available space",
+  );
+
+  await includedSegment.click();
+  const app = page.locator("#app");
+  await app.evaluate((element) => (element.style.width = "120px"));
+  const dropdown = page.getByRole("combobox", { name: "Operation" });
+  await dropdown.waitFor();
+  assert.equal(await dropdown.inputValue(), included.key);
+  await app.evaluate((element) => element.style.removeProperty("width"));
+  await group.waitFor();
+  assert(await group.getByRole("radio", { name: included.label }).isChecked());
 }

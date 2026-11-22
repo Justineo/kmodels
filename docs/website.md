@@ -44,9 +44,10 @@ Apply their native predicates without restricting unrelated price rows to a comm
 narrower scope. Unknown price evidence remains unknown.
 Use consistent control heights and borders, collapsing to one column on narrow
 screens. Keep labels above controls without persistent help text. Choice controls with at most five
-options render as a segmented radio group at its natural width, with equal segments sized by the
-longest label. Use a dropdown when the group exceeds the available width, when there are more
-options, or when the empty value has its own meaning, such as following the pricing region.
+options render as a segmented radio group at its natural width, with each segment sized to its
+own label. This also applies to **Other charges & services**. Use a dropdown when the group exceeds
+the available width, when there are more options, or when the empty value has its own meaning,
+such as following the pricing region.
 Selecting the active segment again clears it, matching the dropdown placeholder. Region and deployment-scope
 labels use the shared keyboard- and touch-accessible tooltip. For Alibaba Cloud Model Studio,
 these explain API access/data storage region versus inference execution scope; Global does not

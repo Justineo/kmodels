@@ -87,11 +87,10 @@ function choose(value: string): void {
   min-width: 0;
 }
 
-/* Equal columns sized by the longest label; the group keeps its natural width. */
 .ui-segments {
   display: inline-grid;
   width: max-content;
-  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-columns: max-content;
   grid-auto-flow: column;
   height: var(--control-height-default);
   padding: var(--space-0-5);
