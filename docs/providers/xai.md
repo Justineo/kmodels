@@ -102,7 +102,8 @@ no model is selected as their storage carrier. Service-only results can be captu
 Services whose applicability names models still require the exact admitted model identities.
 
 Optional `limit_details` uses `card_limits` from a unique owned `At a glance` table in the
-sectioned companion. Its literal Model name must match one admitted public identity or unique
+sectioned companion. Service overview tables without model limit fields are outside this claim.
+Its literal Model name must match one admitted public identity or unique
 owned alias, and the table's API links must resolve to reviewed operation references. A missing
 unqualified `api_endpoints` summary does not erase that independent, explicitly scoped declaration.
 `No text output limit` becomes `no_separate_cap` for `text_output_tokens` with the exact bound

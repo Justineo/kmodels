@@ -95,6 +95,8 @@ Optional `limit_details` keeps those distinctions in two independent source-owne
 [GenerateContent variant](https://aistudio.google.com/docs/long-decode?generate-content=true).
 Select the exact URL including its query; these are different documents with separate hashes.
 Only each guide's literal model list can qualify already admitted exact catalog IDs.
+AI Studio can serve the guides as plain Markdown or inside its native `noscript` Markdown payload.
+Extraction uses the same owned text in either case, and evidence hashes the fetched representation.
 
 Preserve the combined input/thinking/output context budget, API-specific omitted-parameter defaults
 and per-hop bounds separately. The GenerateContent combined budget also includes function calls.

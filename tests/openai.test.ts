@@ -915,6 +915,29 @@ describe("OpenAI adapters", () => {
     });
     expect(findings).toEqual([]);
   });
+  it("preserves the CSAM moderation endpoint without inferring unspecified regions", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-data-residency");
+    if (source === undefined) throw new Error("Missing residency source");
+    const findings: SourceContractEvidence[] = [];
+    const body = (await fixture("openai/data-residency.md")).replace(
+      "| `Code Interpreter tool`",
+      "| `/v1/moderations` (CSAM classifier) | Moderation | Not specified | Not specified | `omni-moderation-csam-latest` | — | — |\n| `Code Interpreter tool`",
+    );
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body,
+      observedAt,
+      onContractFinding: (finding) => findings.push(finding),
+    }).models;
+    const classification = models.find(
+      ({ model_id }) => model_id === "omni-moderation-csam-latest",
+    );
+    expect(classification?.api_endpoints).toEqual([{ name: "Moderation", path: "v1/moderations" }]);
+    expect(classification?.availability ?? []).toEqual([]);
+    expect(findings).toEqual([]);
+  });
   it("keeps independently scoped regional exception groups separate", async () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-data-residency");

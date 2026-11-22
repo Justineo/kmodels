@@ -144,6 +144,33 @@ it("records a model card without a price as unknown instead of source-contract d
   ).toMatchObject({ pricing_state: "unknown", price_facts: [] });
 });
 
+it("resolves an exact replacement card, including its deprecated immediate successor", async () => {
+  const evidence = await bundle();
+  const observedAt = "2026-10-30T00:00:00Z";
+  const parse = (target: string, status: string) =>
+    parseSource({
+      provider,
+      source: catalogSource,
+      observedAt,
+      body: JSON.stringify({
+        ...evidence,
+        documents: evidence.documents.map(({ url, body }) => ({
+          url,
+          body: url.endsWith("/codestral-24-05.md")
+            ? `${body.trimEnd()}\n- Replacement: [Mistral Medium 3.5](/models/${target})\n`
+            : body.replace("- Status: GA", `- Status: ${status}`),
+        })),
+      }),
+    }).models.find(({ model_id }) => model_id === "codestral-2405");
+  expect(parse("mistral-medium-3-5-26-04", "Deprecated")).toMatchObject({
+    status: "retired",
+    replacement_model_ids: ["mistral-medium-3-5"],
+    price_facts: [],
+  });
+  expect(parse("mistral-medium-3-5-26-04", "Retired")?.replacement_model_ids).toEqual([]);
+  expect(parse("mistral-medium-3-5-26-05", "GA")?.replacement_model_ids).toEqual([]);
+});
+
 it("does not replace an inventory identity with a different model card", async () => {
   const evidence = await bundle();
   evidence.documents = evidence.documents.map((document) => ({

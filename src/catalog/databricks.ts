@@ -521,7 +521,7 @@ interface Span {
   remaining: number;
 }
 
-function rows($: Document, table: Selection): string[][] {
+function rows($: Document, table: Selection, width: number): string[][] {
   const spans: (Span | undefined)[] = [];
   const result: string[][] = [];
   table.find("tbody tr").each((_rowIndex, rowElement) => {
@@ -544,6 +544,7 @@ function rows($: Document, table: Selection): string[][] {
         if (
           !Number.isSafeInteger(colspan) ||
           colspan < 1 ||
+          colspan > width - column ||
           !Number.isSafeInteger(rowspan) ||
           rowspan < 1
         )
@@ -615,6 +616,7 @@ function add(
 function tieredVariants(
   value: SourcePriceFact,
   label: string,
+  modelName: string,
   qualifier: string,
   column: string,
   notes: string[],
@@ -639,29 +641,32 @@ function tieredVariants(
   let variants = [{ ...value, conditions }];
   const marker = label.match(/\*+/)?.[0];
   if (marker !== undefined) {
-    // A family note is local to its table section; a named note must match this row.
+    const modelTokens = identity(modelName);
+    // A family note is local to its table section; a named note must match this model.
     const applies = (note: string): boolean => {
       const family = note.match(/DBU rates for these (.+?) models/)?.[1];
-      if (family !== undefined)
-        return identity(family).every((part) => identity(label).includes(part));
+      if (family !== undefined) return identity(family).every((part) => modelTokens.includes(part));
       const named = note
         .replace(/^\*+\s*(?:NOTE:\s*)?(?:The\s+)?/, "")
         .match(/^(.+?) (?:DBU )?rates shown here/)?.[1];
       return (
         named !== undefined &&
-        alternatives(named.replace(/,\s*and\s+/g, ", ")).some((name) =>
-          identity(name).every((part) => identity(label).includes(part)),
-        )
+        named
+          .replace(/,\s*and\s+/g, ", ")
+          .split(/\s+and\s+/)
+          .flatMap(alternatives)
+          .some((name) => {
+            const tokens = identity(name);
+            return tokens.length > 0 && tokens.every((part) => modelTokens.includes(part));
+          })
       );
     };
-    const exact = notes.filter((note) => note.match(/^\*+/)?.[0] === marker);
+    const exact = notes.filter((note) => note.match(/^\*+/)?.[0] === marker && applies(note));
     // A published row marker can be a prefix of the note that names it: one table marks
     // Gemini 3.6/3.7/3.8 Flash rows `**` while their promotion note is `***`.
-    const candidates = exact.some(applies)
-      ? exact
-      : notes.filter((note) => note.match(/^\*+/)?.[0]?.startsWith(marker) === true);
-    const note = candidates.filter(applies);
-    const selected = note.length === 1 ? note[0] : undefined;
+    const matching =
+      exact.length > 0 ? exact : notes.filter((note) => note.startsWith(marker) && applies(note));
+    const selected = matching.length === 1 ? matching[0] : undefined;
     if (selected === undefined) return;
     const discount = selected.match(
       /do not include a promotional discount of (\d+)%.*?expires on ([A-Z][a-z]+ \d{1,2}, \d{4})/,
@@ -759,13 +764,15 @@ function tieredPrices(
             .filter((_index, node) => $(node).closest("table").length === 0)
             .map((_index, node) => text($(node).text()))
             .get();
-    const headers = table
-      .find("thead th")
-      .map((_index, cell) => text($(cell).text()))
-      .get();
+    const headerCells = table.find("thead th");
+    const headers = headerCells.map((_index, cell) => text($(cell).text())).get();
     if (headers[0] !== "Model") throw new Error("Databricks tiered pricing header changed");
-    const qualifier = headers[1] === "";
-    const headingIndex = qualifier ? 2 : 1;
+    const separateQualifier = headers[1] === "";
+    const modelColumns = headerCells.first().attr("colspan") ?? "1";
+    if (!["1", "2"].includes(modelColumns) || (modelColumns === "2" && separateQualifier))
+      throw new Error("Databricks tiered pricing model header span changed");
+    const qualifier = separateQualifier || modelColumns === "2";
+    const headingIndex = separateQualifier ? 2 : 1;
     const heading = headers[headingIndex] ?? "";
     if (
       /^(?:Provisioned Throughput \(DBU Per Hour(?: Per \d+ Model Units)?\)|Batch Inference \(DBU Per Hour\))$/.test(
@@ -794,9 +801,9 @@ function tieredPrices(
     )
       throw new Error("Databricks tiered token pricing columns changed");
     tokenTables += 1;
-    for (const row of rows($, table)) {
-      if (row.length !== 1 + Number(qualifier) + columns.length)
-        throw new Error("Databricks tiered token pricing row changed");
+    const width = 1 + Number(qualifier) + columns.length;
+    for (const row of rows($, table, width)) {
+      if (row.length !== width) throw new Error("Databricks tiered token pricing row changed");
       const label = row[0] ?? "";
       const targets = matched(models, label, true);
       if (targets.length === 0) {
@@ -842,6 +849,7 @@ function tieredPrices(
               : tieredVariants(
                   value,
                   label,
+                  model.name,
                   context,
                   column,
                   notes,
@@ -915,7 +923,7 @@ function openPrices(
   )
     throw new Error("Databricks open-model pricing table changed shape");
   const exactPriority = new Set<string>();
-  for (const values of rows($, table)) {
+  for (const values of rows($, table, headers.length)) {
     const label = values[0];
     if (label === undefined) continue;
     const priority = /\s+\(Priority\)$/i.test(label);
@@ -1192,7 +1200,7 @@ function partnerPrices(
   const pricedModels = new Set<string>();
   const starred = new Set<string>();
   tables.each((_tableIndex, tableElement) => {
-    const tableRows = rows($, $(tableElement));
+    const tableRows = rows($, $(tableElement), 8);
     const provider = tableRows[0]?.[0];
     if (
       provider !== "OpenAI" &&
@@ -1291,21 +1299,32 @@ function priorityModels(
   const catalog = new Map(models.map((model) => [model.model_id, model]));
   const support = new Map<string, SourcePriceFact["conditions"]>();
   $("main table").each((_tableIndex, table) => {
-    const headers = $(table)
+    const header = $(table)
       .find("thead th")
       .map((_index, cell) => text($(cell).text()))
-      .get();
-    if (headers.join("|") !== "Provider|Model|Endpoint name|Notes") return;
+      .get()
+      .join("|");
+    if (
+      header !== "Provider|Model|Endpoint name|Notes" &&
+      header !== "Provider|Model|Endpoint or model service name|Notes"
+    )
+      return;
     $(table)
       .find("tbody tr")
       .each((_rowIndex, row) => {
         const cells = $(row).children("td");
         const ids = endpointIds($, cells.eq(2));
+        const note = text(cells.eq(3).text());
+        if (
+          ids.length === 0 &&
+          /^system\.ai\.[a-z0-9-]+$/u.test(text(cells.eq(2).text())) &&
+          note === "Query through Unity Gateway."
+        )
+          return;
         if (ids.length !== 1) throw new Error("Databricks priority row omitted its endpoint ID");
         const id = ids[0];
         if (id === undefined || !catalog.has(id))
           throw new Error(`Databricks priority table named unknown catalog model ${id ?? ""}`);
-        const note = text(cells.eq(3).text());
         const conditions: SourcePriceFact["conditions"] = {
           service_tier: "priority",
           ...(/global endpoint only/i.test(note) ? { endpoint: "global" } : {}),

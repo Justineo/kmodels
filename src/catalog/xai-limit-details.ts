@@ -32,7 +32,7 @@ export function applyXaiLimitDetails(
     if (!path) continue;
     const section = prose.slice(marker.index + marker[0].length, markers[index + 1]?.index);
     const table = markdownSection(section, 2, "At a glance");
-    if (!table) continue;
+    if (!table || !/^\|\s*(?:Model name|Output limit)\s*\|/m.test(table)) continue;
     try {
       const values = markdownTableRows(table, ["Property", "Value"]);
       const names = values.filter((row) => row.get("Property") === "Model name");

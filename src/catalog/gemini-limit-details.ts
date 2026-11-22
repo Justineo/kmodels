@@ -104,12 +104,12 @@ function interactionClaims(prose: string): Claims {
     throw new Error("Conflicting interaction shared budget");
   const hops = one(
     prose,
-    /^Generating hundreds of thousands of tokens[^\r\n]+up to [\d.]+K tokens \(([\d,]+)\) per hop on background calls, streaming calls, and non-streaming (.+?) calls, or up to [\d.]+K tokens \(([\d,]+)\) per non-streaming hop on (.+?)\.$/gm,
+    /^Generating hundreds of thousands of tokens[^\r\n]+up to [\d.]+K tokens \(([\d,]+)\) per hop on background calls, streaming calls, and non-streaming (?:(.+?) calls|calls on (.+?)), or up to [\d.]+K tokens \(([\d,]+)\) per non-streaming hop on (.+?)\.$/gm,
   );
   const highTokens = count(part(hops, 1));
-  const highIds = ids(part(hops, 2));
-  const lowTokens = count(part(hops, 3));
-  const lowIds = ids(part(hops, 4));
+  const highIds = ids(hops[2] ?? part(hops, 3));
+  const lowTokens = count(part(hops, 4));
+  const lowIds = ids(part(hops, 5));
   checkBranches(modelIds, highIds, lowIds);
   const section = markdownSection(prose, 2, "Output limits");
   if (!section) throw new Error("Missing interaction output limits");
@@ -384,6 +384,7 @@ export function applyGeminiLimitDetails(
   input: SourceParseInput,
   models: readonly ParsedProviderModel[],
   bundle: LinkedBundle,
+  studioMarkdown: (body: string) => string | undefined,
 ): void {
   for (const guide of guides) {
     const documents = bundle.documents.filter(({ url }) => url === guide.url);
@@ -394,7 +395,10 @@ export function applyGeminiLimitDetails(
       continue;
     }
     try {
-      const prose = markdownProse(document.body).replace(/[ \t]+\{% id="[^"]+" %\}(?=\r?$)/gm, "");
+      const prose = markdownProse(studioMarkdown(document.body) ?? document.body).replace(
+        /[ \t]+\{% id="[^"]+" %\}(?=\r?$)/gm,
+        "",
+      );
       const claims =
         guide.api === "interactions" ? interactionClaims(prose) : generateContentClaims(prose);
       for (const model of models) {

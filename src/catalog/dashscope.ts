@@ -1040,8 +1040,7 @@ function recommendedCardAttributes(raw: string): Map<string, string> {
 /**
  * The Markdown overview renders its model listing as `Card` components. A card
  * titled with an exact ID and linked to a regional Model Plaza detail page carries
- * both identity and region; a card that links to a documentation page or omits the
- * link carries identity only and is reported as a contract finding.
+ * both identity and region. An exact model-guide link carries no region.
  */
 function parseDashscopeRecommendedComponents(input: ParseInput): Map<string, ProviderModel> {
   const models = new Map<string, ProviderModel>();
@@ -1054,6 +1053,7 @@ function parseDashscopeRecommendedComponents(input: ParseInput): Map<string, Pro
     if (title === undefined) continue;
     const id = exactId(text(title));
     const href = attributes.get("href");
+    if (id !== undefined && href === `/help/en/model-studio/${id.replaceAll(".", "-")}`) continue;
     let region: string | undefined;
     if (href !== undefined && href.startsWith("https://modelstudio.console.alibabacloud.com/")) {
       try {
@@ -3182,22 +3182,31 @@ export function parseDashscopeReleases(input: ParseInput): SourceParseResult {
     if (article !== undefined) {
       const $ = load(article);
       for (const [entryIndex, element] of $(".rkb-update").toArray().entries()) {
-        const anchor = $(element).attr("id") ?? "";
+        const entry = $(element);
+        const anchor = entry.attr("id") ?? "";
         // Monthly notice blocks also use rkb-update; only regional model entries publish a date.
         if (!anchor.startsWith("region-")) continue;
         const path = `/documents/${documentIndex}/updates/${entryIndex}`;
-        const parsedDate = z.iso
-          .date()
-          .safeParse(/^region-\d+-(\d{4}-\d{2}-\d{2})$/.exec(anchor)?.[1]);
+        const regionalAnchor = /^region-\d+-(\d{4}-\d{2}-\d{2})(?:-([a-z0-9.-]+)-local)?$/.exec(
+          anchor,
+        );
+        const parsedDate = z.iso.date().safeParse(regionalAnchor?.[1]);
         const entryIds = unique(
-          $(element)
+          entry
             .find("h4")
             .first()
             .text()
             .split(",")
             .flatMap((candidate) => exactId(candidate) ?? []),
         );
-        if (!parsedDate.success) {
+        const localId = regionalAnchor?.[2];
+        if (
+          !parsedDate.success ||
+          (localId !== undefined &&
+            (entryIds.length !== 1 ||
+              entryIds[0] !== localId ||
+              text(entry.find(".rkb-update-meta .rkb-update-label").text()) !== parsedDate.data))
+        ) {
           findings.push(`${path}/release_date`);
           continue;
         }

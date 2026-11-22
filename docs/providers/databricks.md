@@ -139,8 +139,9 @@ pricing joins remain required.
 
 - Current pricing pages separate Standard and Priority DBU-per-million-token tables from hourly
   Provisioned Throughput and Batch Inference tables. Read the reviewed token headers and their
-  column order, including the optional row qualifier and one-hour cache-write column; discard
-  hourly compute tables. A token table may publish only an Input column, as in the Jev row;
+  column order, including the optional row qualifier and one-hour cache-write column. The qualifier
+  has either a blank header cell or a two-column `Model` heading covering both identity and
+  qualifier. Hourly compute tables are excluded. A token table may publish only an Input column, as in the Jev row;
   that establishes an input rate without inventing an output rate. Comma-separated version labels expand to exact catalog matches.
   A variant that resolves exactly takes precedence over broader name matching, so a combined row
   does not also bind a sibling whose catalog display name carries a provider suffix such as
@@ -188,9 +189,12 @@ pricing joins remain required.
 - An exact model-qualified Priority DBU row is sufficient price evidence even when the support page
   has not yet listed that endpoint. In that case Kmodels retains only the published
   `service_tier=priority` condition; it does not invent region, routing, or fallback conditions.
+- The Priority support table can also list system model services for Unity Gateway. Rows explicitly
+  scoped to Unity Gateway do not extend the Foundation Model API endpoint contract.
 - Reviewed combined-table promotion percentages, validity dates, launch targets, and referenced
   Standard-rate families are parsed from first-party footnotes. Tiered tables also recognize
   explicit discounts, post-promotion percentages, and the documented two-times list-price rule.
+  A footnote naming several models qualifies the marked rates of each matched model separately.
   Model IDs, rates, and dates are not hard-coded.
   Public promotion and launch notes establish successive rate versions within the same offer.
   Keep the promotion's inclusive end date and the following calendar date as the start of the

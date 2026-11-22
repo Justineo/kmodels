@@ -2357,7 +2357,7 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
   const values = [...models.values()].sort((left, right) =>
     left.model_id.localeCompare(right.model_id),
   );
-  applyGeminiLimitDetails(input, values, bundle);
+  applyGeminiLimitDetails(input, values, bundle, geminiStudioMarkdown);
   applyGeminiCapabilityDetails(input, capabilityPages, bundle, geminiStudioMarkdown);
   assertItemCount("Gemini model catalog", values.length, extractor.minModels, extractor.maxModels);
   return values;

@@ -67,6 +67,7 @@ interface Draft {
   deprecatedAt?: string;
   retiredAt?: string;
   replacement?: string;
+  replacementSlug?: string;
 }
 
 type Reconcile = Input["onPricingReconciliation"];
@@ -527,9 +528,9 @@ function markdownDraft(sourceSlug: string, body: string): Draft | undefined {
   const contextTokens = tokens(fields.get("Context length"));
   const maxOutputTokens = tokens(fields.get("Output token limit"));
   const version = fields.get("Version");
-  const replacement = fields
+  const replacementSlug = fields
     .get("Replacement")
-    ?.match(/^\[([^\]]+)\]\(\/models\/[a-z0-9-]+\)$/)?.[1];
+    ?.match(/^\[[^\]]+\]\(\/models\/([a-z0-9-]+)\)$/)?.[1];
   return {
     sourceSlug,
     name,
@@ -556,7 +557,7 @@ function markdownDraft(sourceSlug: string, body: string): Draft | undefined {
     ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
     ...(deprecatedAt === undefined ? {} : { deprecatedAt }),
     ...(retiredAt === undefined ? {} : { retiredAt }),
-    ...(replacement === undefined ? {} : { replacement }),
+    ...(replacementSlug === undefined ? {} : { replacementSlug }),
     pricing: {
       free: priceText === "Free" || priceText === "Free; $0 /M Tokens",
       prices,
@@ -965,7 +966,8 @@ function sourceModel(
     status: draft.status === "preview" ? "active" : draft.status,
     release_stage:
       draft.status === "preview" ? "preview" : draft.status === "active" ? "stable" : "unknown",
-    replacement_model_ids: replacementId === undefined ? [] : [replacementId],
+    replacement_model_ids:
+      replacementId === undefined || replacementId === id ? [] : [replacementId],
     pricing_state:
       draft.status === "retired"
         ? "not_applicable"
@@ -1481,15 +1483,21 @@ export function parseMistralCatalog(input: Input): SourceParseResult {
         sample: key,
       });
   const currentByName = new Map<string, string | null>();
+  const bySlug = new Map<string, string>();
   for (const draft of drafts) {
     const id = draft.apiNames[0];
-    if (id === undefined || (draft.status !== "active" && draft.status !== "preview")) continue;
+    if (id === undefined) continue;
+    const active = draft.status === "active" || draft.status === "preview";
+    if (active || draft.status === "deprecated") bySlug.set(draft.sourceSlug, id);
+    if (!active) continue;
     const current = currentByName.get(draft.name);
     currentByName.set(draft.name, current === undefined || current === id ? id : null);
   }
   const models = drafts.flatMap((draft): ProviderModel[] => {
     const replacement =
-      draft.replacement === undefined ? undefined : currentByName.get(draft.replacement);
+      draft.replacementSlug === undefined
+        ? currentByName.get(draft.replacement ?? "")
+        : bySlug.get(draft.replacementSlug);
     if (replacement === null) signal(`/models/${draft.sourceSlug}/metadata/replacement`);
     const model = sourceModel(
       input,

@@ -3543,7 +3543,7 @@ describe("Vertex AI adapters", () => {
     const pricing = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
     expect(pricing).toMatchObject({
       url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
-      extractorVersion: "vertex-pricing-v29",
+      extractorVersion: "vertex-pricing-v30",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(pricing?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual(
@@ -5059,7 +5059,7 @@ describe("Databricks adapters", () => {
 
   it("classifies fixed companions by claim and pricing dependency", () => {
     const source = manifest("databricks").sources.find(({ id }) => id === "databricks-models");
-    expect(source?.extractorVersion).toBe("databricks-catalog-v23");
+    expect(source?.extractorVersion).toBe("databricks-catalog-v24");
     expect(source?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     const companions = new Map(
       source?.linkedDocuments?.documents?.map((document) => [document.id, document]),
@@ -5252,6 +5252,32 @@ describe("Databricks adapters", () => {
         conditions: { service_tier: "priority", endpoint: "global" },
       }),
     ]);
+  });
+
+  it("preserves Priority endpoint support when the source adds a Unity-only service", async () => {
+    const priority = await fixture("databricks/priority-mode.html");
+    const updated = priority
+      .replace("Endpoint name", "Endpoint or model service name")
+      .replace(
+        "<tbody>",
+        "<tbody><tr><td>OpenAI</td><td>GPT-6.2 Astra</td><td><code>system.ai.gpt-6-2-astra</code></td><td>Query through Unity Gateway.</td></tr>",
+      );
+    const models = await databricksCatalog({ "priority-mode.html": updated });
+    expect(models.some(({ model_id }) => model_id.includes("gpt-6-2-astra"))).toBe(false);
+    const gemini = models.find(({ model_id }) => model_id === "databricks-gemini-3-5-flash");
+    expect(gemini?.raw_price_facts).toContainEqual(
+      expect.objectContaining({
+        term_key: "priority_pay_per_token",
+        reason: "unknown_amount",
+        conditions: { service_tier: "priority", endpoint: "global" },
+      }),
+    );
+    const unreviewed = await databricksCatalog({
+      "priority-mode.html": updated.replace("Query through Unity Gateway.", "Query this model."),
+    });
+    const withheld = unreviewed.find(({ model_id }) => model_id === gemini?.model_id);
+    expect(withheld?.raw_price_facts).toEqual([]);
+    expect(withheld?.price_facts).toEqual(gemini?.price_facts);
   });
 
   it("publishes request-attributable rates with exact response input contracts", async () => {
@@ -5843,10 +5869,14 @@ describe("Databricks adapters", () => {
 
   it("reads tiered DBU tables without mixing hourly compute or guessing annotated rates", async () => {
     const items: PricingReconciliationItem[] = [];
+    const [open, partner] = await Promise.all([
+      fixture("databricks/pricing-open-tiered.html"),
+      fixture("databricks/pricing-partner-tiered.html"),
+    ]);
     const models = await databricksCatalog(
       {
-        "pricing-open.html": await fixture("databricks/pricing-open-tiered.html"),
-        "pricing-partner.html": await fixture("databricks/pricing-partner-tiered.html"),
+        "pricing-open.html": open,
+        "pricing-partner.html": partner,
       },
       (item) => items.push(item),
     );
@@ -5923,6 +5953,16 @@ describe("Databricks adapters", () => {
     expect(
       models.flatMap(({ price_facts }) => price_facts).every(({ unit }) => unit !== "hour"),
     ).toBe(true);
+    const spanned = await databricksCatalog({
+      "pricing-open.html": open,
+      "pricing-partner.html": partner.replaceAll(
+        /<th rowspan="2">Model<\/th>\s*<th rowspan="2">&nbsp;<\/th>/g,
+        '<th colspan="2" rowspan="2">Model</th>',
+      ),
+    });
+    expect(spanned.map(({ price_facts }) => price_facts)).toEqual(
+      models.map(({ price_facts }) => price_facts),
+    );
   });
 
   it("accepts the unqualified standard token table heading", async () => {
@@ -5938,6 +5978,50 @@ describe("Databricks adapters", () => {
         }),
       ]),
     );
+  });
+
+  it("applies named Databricks promotion notes to each exact covered model", async () => {
+    const partner = (await fixture("databricks/pricing-partner-tiered.html"))
+      .replace("<td>GPT-5.6 Sol* ⌖</td>", "<td>Gemini 3.5 Flash** ⌖</td>")
+      .replace(
+        "</main>",
+        "<p>** The Gemini 4 Argon and Gemini 3.5 Flash DBU rates shown here reflect a 50% promotion in effect through November 30, 2026. Afterward, the standard rates, twice those shown, will take effect.</p></main>",
+      );
+    const models = await databricksCatalog({ "pricing-partner.html": partner });
+    const gemini = models.find(({ model_id }) => model_id === "databricks-gemini-3-5-flash");
+    expect(gemini?.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "input_text",
+          currency: "DBU",
+          unit: "million_tokens",
+          price: "114.286",
+          conditions: expect.objectContaining({
+            service_tier: "priority",
+            deployment_scope: "non_regional_processing",
+            effective_until: "2026-11-30",
+          }),
+        }),
+        expect.objectContaining({
+          meter: "input_text",
+          price: "251.4292",
+          conditions: expect.objectContaining({
+            service_tier: "priority",
+            deployment_scope: "regional_processing",
+            effective_from: "2026-12-01",
+          }),
+        }),
+      ]),
+    );
+    const control = await databricksCatalog({
+      "pricing-partner.html": partner.replace(
+        "and Gemini 3.5 Flash DBU",
+        "and Gemini 4 Carbon DBU",
+      ),
+    });
+    expect(
+      control.find(({ model_id }) => model_id === gemini?.model_id)?.raw_price_facts,
+    ).toContainEqual(expect.objectContaining({ reason: "unknown_applicability" }));
   });
 
   it("normalizes scoped DBU promotions and modality quantities without binding aggregate tokens", async () => {
@@ -7411,7 +7495,7 @@ describe("xAI adapter", () => {
 
   it("cross-checks official prices independently of unused model API reference fields", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v32");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v33");
     expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
       "https://docs.x.ai/llms-full.txt",
     ]);
@@ -10564,6 +10648,26 @@ describe("DashScope adapters", () => {
     expect(models.every(({ availability }) => (availability?.length ?? 0) === 1)).toBe(true);
   });
 
+  it("recognizes exact model-guide cards without assigning a region", async () => {
+    const body =
+      (await fixture("dashscope/recommended-components.md")) +
+      `
+<Card title="qwen4-max" href="/help/en/model-studio/qwen4-max">
+<Card title="qwen3.8-omni-flash" href="/help/en/model-studio/qwen3-8-omni-flash">
+`;
+    const findings: SourceContractEvidence[] = [];
+    const parseCards = (content: string) =>
+      parse(source("dashscope-recommended"), content, undefined, (finding) =>
+        findings.push(finding),
+      );
+    expect(parseCards(body)).toHaveLength(17);
+    const baseline = findings.splice(0);
+    expect(
+      parseCards(body.replace("/model-studio/qwen4-max", "/model-studio/different-model")),
+    ).toHaveLength(17);
+    expect(findings[0]?.diagnostics.length).toBe((baseline[0]?.diagnostics.length ?? 0) + 1);
+  });
+
   it("validates Markdown recommended-model cards against their published routes", async () => {
     const body = await fixture("dashscope/recommended.md");
     const models = parse(source("dashscope-recommended"), body);
@@ -11752,6 +11856,26 @@ describe("DashScope adapters", () => {
     ]);
   });
 
+  it("accepts an exact regional release anchor with a model-specific local suffix", async () => {
+    const content = await fixture("dashscope/release-embedded-updates.html");
+    function parseRelease(article: string) {
+      const releaseSource = source("dashscope-releases");
+      const page = `<script>window.__ICE_PAGE_PROPS__=${JSON.stringify({
+        docDetailData: { storeData: { data: { content: article } } },
+      })}</script>`;
+      return parse(releaseSource, documentBundle(releaseSource, page, [])).find(
+        ({ model_id }) => model_id === "qwen3.7-plus-2026-05-26",
+      );
+    }
+    const local = content.replaceAll(
+      "region-1-2026-05-21",
+      "region-1-2026-05-21-qwen3.7-plus-2026-05-26-local",
+    );
+    expect(parseRelease(local)?.release_date).toBe("2026-05-21");
+    expect(parseRelease(local.replace("2026-05-26-local", "2026-05-27-local"))).toBeUndefined();
+    expect(parseRelease(local.replace(">2026-05-21<", ">2026-05-22<"))).toBeUndefined();
+  });
+
   it("unions the stable international and China lifecycle tables", async () => {
     const body = JSON.stringify({
       index: {
@@ -11948,7 +12072,7 @@ describe("DashScope adapters", () => {
       markdownSources.every(({ format, url }) => format === "markdown" && url.endsWith(".md")),
     ).toBe(true);
     expect(source("dashscope-recommended")).toMatchObject({
-      extractorVersion: "dashscope-recommended-v10",
+      extractorVersion: "dashscope-recommended-v11",
       fields: expect.arrayContaining(["status"]),
       retainOmittedFacts: true,
     });
@@ -12004,7 +12128,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-releases")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-release-notes",
       format: "html",
-      extractorVersion: "dashscope-releases-v5",
+      extractorVersion: "dashscope-releases-v6",
       optional: true,
       retainOmittedFacts: true,
       linkedDocuments: {

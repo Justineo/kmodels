@@ -119,8 +119,9 @@ associations, and a card without those contracts keeps metadata without inventin
 
 The same source owns optional `limit_details` in independent `card_limits` and
 `batch_output_beta` groups. The card's own ordinary output row requires the explicit synchronous
-Messages caption. The Batch guide owns its finite cap, standard Batch cap, exact beta header,
-platform scope and complete support list. Support names must resolve uniquely through an owned
+Messages caption. The direct Claude API Batch guide owns its finite cap, standard Batch cap, exact
+beta header and complete support list. The Batch-only declaration remains usable when the guide
+omits the historical sentence naming AWS. Support names must resolve uniquely through an owned
 card title and its agreed Claude API ID; names are never converted into IDs. The card's separate
 beta row and any beta declaration in its caption must agree with the guide. A contradiction
 withholds only the beta observation, preserving the independently known synchronous bound.

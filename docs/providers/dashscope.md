@@ -222,9 +222,8 @@ Production collection uses only Alibaba Cloud first-party sources:
   page no longer publishes a per-model region or execution type; its availability therefore comes
   from the regional inventory rather than from an inferred suffix. The recommended-model Markdown
   page now renders its listing as `<Card>` components, so each card supplies its exact ID from the
-  `title` attribute and its region from a Model Plaza detail link. A card that links to a guide
-  page or omits the link publishes identity without a region and is recorded as a contract
-  finding instead of being guessed;
+  `title` attribute and its region from a Model Plaza detail link. Cards that link to the exact
+  model guide supply no region. Missing or mismatched links are recorded as contract findings;
 - the [model price book](https://www.alibabacloud.com/help/en/model-studio/model-pricing) owns
   current public invocation prices, including USD-prefixed Qwen3.8 Omni token and cache-hit rows
   scoped by the table's region and deployment column. The same price parser accepts explicit
@@ -272,7 +271,8 @@ Production collection uses only Alibaba Cloud first-party sources:
 - the fixed
   [international](https://www.alibabacloud.com/help/en/model-studio/model-release-notes) and
   [China](https://help.aliyun.com/zh/model-studio/newly-released-models) update pages provide
-  release dates; and
+  release dates. A model-qualified local release anchor requires agreement with the row's
+  displayed date and exact model ID. The earliest evidenced release remains the catalog date; and
 - the documented, authenticated regional deployment inventory is an optional availability
   cross-check when `DASHSCOPE_API_KEY` is configured.
 

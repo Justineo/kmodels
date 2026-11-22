@@ -111,6 +111,38 @@ it("retains owned cache storage schedules and isolates an unreviewed denominator
     expect.objectContaining({ price: "4.5", conditions: { context_min_tokens: 200001 } }),
   );
 });
+
+it("keeps retired explicit-cache rows out of current pricing repair admissions", () => {
+  const body = `<div class="cws-jump-section" data-cws-menu-text="Context Cache Storage price for Explicit Caching">
+    <h2>Context Cache Storage price for Explicit Caching</h2>
+    <table><tr><th>Model</th><th>Type</th><th>Storage (M tok-hour)</th><th>Price /1 (USD)</th></tr>
+    <tr><td>Gemini 2.0 Flash</td><td>Input tokens</td><td>$0.000001</td><td>$0.0375</td></tr></table>
+  </div>`;
+  const model: ProviderModel = {
+    ...baseModel({
+      providerId: "vertex",
+      id: "gemini-2.0-flash",
+      name: "Gemini 2.0 Flash",
+      sourceId: source.id,
+      observedAt,
+    }),
+    status: "retired",
+  };
+  const retired = parse(body, [], [model]);
+  expect(retired.commercial_facts).toEqual([]);
+  expect(retired.findings).toContainEqual({
+    disposition: "excluded",
+    reason_code: "historical_retired_price",
+    sample: model.model_id,
+  });
+  const unsupportedCachePrice = expect.objectContaining({
+    trigger: "source_pricing_structure",
+    message: expect.stringContaining("unsupported_pricing_cell_preserved"),
+  });
+  expect(repairCandidates(retired)).not.toContainEqual(unsupportedCachePrice);
+  const deprecated = parse(body, [], [{ ...model, status: "deprecated" }]);
+  expect(repairCandidates(deprecated)).toContainEqual(unsupportedCachePrice);
+});
 async function coherentPricing() {
   return (await nativePricing()).replaceAll("longer than or equal to", "longer than");
 }

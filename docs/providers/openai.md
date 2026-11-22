@@ -526,7 +526,8 @@ FedRAMP's separately announced uplift is outside the current regional-processing
 
 The data-residency matrix supplies exact eligible endpoints, models/snapshots, regions, and listed
 snapshot exceptions. Unknown regions or endpoints are withheld without discarding known values in
-the same row.
+the same row. The CSAM moderation row's explicit `Not specified` processing and dash for
+exceptions supply the endpoint identity without a regional-processing claim.
 
 OpenAI publishes a 10% regional-processing uplift for eligible data-residency models released on or
 after 2026-03-05. The changelog supplies the exact release date and the data-residency matrix supplies

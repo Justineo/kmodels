@@ -167,6 +167,19 @@ it("keeps ordinary Anthropic metadata when its optional Batch companion is absen
   expect(model?.limits.max_output_tokens).toBe(128000);
 });
 
+it("keeps the direct Anthropic Batch cap when its guide drops the AWS sentence", async () => {
+  const bundle = await anthropicBundle();
+  const doc = bundle.documents.find(({ url }) => url === batchUrl);
+  if (!doc) throw new Error("Missing Batch guide");
+  doc.body = doc.body.replace(" It is available on the Claude API and Claude Platform on AWS.", "");
+  const model = parse("anthropic", "anthropic-model-cards", bundle).models[0];
+  expect(model?.limit_details?.map(({ claim }) => claim)).toEqual([
+    "card_limits",
+    "batch_output_beta",
+  ]);
+  expect(model?.limits.max_output_tokens).toBe(128000);
+});
+
 it("withholds a neighboring xAI heading's description without losing the owned limit", async () => {
   const bundle = await xaiBundle();
   for (const document of bundle.documents)
@@ -292,6 +305,29 @@ it("isolates a missing Gemini API companion from fresh sibling claims and ordina
   const ordinary = models.find((m) => m.model_id === "gemini-3.7-flash");
   expect(ordinary).toBeDefined();
   expect(ordinary?.limit_details).toBeUndefined();
+});
+
+it("reads AI Studio's HTML-wrapped long-decode Markdown and its native non-streaming model list", async () => {
+  const bundle = await geminiBundle();
+  const doc = bundle.documents.find(({ url }) => url === interactionsUrl);
+  if (!doc) throw new Error("Missing Interactions guide");
+  const updated = doc.body.replace(
+    "non-streaming `gemini-4-hydrogen` calls, or up to",
+    "non-streaming calls on `gemini-4-hydrogen`, or up to",
+  );
+  expect(updated).not.toBe(doc.body);
+  doc.body = `<noscript><pre>${updated.replaceAll("&", "&amp;").replaceAll("<", "&lt;")}</pre></noscript>`;
+  const model = parse("gemini", "gemini-models", bundle).models.find(
+    ({ model_id }) => model_id === "gemini-4-argon",
+  );
+  expect(
+    model?.limit_details?.find(({ claim }) => claim === "long_decode_interactions"),
+  ).toMatchObject({
+    statements: expect.arrayContaining([
+      expect.objectContaining({ kind: "maximum", tokens: 32768, measurement: "per_hop" }),
+    ]),
+    evidence: [expect.objectContaining({ content_hash: sha256(doc.body) })],
+  });
 });
 
 it.each([
@@ -500,6 +536,34 @@ it.each(["amount", "header", "membership"])(
     expect(result.findings.length).toBeGreaterThan(0);
   },
 );
+
+it("ignores xAI service overview tables while checking model limit tables", async () => {
+  const bundle = await xaiBundle();
+  const llms = bundle.documents[0];
+  if (!llms) throw new Error("Missing xAI fixture");
+  llms.body += [
+    "",
+    "",
+    "===/developers/model-capabilities/audio/voice===",
+    "## At a glance",
+    "",
+    "| | Details |",
+    "|---|---|",
+    "| Protocol | WebSocket |",
+  ].join("\n");
+  const tableFinding = expect.objectContaining({
+    diagnostics: expect.arrayContaining([
+      expect.objectContaining({ path: "/limit_details/card_limits/table" }),
+    ]),
+  });
+  const result = parse("xai", "xai-models", bundle);
+  expect(
+    result.models.find(({ model_id }) => model_id === "grok-4.7")?.limit_details,
+  ).toBeDefined();
+  expect(result.findings).not.toContainEqual(tableFinding);
+  llms.body = llms.body.replace("| Property | Value |", "| Property | Details |");
+  expect(parse("xai", "xai-models", bundle).findings).toContainEqual(tableFinding);
+});
 
 it.each(["missing cap", "unknown cap", "foreign API", "wrong identity", "duplicate", "fenced"])(
   "keeps xAI prices and identity when no-cap evidence has %s",

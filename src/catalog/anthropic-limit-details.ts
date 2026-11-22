@@ -100,7 +100,7 @@ export function applyAnthropicLimitDetails(
   const standard = limitTokenCount(declaration?.[4] ?? "");
   const names = declaration?.[3]?.split(/,\s+(?:or\s+)?|\s+or\s+/);
   const scope = section?.match(
-    /Extended output is available on the Message Batches API only, not the synchronous Messages API\. It is available on the Claude API and Claude Platform on AWS\./g,
+    /^ {0,3}Extended output is available on the Message Batches API only, not the synchronous Messages API\.(?: It is available on the Claude API and Claude Platform on AWS\.)?$/gm,
   );
   if (
     declarations.length !== 1 ||

@@ -317,7 +317,10 @@ accepted allowance topology.
 
 A combined Google Search / Web Grounding for Enterprise label publishes rates for both services.
 Each service uses its own exact supported-model guide. The pricing context preserves lifecycle,
-so retired models receive no current grounding, Maps, or explicit-cache storage links.
+so retired models receive no current grounding, Maps, or explicit-cache storage links. Historical
+storage rows for exact retired IDs are excluded before checking their units for current pricing
+repair. A live or deprecated ID with the same unresolved unit still preserves the quote and
+records the diagnostic.
 Published
 monthly web-query allowances share one pool across the explicitly named model families and web
 services; Maps has a separate monthly pool. The current pricing page names Gemini 3 and Gemini 4

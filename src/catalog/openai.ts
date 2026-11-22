@@ -597,8 +597,11 @@ export function parseOpenAiDataResidency(input: ParseInput): ProviderModel[] {
         return [{ path, ...definition }];
       });
       const processingCell = cell(row, "Processing regions");
+      const processingUnspecified = processingCell === "Not specified";
       let processingRegions =
-        processingCell === "None" ? [] : processingCell.split(", ").map(normalizedText);
+        processingCell === "None" || processingUnspecified
+          ? []
+          : processingCell.split(", ").map(normalizedText);
       const unknownRegions = processingRegions.filter(
         (region) => !openAiRegionalProcessingRegionSet.has(region),
       );
@@ -614,7 +617,7 @@ export function parseOpenAiDataResidency(input: ParseInput): ProviderModel[] {
       const exceptionCell = cell(row, "Regional processing snapshot exceptions");
       const exceptions = openAiProcessingExceptions(
         input,
-        exceptionCell,
+        processingUnspecified && exceptionCell === "—" ? "None" : exceptionCell,
         modelIds,
         processingRegions,
       );

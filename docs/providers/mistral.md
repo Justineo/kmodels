@@ -33,6 +33,10 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
   cards declare lifecycle, modalities, features, context and USD prices. Reviewed feature-to-route
   mappings follow the endpoints displayed on the corresponding HTML cards; unknown features remain
   signaled. Retired/deprecated cards can omit current features and prices without losing identity.
+  A replacement link identifies the target card by its exact path. When the target is itself
+  deprecated, preserve the documented immediate successor and its lifecycle. A retired or
+  unavailable target does not establish a callable replacement, and matching link text cannot
+  substitute for the linked card.
   Historical repository bundles remain replayable through the static TypeScript parser.
 - Every indexed definition document must be present exactly once. A malformed definition is
   isolated and signaled without hiding recognized siblings. The first API name is canonical, later

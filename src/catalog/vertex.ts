@@ -1684,7 +1684,15 @@ function cacheStorageTables(
         const cells = $(row).find("th,td");
         if (!dedicated && cellText(cells.eq(featureIndex)) !== "Context Cache Storage") return;
         const label = cellText(cells.eq(0));
-        const quotes = modelPriceQuotes(models, label, context, reconcile);
+        const quotes = modelPriceQuotes(models, label, context, reconcile).filter(({ model }) => {
+          if (model.status !== "retired") return true;
+          reconcile?.({
+            disposition: "excluded",
+            reason_code: "historical_retired_price",
+            sample: model.model_id,
+          });
+          return false;
+        });
         for (let index = 1; index < headers.length; index += 1) {
           const header = headers[index] ?? "";
           if (header === "Type" || header === "Feature") continue;
