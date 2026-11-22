@@ -41,6 +41,7 @@ for (const run of investigationRuns(tasks)) {
     "catalog-maintenance-initial",
     "catalog-maintenance-review",
     "catalog-repair-validation-feedback",
+    "admitted-catalog-repair",
   ]) {
     if (artifact === "catalog-maintenance-review" && !needFinalReview) continue;
     const target = join(directory, artifact);
@@ -52,7 +53,9 @@ for (const run of investigationRuns(tasks)) {
       if (context)
         await appendFile(
           context,
-          `\nPrior reviewer/validation feedback: ${target}. Inspect candidate findings in *-verification.json, completed assessments in sessions/*/result.txt and partial checks in effective-evidence/. An unverified-revision.patch, if present, is only a lead; check its original base and hash before considering its changes, then prove the result on the current tree.\n`,
+          artifact === "admitted-catalog-repair"
+            ? `\nPrior proposed patch: ${target}/repair.patch with identity in repair.json. Use it when no newer revision covers the claim. Check the base, hash and exact change against the current admission, then complete the missing checks on the current tree.\n`
+            : `\nPrior reviewer/validation feedback: ${target}. Inspect candidate findings in *-verification.json, completed assessments in sessions/*/result.txt and partial checks in effective-evidence/. Start from any applicable saved repair.patch or unverified-revision.patch. Check the base, hash and claim, carry forward supported edits and evidence, and finish the remaining checks on the current tree.\n`,
         );
       if (artifact === "catalog-maintenance-initial") {
         const decision = z

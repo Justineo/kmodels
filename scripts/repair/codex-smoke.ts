@@ -76,6 +76,7 @@ const gateway = await startCodexGateway({
   fetcher: async (_url, options) => {
     calls += 1;
     if (failNext) {
+      assert.equal(options?.body, codexRequest(requestInput, true).body);
       signalStart();
       return network;
     }
@@ -89,8 +90,7 @@ const gateway = await startCodexGateway({
         tool_choice: z.unknown().optional(),
       })
       .parse(JSON.parse(options.body));
-    if (calls === 1) assert.notEqual(request.tool_choice, "none");
-    if (calls === 2 || calls === 3) assert.equal(request.tool_choice, "none");
+    assert.notEqual(request.tool_choice, "none");
     const checkpoint = "compacted-catalog-proof";
     if (calls === 3) assert.ok(options.body.includes(checkpoint), "Missing compacted context");
     if (
@@ -165,7 +165,8 @@ const gateway = await startCodexGateway({
     });
   },
 });
-gateway.startPhase(runAllowance, 3);
+gateway.startPhase();
+const requestInput = { model: "gpt-6.2-sol", input: [], instructions: "x".repeat(90_000) };
 const relay = local ? startRelay(join(directory, "api.sock"), 0) : undefined;
 try {
   if (!local) {
@@ -254,7 +255,6 @@ try {
   )
     throw new Error("Codex protocol smoke did not complete with exact mocked usage");
   // Exercise ambiguous transport failure and contention against the same real Unix gateway.
-  const requestInput = { model: "gpt-6.2-sol", input: [], instructions: "x".repeat(90_000) };
   const post = (path = "/v1/responses", body: unknown = requestInput) =>
     new Promise<number>((resolve, reject) => {
       const req = request(
@@ -267,9 +267,6 @@ try {
       req.on("error", reject);
       req.end(JSON.stringify(body));
     });
-  assert.equal(gateway.remainingCalls(), 0);
-  await execute(1);
-  assert.equal(gateway.lastDenial()?.message, "Codex request limit reached");
   gateway.startPhase(1_000_000);
   assert.equal(gateway.lastDenial(), undefined);
   assert(codexRequest(requestInput).reservation > gateway.remaining());
@@ -308,7 +305,6 @@ try {
   assert.equal(gateway.lastDenial(), undefined);
   gateway.startPhase();
   assert.equal(gateway.remaining(), runAllowance - protocolCharge);
-  assert.equal(gateway.remainingCalls(), 57);
   gateway.startPhase(codexRequest(requestInput, true).reservation);
   failNext = true;
   const pending = post();
@@ -353,7 +349,7 @@ try {
   assert.equal(await post(), 400);
   assert.equal(calls, 4);
   failNext = false;
-  gateway.startPhase();
+  gateway.startPhase(runAllowance - gateway.charged() - 1_000_000);
   const burst = Array.from({ length: 4 }, () =>
     post("/v1/responses", {
       model: "gpt-6.2-sol",
@@ -361,8 +357,20 @@ try {
     }),
   );
   assert.deepEqual(await Promise.all(burst), [200, 200, 200, 200]);
-  assert.equal(calls, 8);
-  assert.equal(gateway.charged(), reserved + 4 * 217);
+  // Cheap tool turns must stay available past both former count limits.
+  for (let call = 8; call < 64; call++)
+    assert.equal(
+      await post("/v1/responses", {
+        model: "gpt-6.2-sol",
+        input: [],
+      }),
+      200,
+    );
+  assert.equal(calls, 64);
+  assert.equal(gateway.charged(), reserved + 60 * 217);
+  assert.equal(gateway.remaining(), runAllowance - 1_000_000 - gateway.charged());
+  gateway.startPhase();
+  assert.equal(gateway.remaining(), runAllowance - gateway.charged());
   const final = await journal();
   assert.equal(final.requests[3]?.status, "retained");
   assert.equal(

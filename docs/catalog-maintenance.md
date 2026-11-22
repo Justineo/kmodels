@@ -76,8 +76,10 @@ fingerprint changes. The daily provider/global rotation remains independent. A c
 resume unfinished periodic reviews even when other incidents are cooling down. Admitted tasks
 can load investigations from up to two prior runs. A run containing a concrete counterexample takes precedence over a later inconclusive attempt. The restored artifacts include the initial verifier, takeover
 and publication-validation feedback. Candidate check results and interruption notes are leads
-for the next investigation. An unpublished
-proposal explicitly directs the next run to address those findings. Prior evidence is a lead: freshness, implementation applicability and proof must be
+for the next investigation. The runner saves an allowlisted changed takeover patch before final
+verification, including after a session interruption. A later investigation starts with an
+applicable saved revision and its remaining checks. It can recover the admitted proposal when no
+newer revision covers the claim. Freshness, implementation applicability and proof must be
 rechecked. The investigation checker copies referenced historical proof into the current artifact
 after validating the review, preserving each receipt's contents, hash and original timestamps.
 It updates the review paths before independent verification. Previous artifact directories are
@@ -116,24 +118,22 @@ can use the entire remaining balance. Charges from earlier sessions count toward
 For each candidate and source fingerprint, the controller records the rejected patch and its
 cited executable checks. Repeated receipts for the same case do not spend another attempt.
 A changed proposal or reproducer can receive a new revision under the ordinary scheduling,
-call and budget limits. Older ledger entries without a case key allow the first identifiable
+time and budget limits. Older ledger entries without a case key allow the first identifiable
 case. A spent candidate cannot block a new case for a sibling. A separate publication-validation
 continuation still requires all ordinary gates.
 
-The Codex gateway accepts at most 60 serial Responses calls per stage, each bounded to 160 KB
-of text and 4,096 output tokens, and at most 40 public source acquisitions. A revision can use
-up to 30 calls, leaving at least 30 for its final independent verification. The gateway admits
+Each serial Responses call is bounded to 160 KB of text and 4,096 output tokens. Inference can
+continue within its monetary allowance and session deadline. Public source acquisitions are limited
+to 40. The gateway admits
 one source acquisition and one Responses call concurrently so a slow acquisition cannot block
 the verifier's next inference call. Each route serves requests in arrival order with up to eight
 waiting for up to three minutes. A full queue returns HTTP 429 and an expired wait returns
-HTTP 503. Disconnecting releases a waiting slot. Only requests that start processing count toward the
-stage limits, and inference checks the available budget after the preceding call settles.
+HTTP 503. Disconnecting releases a waiting slot. Inference checks the available budget after the
+preceding call settles.
 Codex reads full source receipts from their read-only mount and uses a 32,000-token context
-with early compaction and bounded tool output. The last two call slots disable further tool
-use so that context compaction after a tool result leaves a slot for the actual final response.
-Both calls count toward the same limit and require a monetary reservation. The gateway can
-also request a final answer early when the remaining budget is low. Unresolved claims remain open.
-If the CLI exits after the gateway refuses the next call for lack of money, calls or a valid
+with early compaction and bounded tool output. When the remaining budget is low, the gateway
+disables tools to leave money for compaction and the final response. Unresolved claims remain open.
+If the CLI exits after the gateway refuses the next call for lack of money or a valid
 lease month, the controller saves the interruption and returns pending work without needing a
 final model message. Transport, protocol and runner failures retain their own failed stage.
 Prompts specify the session budget, request narrow

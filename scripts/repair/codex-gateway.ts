@@ -151,8 +151,6 @@ export async function startCodexGateway(options: {
   };
   const requests: Receipt[] = [];
   let phaseLimit = charged;
-  let calls = 0;
-  let phaseCallLimit = 60;
   let fetches = 0;
   let poisoned = false;
   let denied: InferenceAllowanceExhausted | undefined;
@@ -207,17 +205,15 @@ export async function startCodexGateway(options: {
     if (poisoned) throw new Error("Stopped inference route");
     if (options.lease.month !== new Date().toISOString().slice(0, 7))
       throw new InferenceAllowanceExhausted("OpenAI lease expired");
-    const remainingCalls = phaseCallLimit - calls;
-    if (remainingCalls <= 0) throw new InferenceAllowanceExhausted("Codex request limit reached");
     let request = codexRequest(input);
     // Codex can spend the next Responses call compacting context after a tool result.
     // Stop requesting tools with room for both compaction and the actual final answer.
-    if (remainingCalls <= 2 || phaseLimit - charged < request.reservation * 1.5 + 250_000)
+    if (phaseLimit - charged < request.reservation * 1.5 + 250_000)
       request = codexRequest(input, true);
     if (charged + request.reservation > Math.min(phaseLimit, options.lease.reserved_microusd))
       throw new InferenceAllowanceExhausted("OpenAI phase budget exhausted");
     const receipt: Receipt = {
-      call: ++calls,
+      call: requests.length + 1,
       reserved_microusd: request.reservation,
       status: "reserved",
       charged_microusd: request.reservation,
@@ -286,15 +282,13 @@ export async function startCodexGateway(options: {
   });
   await chmod(options.socket, 0o600);
   return {
-    startPhase: (allowance = options.lease.reserved_microusd - charged, maxCalls = 60) => {
+    startPhase: (allowance = options.lease.reserved_microusd - charged) => {
       denied = undefined;
       phaseLimit = Math.min(options.lease.reserved_microusd, charged + allowance);
-      phaseCallLimit = Math.min(60, calls + maxCalls);
     },
     charged: () => charged,
     lastDenial: () => denied,
     remaining: () => phaseLimit - charged,
-    remainingCalls: () => phaseCallLimit - calls,
     close: async () => {
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),

@@ -275,8 +275,14 @@ async function runContainer(args: string[], output: string): Promise<number> {
     let stopped = false;
     const name = args[args.indexOf("--name") + 1];
     const stop = () => {
+      if (stopped) return;
       stopped = true;
-      if (name) spawn("docker", ["rm", "--force", name], { env: childEnv(), stdio: "ignore" });
+      if (name)
+        spawnSync("docker", ["rm", "--force", name], {
+          env: childEnv(),
+          stdio: "ignore",
+          timeout: 10000,
+        });
       child.kill("SIGTERM");
     };
     const timer = setTimeout(stop, 20 * 60_000);
@@ -462,7 +468,7 @@ async function main(): Promise<void> {
           (name === "verify"
             ? 'After each decisive check, checkpoint the candidate ID, receipt paths and remaining question in /output/progress.json as {"candidates":[{"id":"...","next_action":"..."}]}. These notes survive an interrupted session. Return the full required verdict separately.\n'
             : "") +
-          `This session has at most ${gateway.remainingCalls()} Responses calls including compaction and final output, and USD ${(gateway.remaining() / 1_000_000).toFixed(2)} available. Run the decisive consumer check and counterexample early. Reuse acquired source receipts, batch narrow reads and preserve evidence limits honestly.\n` +
+          `This session has USD ${(gateway.remaining() / 1_000_000).toFixed(2)} available and a 20-minute deadline. Run the decisive consumer check and counterexample early. Reuse acquired source receipts, batch narrow reads and preserve evidence limits honestly.\n` +
           prompt,
       );
       for (const [name, text] of Object.entries(files))
@@ -738,31 +744,40 @@ async function main(): Promise<void> {
         takeoverKeys = Object.fromEntries(eligible.map(({ id, key }) => [id, key]));
         takeoverAttempted = true;
         await saveDecision("concrete_error");
-        gateway.startPhase(remaining - 1_000_000, 30);
-        const text = await run(
-          "takeover",
-          work,
-          `Start with /input/revision.json and the relevant implementation. Make the smallest evidence-backed edit, then record the decisive consumer and counterexample receipts before investigating other claims. A probe can pass by demonstrating the bug: inspect its assertions before using it as a regression. Use /input/findings.json for detail and resume from git diff HEAD and revision.json after compaction. Keep unrelated unresolved candidates pending with their next actions. Update /tmp/gh-aw/agent/catalog-repair-review.json with the original admission hash, fresh before/after parser checks, and a final-patch regression receipt. Use vp node /trusted/scripts/catalog-repair-review.ts check-repair or check-no-defect before finishing. Return the required JSON with type, summary and body. Use commit_repair for a checked nonempty patch (summary is its title), or noop only if every candidate is checked not_a_defect. Use report_incomplete when the eligible repair itself still lacks a required correction or proof. Use an empty body for noop or report_incomplete. Do not commit, push or change data, workflows, dependencies, scripts or validation policy.`,
-          {
-            "findings.json": JSON.stringify(report),
-            "proposal.json": reviewText,
-            "revision.json": JSON.stringify(revision),
-          },
-          takeoverOutputSchema,
-          baseline,
-        );
-        const response = readTakeoverResponse(text);
-        if (response.type === "report_incomplete") {
-          const revisionPatch = snapshot(work, base);
+        gateway.startPhase(remaining - 1_000_000);
+        let revisionPatch: string;
+        let response: ReturnType<typeof readTakeoverResponse> | undefined;
+        try {
+          const text = await run(
+            "takeover",
+            work,
+            `Start with /input/revision.json and the relevant implementation. Make the smallest evidence-backed edit, then record the decisive consumer and counterexample receipts before investigating other claims. A probe can pass by demonstrating the bug: inspect its assertions before using it as a regression. Use /input/findings.json for detail and resume from git diff HEAD and revision.json after compaction. Keep unrelated unresolved candidates pending with their next actions. Update /tmp/gh-aw/agent/catalog-repair-review.json with the original admission hash, fresh before/after parser checks, and a final-patch regression receipt. Use vp node /trusted/scripts/catalog-repair-review.ts check-repair or check-no-defect before finishing. Return the required JSON with type, summary and body. Use commit_repair for a checked nonempty patch (summary is its title), or noop only if every candidate is checked not_a_defect. Use report_incomplete when the eligible repair itself still lacks a required correction or proof. Use an empty body for noop or report_incomplete. Do not commit, push or change data, workflows, dependencies, scripts or validation policy.`,
+            {
+              "findings.json": JSON.stringify(report),
+              "proposal.json": reviewText,
+              "revision.json": JSON.stringify(revision),
+            },
+            takeoverOutputSchema,
+            baseline,
+          );
+          response = readTakeoverResponse(text);
+        } finally {
+          // Preserve the revised tree even when the session cannot finish or final verification fails.
+          revisionPatch = snapshot(work, base);
           if (revisionPatch && revisionPatch !== patch) {
             admit(work, base, revisionPatch);
             await writeFile(join(output, "unverified-revision.patch"), revisionPatch);
             await writePrivateJson(join(output, "unverified-revision.json"), {
               base_sha: base,
               patch_sha256: digest(revisionPatch),
-              reason: response.reason,
+              reason:
+                response?.type === "report_incomplete"
+                  ? response.reason
+                  : "The saved revision requires final verification. Check the review and interruption records.",
             });
           }
+        }
+        if (response.type === "report_incomplete") {
           await writePrivateJson(join(output, "interruption.json"), {
             session: "takeover",
             reason: response.reason,
@@ -771,8 +786,7 @@ async function main(): Promise<void> {
           return;
         }
         outcome = response;
-        patch = snapshot(work, base);
-        admit(work, base, patch);
+        patch = revisionPatch;
         if ((outcome.type === "noop") !== (patch === ""))
           throw new Error("Codex outcome and patch disagree");
         reviewText = await readSharedFile(
@@ -803,7 +817,8 @@ async function main(): Promise<void> {
           return;
         }
       }
-      await cp(effectiveProofRoot, evidence, { recursive: true, force: false });
+      if (effectiveProofRoot === originalEvidence)
+        await cp(originalEvidence, evidence, { recursive: true, force: false });
       const verdict = verificationVerdict(report);
       await saveDecision(
         verdict,
@@ -821,6 +836,11 @@ async function main(): Promise<void> {
           `\nCatalog ${stage}: reserved up to USD ${(lease.reserved_microusd / 1_000_000).toFixed(2)} for this run; cumulative conservative charge USD ${(gateway.charged() / 1_000_000).toFixed(4)}.\n`,
         );
       await checkEvidenceTree(evidence);
+      if (effectiveProofRoot !== originalEvidence) {
+        await checkEvidenceTree(effectiveProofRoot);
+        await cp(effectiveProofRoot, evidence, { recursive: true, force: false });
+        await checkEvidenceTree(evidence);
+      }
       await cp(evidence, join(output, "effective-evidence"), { recursive: true });
     }
   }
@@ -832,6 +852,10 @@ async function main(): Promise<void> {
     base_sha: base,
     patch_sha256: digest(patch),
   });
+  if (takeoverAttempted) {
+    await rm(join(output, "unverified-revision.patch"), { force: true });
+    await rm(join(output, "unverified-revision.json"), { force: true });
+  }
   if (process.env.GITHUB_OUTPUT)
     await appendFile(process.env.GITHUB_OUTPUT, `outcome=${outcome.type}\n`);
 }
