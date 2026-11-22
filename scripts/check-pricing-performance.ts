@@ -25,6 +25,7 @@ import {
   timingSummary,
 } from "./pricing-performance-contract.ts";
 import type {} from "../tests/performance/pricing-browser.ts";
+import { checkServicePricing } from "../tests/performance/service-pricing.ts";
 
 type State = Awaited<ReturnType<Window["pricingBenchmark"]["mount"]>>;
 const reportPath = resolve(
@@ -244,6 +245,7 @@ async function auditTransitions(browser: Browser, origin: string, mode: "inferen
       ({ subject, mode }) => window.pricingBenchmark.audit(subject, mode),
       { subject: pricingPerformanceFixture(4, true), mode },
     );
+    if (mode === "offer") await checkServicePricing(page);
     assert.deepEqual(errors, [], "Browser errors invalidate transition results");
     const result = { name: `regional-transitions/${mode}`, ...transitions };
     console.log(JSON.stringify(result));

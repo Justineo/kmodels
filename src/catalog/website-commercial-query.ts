@@ -38,6 +38,9 @@ export function queryWebsiteCommercialOffer(
         evaluateApplicability(intersection, branch.selectors).state !== "false"
       );
     });
+  const representsPrice = ({ state }: WebsitePricingOffer["states"][number]) =>
+    state !== "numeric" || offer.rates.length === 0;
+  const pricingRows = [...offer.rates, ...offer.states.filter(representsPrice)];
   const available: AvailableCommercialChoice[] = uniqueCanonicalValues(
     (subject.selection ?? []).flatMap(({ dimension, alternatives }) =>
       alternatives.map(({ value }) => ({ dimension, value })),
@@ -48,9 +51,7 @@ export function queryWebsiteCommercialOffer(
         ...choices.filter(({ dimension }) => dimension !== choice.dimension),
         choice,
       ]);
-      return offer.rates.length > 0
-        ? offer.rates.some(({ applicability }) => applicable(applicability, probe.branches))
-        : offer.states.some(({ applicability }) => applicable(applicability, probe.branches));
+      return pricingRows.some(({ applicability }) => applicable(applicability, probe.branches));
     })
     .map((choice) => ({
       ...choice,
@@ -95,7 +96,7 @@ export function queryWebsiteCommercialOffer(
   const states = projectRows(offer.states);
   const priceScopes = [
     ...rates,
-    ...states.filter(({ state }) => state !== "numeric" || offer.rates.length === 0),
+    ...states.filter(representsPrice),
     ...projectRows(
       offer.unnormalized.map(({ possible_scope }) => ({
         applicability: possible_scope ?? unconditionalApplicability,
@@ -111,10 +112,7 @@ export function queryWebsiteCommercialOffer(
         proposed.unresolved.length === 0 &&
         commercialBranchesCoverScopes(
           [
-            ...offer.rates.map(({ applicability }) => applicability),
-            ...offer.states
-              .filter(({ state }) => state !== "numeric" || offer.rates.length === 0)
-              .map(({ applicability }) => applicability),
+            ...pricingRows.map(({ applicability }) => applicability),
             ...offer.allowances.map(({ applicability }) => applicability),
             ...offer.contributions.map(({ applicability }) => applicability),
             ...offer.unnormalized

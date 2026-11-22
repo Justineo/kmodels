@@ -271,7 +271,7 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   Price-query controls contain only dimensions that can change a rate or leave its numeric state
   partially covered. When every still-possible variant of one rate has the same
   amount, denomination, unit, driver, and validity and together covers the
-  complete remaining numeric offer-state scope, that invariant rate appears
+  complete remaining numeric offer-state scope, and every possible state is numeric, that rate appears
   immediately without repeating invariant dimensions. Driver equality includes a compact quantity
   identity for exact scaling and calculation rules, so equal unit prices with different minimums or
   quantity formulas keep their required context. Acquisition field locations and evidence do not
@@ -338,6 +338,9 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   viewer makes a local override. The empty option resumes following. Services retain their own
   operation, execution scope, and other local conditions. The disclosure evaluates the inherited
   context when open and continues loading independent offer bodies lazily.
+  A service can publish both metered and included operations. Both outcomes keep applicable
+  plan properties fixed. Selecting an included operation shows its pricing state and hides
+  rate details belonging to the metered operation.
   A button uses the detail disclosure styling and exposes the controlled panel's expanded state.
   Opening the disclosure loads provider resource metadata and the first 12 visible offer bodies.
   Pagination reveals another 12; a search can load remaining metadata chunks but hydrates only visible

@@ -71,14 +71,15 @@ function offer(
 
 describe("website pricing query", () => {
   it("requires context that changes a standalone service's pricing state", () => {
-    const data = offer([]);
+    const data = offer([{ amount: "$2", scope: region("us") }]);
     data.states = [
       { ...data.states[0]!, state: "numeric", applicability: region("us") },
       { ...data.states[0]!, state: "free", applicability: region("eu") },
     ];
-    expect(projectWebsiteRateQuery(data, undefined, []).unresolved_dimensions).toEqual([
-      { namespace: "kmodels", value: "region" },
-    ]);
+    expect(projectWebsiteRateQuery(data, undefined, [])).toEqual({
+      rates: [],
+      unresolved_dimensions: [{ namespace: "kmodels", value: "region" }],
+    });
     expect(
       projectWebsiteRateQuery(data, undefined, [
         {

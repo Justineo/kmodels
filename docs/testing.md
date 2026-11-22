@@ -201,6 +201,11 @@ and restoring its alternatives preserves an explicit input without storing an in
 An explicit Priority-only Region regression switches to Standard and requires Region to reset
 before any rates appear. This deterministic graph complements the fixed performance
 workload; uniform regional tariffs alone cannot detect availability regressions.
+The offer audit also exercises a service with one metered operation and each published nonnumeric
+state. It selects each operation, returns to the metered sibling, then clears the selection.
+It checks the rendered state, amount, and editable controls at each step. The Anthropic source
+fixture separately verifies the code execution rate, included branch and allowance through
+assembly and the website query.
 The two untimed transition audits run concurrently in independent browser contexts. Both finish
 and close before the next timing sample.
 

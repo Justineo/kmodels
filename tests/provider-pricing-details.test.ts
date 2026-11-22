@@ -136,6 +136,45 @@ function pricingOffer(): WebsitePricingOffer {
 }
 
 describe("provider pricing details", () => {
+  it("keeps fixed plan properties when the selected service operation is included", async () => {
+    const offer = pricingOffer();
+    offer.states = offer.states.map((row) =>
+      row.state === "free" ? { ...row, state: "included", label: "Included" } : row,
+    );
+    offer.commercial_selection = {
+      observed_at: "2026-10-01T00:00:00Z",
+      claims: [
+        { dimension: "billing_mode", target: "offer", value: "usage" } as const,
+        { dimension: "resource_kind", target: "book", value: "service" } as const,
+      ].map(({ dimension, target, value }) => ({
+        dimension,
+        target,
+        coverage: "complete",
+        applicability: allContexts,
+        alternatives: [{ value: { namespace: "kmodels", value }, applicability: allContexts }],
+      })),
+    };
+    offer.rates = billingPeriodRates()
+      .slice(0, 1)
+      .map((row) => ({ ...row, applicability: promotion(false) }));
+    const boundSelectors = [
+      { kind: "boolean", dimension: { namespace: "kmodels", value: "promotion" }, value: true },
+    ] as const;
+    const query = queryWebsiteCommercialOffer(
+      offer,
+      boundSelectors,
+      [],
+      "2026-11-01T00:00:00.000Z",
+    );
+    expect(query.fixed_choices.map(({ dimension }) => dimension).sort()).toEqual([
+      "billing_mode",
+      "resource_kind",
+    ]);
+    const html = await renderComponent(PricingOfferBreakdown, { offer, boundSelectors });
+    expect(html).toContain('data-state="included"');
+    expect(html).not.toMatch(/Billing basis|Resource kind|No rates match|class="exact-rate"/);
+  });
+
   it("applies a sole canonical tier and restores a choice when another tariff is available", async () => {
     const dimension = { namespace: "kmodels", value: "service_tier" } as const;
     const standard = { namespace: "kmodels", value: "standard" } as const;

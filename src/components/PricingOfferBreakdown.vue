@@ -272,8 +272,10 @@ const visibleRates = computed(() =>
 );
 const chargeDrivers = computed(() => [
   ...new Map(
-    displayOffer.value.rates.flatMap(({ driver }) =>
-      driver === undefined ? [] : [[canonicalJson(driver), driver] as const],
+    displayOffer.value.rates.flatMap(({ driver, applicability, key }) =>
+      driver !== undefined && selectedRow(key) && applies(applicability)
+        ? [[canonicalJson(driver), driver] as const]
+        : [],
     ),
   ).values(),
 ]);
@@ -323,7 +325,13 @@ const pricingNoteGroups = computed(() => {
   return [...groups.values()];
 });
 const showOfferStates = computed(
-  () => visibleStates.value.length > 0 && displayOffer.value.states.length > 1,
+  () => visibleStates.value.length > 0 && unfilteredOffer.value.states.length > 1,
+);
+const showUnmatchedRates = computed(
+  () =>
+    displayOffer.value.rates.length > 0 &&
+    unresolvedRateDimensions.value.length === 0 &&
+    visibleStates.value.every(({ state }) => state === "numeric"),
 );
 const showPublishedStatus = computed(
   () =>
@@ -611,10 +619,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
     </p>
 
     <section
-      v-if="
-        displayOffer.rates.length > 0 &&
-        (visibleRates.length > 0 || unresolvedRateDimensions.length === 0)
-      "
+      v-if="visibleRates.length > 0 || showUnmatchedRates"
       class="offer-section"
       aria-label="Published rates"
     >
@@ -630,9 +635,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
           </dd>
         </div>
       </dl>
-      <p v-else-if="unresolvedRateDimensions.length === 0" class="context-prompt">
-        No rates match the selected context.
-      </p>
+      <p v-else class="context-prompt">No rates match the selected context.</p>
     </section>
 
     <div v-if="showPublishedStatus" class="published-status">

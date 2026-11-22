@@ -7,6 +7,10 @@ import { parseSource } from "../src/catalog/adapters.ts";
 import { catalogRepairCandidates } from "../src/catalog/catalog-repair.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
+import { websiteModelDetail } from "../src/catalog/website-data.ts";
+import { queryWebsiteCommercialOffer } from "../src/catalog/website-commercial-query.ts";
+import PricingServiceOffer from "../src/components/PricingServiceOffer.vue";
+import { renderComponent } from "./render-component.ts";
 import { evaluateApplicability } from "../src/catalog/pricing-applicability.ts";
 import { linkedDocumentUrls } from "../src/catalog/fetch.ts";
 import { applyGroups } from "../src/catalog/collector.ts";
@@ -2396,6 +2400,65 @@ describe("Anthropic adapters", () => {
     expect(
       facts.flatMap(({ price_facts }) => price_facts).some(({ meter }) => meter === "tool_call"),
     ).toBe(false);
+  });
+  it("preserves code execution outcomes from the source fixture through the model inspector query", async () => {
+    const parsed = await anthropicSource();
+    const partition = validatedPricing(parsed);
+    const model = parsed.models.find(({ uid }) => uid === "anthropic/claude-fable-5");
+    const book = partition.books.find(({ book_key }) => book_key === "service:code-execution");
+    if (!model || !book) throw new Error("Missing code execution fixture subject");
+    const detail = websiteModelDetail(
+      {
+        books: partition.books,
+        model_dispositions: partition.model_dispositions,
+        provider_snapshots: [partition.snapshot],
+        provider_vocabularies: [partition.vocabulary],
+      },
+      model,
+    );
+    const offer = detail.pricing?.offers.find((offer) =>
+      book.offers.some(({ id }) => id === offer.id),
+    );
+    if (!offer) throw new Error("Missing model-linked code execution offer");
+    const html = await renderComponent(PricingServiceOffer, { offer, modelRef: model.uid });
+    expect(html).toMatch(/>Code execution</);
+    expect(html).toMatch(/>With web search or fetch</);
+    expect(html).toMatch(/web_search_20260209.*web_fetch_20260209/);
+    expect(html).not.toMatch(/>web-assisted<|>Billing basis<|>Resource kind</);
+    const operation = offer.selectors.find(({ dimension }) => dimension.value === "operation");
+    if (operation?.kind !== "categorical")
+      throw new Error("Missing code execution operation selector");
+    const outcomes = operation.values.map(({ value }) => {
+      const query = queryWebsiteCommercialOffer(
+        offer,
+        [{ kind: "categorical", dimension: operation.dimension, value }],
+        [],
+        observedAt,
+      );
+      return {
+        operation: value.value,
+        states: query.offer.states.map(({ state }) => state),
+        rates: query.offer.rates.map(({ amount, unit }) => [amount, unit]),
+        allowances: query.offer.allowances.map(({ value }) => value),
+        fixed: query.fixed_choices.map(({ dimension }) => dimension).sort(),
+      };
+    });
+    expect(outcomes).toEqual([
+      {
+        operation: "standalone",
+        states: ["numeric"],
+        rates: [["$0.05", "per hour"]],
+        allowances: ["1,550 hours"],
+        fixed: ["billing_mode", "resource_kind"],
+      },
+      {
+        operation: "web-assisted",
+        states: ["included"],
+        rates: [],
+        allowances: [],
+        fixed: ["billing_mode", "resource_kind"],
+      },
+    ]);
   });
   it("keeps independent Anthropic commercial claims when usage companions drift", async () => {
     const search = (

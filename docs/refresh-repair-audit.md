@@ -89,6 +89,12 @@ and required catalog context. Use a reduced fixture that retains the relevant ow
 types and scope, and demonstrate the old failure when practical. Passing neighboring fixtures or
 fallback behavior is not reproduction. Assertions should test the claim and its independent siblings,
 not mirror implementation structure. Do not add tests that merely assert this guide's wording.
+
+For a report of missing prices, identify the published outcome for the selected context. Compare
+its source evidence, canonical state, website offer, query result and rendered result. An included
+operation can have zero rate rows at every stage. Repair the first stage that loses its outcome
+or gives the viewer a contradictory answer. Verify the metered sibling and switch back in the UI.
+
 The evidence CLI's full `scope: source` body already has the collector's normalization and bundle
 envelope. Replay that body unchanged. Raw indexes and isolated companions support navigation or
 local diagnostics; a manually reconstructed bundle's decoding failure does not establish a source

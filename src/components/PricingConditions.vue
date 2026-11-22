@@ -1,4 +1,5 @@
 <script setup lang="ts" vapor>
+import { computed } from "vue";
 import type { WebsitePricingSelector } from "../catalog/website-schema.ts";
 import {
   decimalRangeLabel,
@@ -13,7 +14,7 @@ import {
 import UiChoice from "./UiChoice.vue";
 import UiIcon from "./UiIcon.vue";
 import UiTooltip from "./UiTooltip.vue";
-import { pricingConditionDescription } from "../pricing/condition-presentation.ts";
+import { pricingConditionHeading } from "../pricing/condition-presentation.ts";
 
 const props = defineProps<{
   prefix: string;
@@ -26,6 +27,12 @@ const booleanOptions = [
   { value: "true", label: "Yes" },
   { value: "false", label: "No" },
 ];
+const conditions = computed(() =>
+  props.selectors.map((selector) => ({
+    selector,
+    ...pricingConditionHeading(selector),
+  })),
+);
 function inputValue(key: string): string {
   return props.inputs[key] ?? "";
 }
@@ -74,17 +81,21 @@ function scheduleRows(selector: WebsitePricingSelector) {
 </script>
 
 <template>
-  <div v-for="(selector, index) in selectors" :key="selector.key" class="pricing-condition">
+  <div
+    v-for="({ selector, label, description }, index) in conditions"
+    :key="selector.key"
+    class="pricing-condition"
+  >
     <label :id="`${prefix}-selector-${index}-label`" :for="`${prefix}-selector-${index}`">
       <UiTooltip
-        v-if="pricingConditionDescription(selector)"
+        v-if="description"
         class="tooltip-text-trigger"
         tabindex="0"
-        :content="pricingConditionDescription(selector) ?? ''"
-        :aria-label="`${selector.label}: ${pricingConditionDescription(selector)}`"
-        >{{ selector.label }}</UiTooltip
+        :content="description"
+        :aria-label="`${label}: ${description}`"
+        >{{ label }}</UiTooltip
       >
-      <template v-else>{{ selector.label }}</template>
+      <template v-else>{{ label }}</template>
       <template v-if="'unit' in selector">{{
         ` (${formatUnitExpression(selector.unit)})`
       }}</template>

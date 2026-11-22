@@ -42,6 +42,9 @@ export function projectWebsiteRateQuery(
 ): WebsiteRateQuery {
   const rates: WebsiteProjectedRate[] = [];
   const unresolved = new Map<string, WebsitePriceDimension>();
+  const states = offer.states.filter(
+    ({ applicability }) => evaluate(applicability, modelRef, selections).state !== "false",
+  );
   for (const group of groupsByTerm(offer.rates).values()) {
     const possible = group.filter(
       ({ applicability }) => evaluate(applicability, modelRef, selections).state !== "false",
@@ -55,15 +58,12 @@ export function projectWebsiteRateQuery(
       continue;
     }
     const missing = missingDimensions(possible, modelRef, selections);
-    if (isInvariantRate(offer, possible, modelRef, selections)) {
+    if (isInvariantRate(states, possible, modelRef, selections)) {
       rates.push({ row: possible[0]!, invariant_dimensions: missing });
       continue;
     }
     for (const dimension of missing) unresolved.set(canonicalJson(dimension), dimension);
   }
-  const states = offer.states.filter(
-    ({ applicability }) => evaluate(applicability, modelRef, selections).state !== "false",
-  );
   if (new Set(states.map(({ state }) => state)).size > 1)
     for (const dimension of missingDimensions(states, modelRef, selections))
       unresolved.set(canonicalJson(dimension), dimension);
@@ -182,40 +182,31 @@ function uniqueRateValues(rows: WebsiteRateRow[]): WebsiteRateRow[] {
 }
 
 function isInvariantRate(
-  offer: WebsitePricingOffer,
+  states: WebsitePricingOffer["states"],
   rows: WebsiteRateRow[],
   modelRef: string | undefined,
   selections: readonly PricingSelection[],
 ): boolean {
-  if (new Set(rows.map(rateValue)).size !== 1) return false;
-  const numericScopes = offer.states.flatMap((state) => {
-    if (state.state !== "numeric") return [];
-    const scope = remainingScope(state.applicability, modelRef, selections);
-    return scope === undefined ? [] : [scope];
+  if (
+    !states.length ||
+    states.some(({ state }) => state !== "numeric") ||
+    new Set(rows.map(rateValue)).size !== 1
+  )
+    return false;
+  // Both sets contain only possible rows. Keep the surviving clauses of each row.
+  const remainingScope = ({ applicability }: Pick<WebsiteRateRow, "applicability">) => ({
+    any_of: applicability.any_of.filter(
+      (clause) => evaluate({ any_of: [clause] }, modelRef, selections).state !== "false",
+    ),
   });
-  if (numericScopes.length === 0) return false;
-  const rateScopes = rows.flatMap(({ applicability }) => {
-    const scope = remainingScope(applicability, modelRef, selections);
-    return scope === undefined ? [] : [scope];
-  });
-  if (rateScopes.length === 0) return false;
+  const numericScopes = states.map(remainingScope);
+  const rateScopes = rows.map(remainingScope);
   try {
     const covered = unionApplicabilities(rateScopes);
     return numericScopes.every((scope) => applicabilityContainedIn(scope, covered));
   } catch {
     return false;
   }
-}
-
-function remainingScope(
-  applicability: WebsitePriceApplicability,
-  modelRef: string | undefined,
-  selections: readonly PricingSelection[],
-): WebsitePriceApplicability | undefined {
-  const any_of = applicability.any_of.filter(
-    (clause) => evaluate({ any_of: [clause] }, modelRef, selections).state !== "false",
-  );
-  return any_of.length === 0 ? undefined : { any_of };
 }
 
 function missingDimensions(
