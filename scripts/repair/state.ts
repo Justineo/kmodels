@@ -285,6 +285,10 @@ function priority(trigger: string, status?: MaintenanceTask["status"]): number {
   if (/location|acquisition/.test(trigger)) return 2;
   return trigger === "source_pricing_structure" ? 3 : 4;
 }
+
+function waitedSevenDays(at: string, now: Date): boolean {
+  return at !== "" && now.getTime() - Date.parse(at) >= 7 * 86400000;
+}
 export function chooseProvider(
   state: MaintenanceState,
   candidates: readonly CatalogRepairCandidate[],
@@ -347,9 +351,8 @@ export function boundedIncidentBatch(
     .sort(({ candidate: a, task: ta }, { candidate: b, task: tb }) => {
       const attemptA = ta?.last_attempt ?? "";
       const attemptB = tb?.last_attempt ?? "";
-      const stale = (at: string) => at !== "" && now.getTime() - Date.parse(at) >= 7 * 86400000;
-      const agedA = stale(attemptA || ta?.first_seen || "");
-      const agedB = stale(attemptB || tb?.first_seen || "");
+      const agedA = waitedSevenDays(attemptA || ta?.first_seen || "", now);
+      const agedB = waitedSevenDays(attemptB || tb?.first_seen || "", now);
       return (
         Number(agedB) - Number(agedA) ||
         priority(a.trigger, ta?.status) - priority(b.trigger, tb?.status) ||
@@ -357,18 +360,15 @@ export function boundedIncidentBatch(
         candidateKey(a).localeCompare(candidateKey(b))
       );
     });
-  const exactSources = new Set(
-    due.flatMap(({ candidate }) =>
-      candidate.trigger !== "source_contract_change" && candidate.source_id
-        ? [candidate.source_id]
-        : [],
-    ),
+  const hasExactIncident = due.some(
+    ({ candidate }) => !candidate.subject_id.startsWith("discovery:"),
   );
   const selected = due
     .filter(
-      ({ candidate }) =>
+      ({ candidate, task }) =>
+        !hasExactIncident ||
         !candidate.subject_id.startsWith("discovery:") ||
-        !exactSources.has(candidate.source_id ?? ""),
+        (task && waitedSevenDays(task.last_attempt ?? task.first_seen, now)),
     )
     .slice(0, 2)
     .map(({ candidate }) => candidate);

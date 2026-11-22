@@ -88,9 +88,9 @@ severity inside the provider as well as across providers. Exact failed-source an
 diagnostics take precedence over discovery leads until the existing age limit gives waiting work
 priority. Additional work remains explicitly deferred. Mandatory source/execution completeness
 checks and full periodic provider reviews retain their coverage contracts.
-A due exact pricing, acquisition or parser incident defers discovery for the same source while
-that incident is admitted. A separate discovery lead remains available after the specific failure
-is addressed. A selected repair is verified for the affected claims and their relevant controls.
+A due exact refresh incident defers discovery-only leads in the same batch. The existing seven-day
+priority still applies to aged work. A selected repair is verified for the affected claims and
+their relevant controls.
 
 Difficulty is deterministic: transport/parser work is routine; pricing, contract and provider
 reviews are semantic; architecture and repeated attempts are complex. Investigation deadlines

@@ -275,7 +275,7 @@ it("admits Mistral's exact failed sources before its page discovery leads", () =
   expect(batch.deferred).toEqual(items.slice(0, 2));
 });
 
-it("defers a same-source discovery lead while admitting the exact pricing failure", () => {
+it("defers discovery-only work while admitting an exact pricing failure and preserves aging", () => {
   const report = {
     ...candidate("databricks", "source_pricing_structure"),
     source_id: "databricks-models",
@@ -291,6 +291,18 @@ it("defers a same-source discovery lead while admitting the exact pricing failur
     deferred: [discovery],
   });
   expect(boundedIncidentBatch([discovery], emptyState(), now).selected).toEqual([discovery]);
+  const other = { ...discovery, source_id: "other-source", subject_id: "discovery:other-source" };
+  const state = emptyState();
+  observeCandidates(
+    state,
+    [other],
+    new Map([[candidateKey(other), digest("old discovery")]]),
+    new Date("2026-11-01T00:00:00Z"),
+  );
+  expect(boundedIncidentBatch([discovery, report, other], state, now).selected).toEqual([
+    other,
+    report,
+  ]);
 });
 
 it("reopens changed evidence and protects aged tasks from severity starvation", () => {
