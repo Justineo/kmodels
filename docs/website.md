@@ -228,12 +228,11 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   into a total. When Pricing offer is selectable, the selected choice already names the active base
   mechanism and its rate block does not repeat that title. Supplementary offers use the user-facing
   relationship as a group heading. Independently offered services share one provider heading and
-  compatibility note. Each row aligns its service name with its published prices. Where operation
-  changes the price, show one labeled line per operation. Group currency amounts for the same
-  meter, unit and charge definition with one unit below. Opening a row reveals how usage is counted.
+  compatibility note. The closed service row shows the relevant conditions or a resolved price.
+  Opening it reveals the same controls and rate grid used for model usage prices. All choices
+  apply together, including operation, billing currency, region and usage ranges.
   Account plans and prepaid commitments are omitted. Label an included service charge
   **No extra charge** and a published free state **Free**. Keep the unit on numeric zero prices.
-  Overlapping scopes and unresolved prices open the existing selectors and pricing notes from the same list.
   See [Service prices](commercial-topology.md#service-prices) for the projection rules.
   Offer choices show one
   reviewed title; they omit generated book labels, repeated default `Metered pricing` copy, and

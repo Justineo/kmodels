@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { load } from "cheerio";
+import type { PricingSelection } from "../src/catalog/pricing-applicability.ts";
 import { describe, expect, it } from "vite-plus/test";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
@@ -8,6 +9,7 @@ import { catalogSchema } from "../src/catalog/schema.ts";
 import { capturePricingReplaySources } from "../src/catalog/pricing-compilation.ts";
 import { websitePublication } from "../src/catalog/website-data.ts";
 import { projectWebsitePricingTimeline } from "../src/catalog/website-pricing-query.ts";
+import PricingOfferBreakdown from "../src/components/PricingOfferBreakdown.vue";
 import PricingServiceOffer from "../src/components/PricingServiceOffer.vue";
 import { renderComponent } from "./render-component.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
@@ -243,11 +245,42 @@ describe("DeepSeek native Search and Fetch charges", () => {
       });
       expect(html).toContain("Model tool call");
       expect(html).toContain("Successful direct API call");
-      expect(html).toContain("Free");
-      expect(html).toContain("CNY 5");
-      expect(html).toContain("USD 0.75");
-      expect(html).toContain("HTTP 200");
-      expect(html).not.toMatch(/Public rates|<fieldset|No rates match/);
+      expect(html).toContain("Billing currency");
+      expect(html).not.toMatch(/Public rates|No rates match|class="exact-rate"/);
+      const operation = granted.current.selectors.find((s) => s.dimension.value === "operation");
+      const currency = granted.current.selectors.find(
+        (s) => s.dimension.value === "billing_currency",
+      );
+      if (operation?.kind !== "categorical" || currency?.kind !== "categorical")
+        throw new Error("Missing service conditions");
+      for (const { value } of operation.values) {
+        const call = { kind: "categorical", dimension: operation.dimension, value } as const;
+        const view = async (boundSelectors: readonly PricingSelection[]) =>
+          load(
+            await renderComponent(PricingOfferBreakdown, {
+              offer: granted.current,
+              service: true,
+              boundSelectors,
+            }),
+          );
+        const partial = await view([call]);
+        if (value.value === "server_tools") {
+          expect(partial(".state-label").text()).toBe("Free");
+          expect(partial("fieldset")).toHaveLength(0);
+          expect(partial(".exact-rate")).toHaveLength(0);
+        } else {
+          expect(partial("fieldset").text()).toContain("Billing currency");
+          expect(partial(".exact-rate")).toHaveLength(0);
+          for (const quote of currency.values) {
+            const result = await view([
+              call,
+              { kind: "categorical", dimension: currency.dimension, value: quote.value },
+            ]);
+            expect(result(".exact-rate").text()).toBe(quote.label === "USD" ? "$0.75" : "CNY 5");
+            expect(result(".charge-driver-facts").text()).toContain("HTTP 200");
+          }
+        }
+      }
     }
   });
   it("uses the price pages for amounts while keeping guide quotes explicitly excluded", async () => {

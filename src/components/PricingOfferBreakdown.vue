@@ -3,8 +3,14 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
 import type { CommercialChoice } from "../catalog/pricing-schema.ts";
 import { queryWebsiteCommercialOffer } from "../catalog/website-commercial-query.ts";
-import { commercialConditionDimension } from "../pricing/commercial-vocabulary.ts";
-import PricingServiceRules from "./PricingServiceRules.vue";
+import {
+  commercialConditionDimension,
+  commercialDimensionLabels,
+} from "../pricing/commercial-vocabulary.ts";
+import {
+  pricingConditionHeading,
+  serviceOperationCopy,
+} from "../pricing/condition-presentation.ts";
 import {
   formatConditionValue,
   formatDimension,
@@ -23,7 +29,6 @@ import {
   projectWebsitePricingNotes,
   projectWebsitePricingTimeline,
   projectWebsiteRateQuery,
-  projectServiceRules,
 } from "../catalog/website-pricing-query.ts";
 import type {
   WebsitePriceApplicability,
@@ -216,30 +221,6 @@ const fixedSelectionValues = computed(() =>
     ...(props.hideConditions ? [] : commercialQuery.value.selectors),
   ]),
 );
-const serviceRules = computed(() => {
-  if (
-    !props.service ||
-    commercialQuery.value.unresolved_choices.length ||
-    commercialOptions.value.some(
-      (option) =>
-        !commercialContext.value.fixed_choices.some(
-          (fixed) =>
-            fixed.dimension === option.dimension &&
-            canonicalJson(fixed.value) === canonicalJson(option.value),
-        ),
-    )
-  )
-    return;
-  return projectServiceRules(
-    displayOffer.value,
-    configurableSelectors.value,
-    props.modelRef,
-    fixedSelectionValues.value,
-    viewingUpcoming.value && timeline.value.upcoming
-      ? timeline.value.upcoming.effective_at
-      : liveNow.value,
-  );
-});
 const followedRegion = computed(() => {
   const region = props.preferredRegion;
   if (region === undefined) return;
@@ -264,29 +245,36 @@ const visibleStates = computed(() => matchingRows(displayOffer.value.states));
 const rateProjection = computed(() =>
   projectWebsiteRateQuery(displayOffer.value, props.modelRef, selectionValues.value),
 );
-const rateSelectors = computed(() => {
-  const keys = new Set(
-    projectWebsiteRateQuery(
-      displayOffer.value,
-      props.modelRef,
-      fixedSelectionValues.value,
-    ).unresolved_dimensions.map(canonicalJson),
-  );
-  if (props.service) {
-    for (const row of [
-      ...displayOffer.value.states.filter((row) => row.state !== "numeric"),
-      ...displayOffer.value.allowances,
-      ...displayOffer.value.contributions,
-    ]) {
-      const result = evaluate(row.applicability, fixedSelectionValues.value);
-      if (result.state === "missing")
-        for (const dimension of result.missing_dimensions) keys.add(canonicalJson(dimension));
-    }
+function remainingDimensions(
+  selections: readonly PricingSelection[],
+  projection = projectWebsiteRateQuery(displayOffer.value, props.modelRef, selections),
+) {
+  const dimensions = new Map(projection.unresolved_dimensions.map((d) => [canonicalJson(d), d]));
+  for (const row of [
+    ...displayOffer.value.states.filter((row) => row.state !== "numeric"),
+    ...displayOffer.value.allowances,
+    ...displayOffer.value.contributions,
+  ]) {
+    const result = evaluate(row.applicability, selections);
+    if (result.state === "missing")
+      for (const dimension of result.missing_dimensions)
+        dimensions.set(canonicalJson(dimension), dimension);
   }
-  return selectors.value.filter(
-    (selector) => fixedPricingSelection(selector) !== undefined || keys.has(selector.key),
-  );
-});
+  return dimensions;
+}
+const missingDimensions = computed(() =>
+  remainingDimensions(selectionValues.value, rateProjection.value),
+);
+const rateSelectors = computed(() =>
+  selectors.value.filter((selector) => {
+    const key = canonicalJson(selector.dimension);
+    if (fixedPricingSelection(selector) || missingDimensions.value.has(key)) return true;
+    if (!inputs.value[selector.key] && followedRegion.value?.key !== selector.key) return false;
+    if (!visibleRates.value.length && showUnmatchedRates.value) return true;
+    const others = selectionValues.value.filter((value) => canonicalJson(value.dimension) !== key);
+    return remainingDimensions(others).has(key);
+  }),
+);
 const visibleRates = computed(() =>
   props.showCandidateRates
     ? displayOffer.value.rates
@@ -310,16 +298,13 @@ const visibleRates = computed(() =>
 );
 const chargeDrivers = computed(() => [
   ...new Map(
-    displayOffer.value.rates.flatMap(({ driver, applicability, key }) =>
-      driver !== undefined && selectedRow(key) && applies(applicability)
-        ? [[canonicalJson(driver), driver] as const]
-        : [],
+    visibleRates.value.flatMap(({ driver }) =>
+      driver !== undefined ? [[canonicalJson(driver), driver] as const] : [],
     ),
   ).values(),
 ]);
 const visibleAllowances = computed(() => matchingRows(displayOffer.value.allowances));
 const visibleContributions = computed(() => matchingRows(displayOffer.value.contributions));
-const unresolvedRateDimensions = computed(() => rateProjection.value.unresolved_dimensions);
 const visibleUnnormalized = computed(() =>
   projectWebsitePricingNotes(displayOffer.value)
     .filter(
@@ -371,7 +356,7 @@ const showOfferStates = computed(
 const showUnmatchedRates = computed(
   () =>
     displayOffer.value.rates.length > 0 &&
-    unresolvedRateDimensions.value.length === 0 &&
+    missingDimensions.value.size === 0 &&
     visibleStates.value.every(({ state }) => state === "numeric"),
 );
 const showPublishedStatus = computed(
@@ -383,6 +368,48 @@ const showPublishedStatus = computed(
     displayOffer.value.state_summary !== "Incomplete" &&
     displayOffer.value.state_summary !== "Included",
 );
+
+const serviceSummary = computed(() => {
+  if (hasConflictingPrices.value) return "Conflicting prices";
+  if (incompletePrices.value.length) return "Partial pricing";
+  if (timeline.value.upcoming) return "Upcoming rates";
+  const conditions = new Set<string>();
+  for (const { dimension } of commercialOptions.value) {
+    const fixed = commercialContext.value.fixed_choices.some(
+      (choice) => choice.dimension === dimension,
+    );
+    if (
+      !fixed ||
+      commercialOptions.value.filter((choice) => choice.dimension === dimension).length > 1
+    )
+      conditions.add(commercialDimensionLabels[dimension]);
+  }
+  for (const selector of rateSelectors.value)
+    if (!fixedPricingSelection(selector)) conditions.add(pricingConditionHeading(selector).label);
+  const [firstCondition] = conditions;
+  if (firstCondition) return conditions.size === 1 ? firstCondition : "View conditions";
+  if (
+    commercialQuery.value.unresolved_choices.length ||
+    displayOffer.value.unnormalized_count > displayOffer.value.unnormalized.length
+  )
+    return "View pricing";
+  const [rate] = visibleRates.value;
+  if (visibleRates.value.length === 1 && rate && !rate.qualifier)
+    return `${rate.amount} ${formatRateUnit(rate.unit)}`;
+  const [state] = visibleStates.value;
+  if (visibleStates.value.length === 1 && state && state.state !== "numeric" && !state.qualifier)
+    return state.state === "included" ? "No extra charge" : state.label;
+  return "View pricing";
+});
+const operationDetail = computed(() => {
+  for (const selected of selectionValues.value)
+    if (
+      selected.kind === "categorical" &&
+      selected.dimension.namespace === "kmodels" &&
+      selected.dimension.value === "operation"
+    )
+      return serviceOperationCopy(selected.value, selected.value.value).detail;
+});
 
 watch([() => props.offer.id, () => props.modelRef], () => {
   inputs.value = {};
@@ -450,7 +477,10 @@ function matches(applicability: WebsitePriceApplicability): boolean {
   return evaluate(applicability).state === "true";
 }
 
-function evaluate(applicability: WebsitePriceApplicability, selections = selectionValues.value) {
+function evaluate(
+  applicability: WebsitePriceApplicability,
+  selections: readonly PricingSelection[] = selectionValues.value,
+) {
   return props.modelRef === undefined
     ? evaluateApplicability(applicability, selections)
     : evaluateModelApplicability(applicability, props.modelRef, selections);
@@ -613,20 +643,10 @@ function showNoteScope(scope: ScopeCopy): boolean {
 </script>
 
 <template>
-  <component :is="serviceTitle && !serviceRules ? 'details' : 'div'" class="offer-breakdown">
-    <summary v-if="serviceTitle && !serviceRules" class="rate-offer-heading">
+  <component :is="serviceTitle ? 'details' : 'div'" class="offer-breakdown">
+    <summary v-if="serviceTitle" class="rate-offer-heading">
       <h5>{{ serviceTitle }}</h5>
-      <span>{{
-        hasConflictingPrices
-          ? "Conflicting prices"
-          : incompletePrices.length
-            ? "Partial pricing"
-            : timeline.upcoming
-              ? "Upcoming rates"
-              : unresolvedRateDimensions.length
-                ? "Choose conditions"
-                : "View pricing"
-      }}</span>
+      <span>{{ serviceSummary }}</span>
       <UiIcon name="chevron-right" />
     </summary>
     <div v-if="matchedRows === undefined && timeline.upcoming" class="pricing-change">
@@ -646,7 +666,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
       Commercial selection evidence is incomplete for this offer.
     </p>
     <PricingControls
-      v-if="!hideConditions && !serviceRules"
+      v-if="!hideConditions"
       :prefix="offer.id"
       :inferred="commercialContext.fixed_choices"
       :choices="commercialOptions"
@@ -655,8 +675,8 @@ function showNoteScope(scope: ScopeCopy): boolean {
       :inputs="inputs"
       :follow-region="followedRegion"
       :selection-prompt="
-        visibleRates.length === 0 && unresolvedRateDimensions.length > 0
-          ? { dimensions: unresolvedRateDimensions }
+        visibleRates.length === 0 && missingDimensions.size > 0
+          ? { dimensions: [...missingDimensions.values()] }
           : undefined
       "
       @change="selectCommercial"
@@ -675,13 +695,8 @@ function showNoteScope(scope: ScopeCopy): boolean {
       }}
     </p>
 
-    <PricingServiceRules
-      v-if="serviceRules"
-      :items="serviceRules"
-      :title="serviceTitle ?? offer.title"
-    />
     <section
-      v-else-if="visibleRates.length > 0 || showUnmatchedRates"
+      v-if="visibleRates.length > 0 || showUnmatchedRates"
       class="offer-section"
       aria-label="Published rates"
     >
@@ -700,7 +715,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
       <p v-else class="context-prompt">No rates match the selected context.</p>
     </section>
 
-    <div v-if="!serviceRules && showPublishedStatus" class="published-status">
+    <div v-if="showPublishedStatus" class="published-status">
       <small>Status</small>
       <strong>{{ displayOffer.state_summary }}</strong>
     </div>
@@ -717,7 +732,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
       <span>See Pricing notes for the published details.</span>
     </div>
 
-    <section v-if="!serviceRules && visibleAllowances.length > 0" class="offer-section">
+    <section v-if="visibleAllowances.length > 0" class="offer-section">
       <header class="pricing-subheading"><h6>Included usage</h6></header>
       <div class="allowance-list">
         <div v-for="allowance in visibleAllowances" :key="allowance.key">
@@ -755,7 +770,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
       </div>
     </section>
 
-    <section v-if="!serviceRules && showOfferStates" class="offer-section">
+    <section v-if="showOfferStates" class="offer-section">
       <header v-if="!service || visibleStates.length > 1" class="pricing-subheading">
         <h6>Pricing states</h6>
       </header>
@@ -776,6 +791,8 @@ function showNoteScope(scope: ScopeCopy): boolean {
         </div>
       </div>
     </section>
+
+    <p v-if="operationDetail" class="context-prompt">{{ operationDetail }}</p>
 
     <details v-if="visibleUnnormalized.length > 0" class="pricing-disclosure">
       <summary>
@@ -803,7 +820,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
       </div>
     </details>
 
-    <details v-if="service && !serviceRules && chargeDrivers.length > 0" class="pricing-disclosure">
+    <details v-if="service && chargeDrivers.length > 0" class="pricing-disclosure">
       <summary>
         <span><UiIcon name="chevron-right" />Billing details</span>
       </summary>
@@ -834,6 +851,9 @@ function showNoteScope(scope: ScopeCopy): boolean {
 }
 .rate-offer-heading > span {
   font-size: var(--font-size-meta);
+}
+.offer-breakdown[open] > .rate-offer-heading > span {
+  display: none;
 }
 .offer-breakdown[open] > .rate-offer-heading {
   margin-bottom: var(--space-2);

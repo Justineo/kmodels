@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { load } from "cheerio";
+import type { PricingSelection } from "../src/catalog/pricing-applicability.ts";
 import ProviderPricingDetails from "../src/components/ProviderPricingDetails.vue";
 import PricingServiceOffer from "../src/components/PricingServiceOffer.vue";
 import PricingOfferBreakdown from "../src/components/PricingOfferBreakdown.vue";
@@ -137,7 +138,7 @@ function pricingOffer(): WebsitePricingOffer {
 }
 
 describe("provider pricing details", () => {
-  it("shows currency-only quotes together, sharing only matching meters and units", async () => {
+  it("uses the model rate controls and meter units for currency-dependent service prices", async () => {
     const offer = pricingOffer();
     const dimension = { namespace: "kmodels", value: "billing_currency" } as const;
     const values = ["CNY", "USD"].map((code) => ({
@@ -175,25 +176,84 @@ describe("provider pricing details", () => {
       },
       applicability_label: value.value,
     }));
-    const inspect = async () =>
-      load(await renderComponent(PricingServiceOffer, { offer, resourceTitle: "File parsing" }));
-    const $ = await inspect();
-    const summary = $("summary.service-overview");
-    expect(
-      summary
-        .find(".amounts strong")
-        .map((_, el) => $(el).text())
-        .get(),
-    ).toEqual(["CNY 1.5", "USD 0.225"]);
-    expect(summary.find(".quote small").text()).toBe("per 1K pages");
-    expect(summary.find("h5").text()).toContain("File parsing");
-    expect($("fieldset")).toHaveLength(0);
-    expect($("details.service-disclosure").attr("open")).toBeUndefined();
+    const initial = load(
+      await renderComponent(PricingServiceOffer, { offer, resourceTitle: "File parsing" }),
+    );
+    expect(initial("summary").first().text()).toContain("File parsing");
+    expect(initial("summary").first().text()).toContain("Billing currency");
+    expect(initial("fieldset").text()).toContain("Billing currency");
+    expect(initial(".exact-rate")).toHaveLength(0);
+
     offer.rates = offer.rates.map((row, i) => (i === 1 ? { ...row, unit: "per page" } : row));
-    const distinctMeters = await inspect();
-    expect(distinctMeters(".service-overview .quote small")).toHaveLength(2);
-    expect(distinctMeters("details.service-disclosure")).toHaveLength(0);
+    for (const [i, { value }] of values.entries()) {
+      for (const service of [false, true]) {
+        const view = load(
+          await renderComponent(PricingOfferBreakdown, {
+            offer,
+            service,
+            boundSelectors: [{ kind: "categorical", dimension, value }],
+          }),
+        );
+        expect(view("fieldset")).toHaveLength(0);
+        expect(view(".exact-rate").text()).toBe(i === 0 ? "CNY 1.5" : "$0.225");
+        expect(view(".rate-grid dd small").text()).toBe(i === 0 ? "/ 1K pages" : "/ page");
+      }
+    }
   });
+  it("resolves a service and a model meter against the same three conditions", async () => {
+    const offer = pricingOffer();
+    const region = { namespace: "kmodels", value: "region" } as const;
+    const promotionDimension = { namespace: "kmodels", value: "promotion" } as const;
+    const regions = ["east", "west"].map((key) => ({
+      key,
+      label: key,
+      value: { namespace: "provider" as const, provider_id: "test", value: key },
+    }));
+    offer.selectors.push(billingPeriodSelector, {
+      kind: "categorical",
+      key: JSON.stringify(region),
+      dimension: region,
+      label: "Region",
+      values: regions,
+    });
+    offer.rates = billingPeriodRates().flatMap((rate, i) =>
+      regions.map(({ value }, j) => ({
+        ...rate,
+        key: rate.key + value.value,
+        amount: `$${i * 2 + j + 1}`,
+        accessible_text: `USD ${i * 2 + j + 1} per 1M tokens`,
+        applicability: {
+          any_of: rate.applicability.any_of.map(({ all_of }) => ({
+            all_of: [
+              ...all_of,
+              { kind: "boolean" as const, dimension: promotionDimension, value: false },
+              { kind: "categorical" as const, dimension: region, values: [value] },
+            ],
+          })),
+        },
+      })),
+    );
+    const [period] = billingPeriodValues;
+    const west = regions[1];
+    if (!period || !west) throw new Error("Missing fixture condition");
+    const choices: PricingSelection[] = [
+      { kind: "boolean", dimension: promotionDimension, value: false },
+      { kind: "categorical", dimension: billingPeriodDimension, value: period.value },
+      { kind: "categorical", dimension: region, value: west.value },
+    ];
+    for (const service of [false, true]) {
+      const view = async (boundSelectors: PricingSelection[]) =>
+        load(await renderComponent(PricingOfferBreakdown, { offer, service, boundSelectors }));
+      const partial = await view(choices.slice(0, 2));
+      expect(partial(".pricing-condition > label").text()).toBe("Region");
+      expect(partial(".exact-rate")).toHaveLength(0);
+      expect((await view(choices))(".exact-rate").text()).toBe("$2");
+      const free = await view([{ kind: "boolean", dimension: promotionDimension, value: true }]);
+      expect(free("fieldset")).toHaveLength(0);
+      expect(free(".state-label").text()).toBe("Free");
+    }
+  });
+
   it("keeps fixed plan properties when the selected service operation is included", async () => {
     const offer = pricingOffer();
     offer.states = offer.states.map((row) =>

@@ -59,7 +59,7 @@ export function pricingConditionHeading(selector: WebsitePricingSelector): {
   if (selector.dimension.namespace !== "kmodels") return { label };
   if (isCodeExecutionSelector(selector))
     return {
-      label: "Code execution",
+      label: "Web tool use",
       description: `Code execution has no extra charge with qualifying web tools. ${webToolRequirement}`,
     };
   const dashscope =

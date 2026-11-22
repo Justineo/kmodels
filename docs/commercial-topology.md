@@ -305,19 +305,12 @@ Search. Both use the operation dimension, with different meanings for its values
 | Allowance targeting a metered charge                                       | Quantity, pool and reset period beside the applicable rate, with shared pools identified once |
 | External billing, custom quote, unpublished price or unsupported operation | The specific status with its scope; a missing match remains unresolved                        |
 
-Show alternatives together when each row can state a complete, readable rule. Use “otherwise”
-only for an evidenced complement. Two observed values alone do not establish exhaustive coverage.
-Preserve independent conditions where they matter. DeepSeek's direct API price depends on currency
-and a successful request, while its server-tool free state can be read without choosing a currency.
-The service list uses the same price row for a flat tariff, currency-only prices and up to four
-operations with at most three billing currencies. Show equivalent billing units once beside the
-published amounts. Keep separate meters or units distinct. The closed row keeps operation labels,
-allowances and prices visible. Opening it reveals billing definitions and exact qualifications.
-Each operation and currency combination must resolve to one state and, when metered, one exact
-rate. An allowance must belong to one operation and apply across its displayed currencies.
-An identical metered price covering every operation appears once in the list.
-Keep the existing controls for overlapping conditions or combinations that need further input.
-Preserve qualifiers and incomplete pricing notes wherever they can change a displayed outcome.
+Services use the same condition controls and rate grid as model usage pricing. Evaluate all
+selected conditions together. A remaining condition appears when it can change a price, state,
+allowance or additional charge. A lookup that already resolves can show its result immediately.
+For DeepSeek, choosing a model tool call resolves the free state; a direct API call still requires
+the billing currency. Keep the published meter, unit, qualifications and allowance scope attached
+to each result. A service summary identifies the conditions or a resolved price before expansion.
 
 Examples include [Anthropic Code Execution](providers/anthropic.md#code-execution)
 with its organization allowance and container minimum, [DeepSeek Search and Fetch](providers/deepseek.md)

@@ -8,7 +8,7 @@ import { catalogRepairCandidates } from "../src/catalog/catalog-repair.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import { websiteModelDetail } from "../src/catalog/website-data.ts";
-import { projectServiceRules } from "../src/catalog/website-pricing-query.ts";
+import PricingOfferBreakdown from "../src/components/PricingOfferBreakdown.vue";
 import { queryWebsiteCommercialOffer } from "../src/catalog/website-commercial-query.ts";
 import PricingServiceOffer from "../src/components/PricingServiceOffer.vue";
 import { renderComponent } from "./render-component.ts";
@@ -2424,61 +2424,29 @@ describe("Anthropic adapters", () => {
     const html = await renderComponent(PricingServiceOffer, { offer, modelRef: model.uid });
     expect(html).toMatch(/<h5[^>]*>Code Execution</);
     expect(html).toContain("Request includes qualifying web search or web fetch");
-    expect(html).toContain("No extra charge");
-    expect(html).toContain("$0.05");
-    expect(html).toContain("1,550 free container-hours per organization per month");
-    expect(html).toContain("5 minutes per code execution container");
-    expect(html).toMatch(/web_search_20260209.*web_fetch_20260209/);
+    expect(html).toContain("Usage conditions");
     expect(html).not.toMatch(
-      />web-assisted<|>Billing basis<|>Resource kind<|Public rates|<fieldset|No rates match/,
+      />web-assisted<|>Billing basis<|>Resource kind<|Public rates|No rates match|class="exact-rate"/,
     );
     const operation = offer.selectors.find(({ dimension }) => dimension.value === "operation");
-    if (operation?.kind !== "categorical")
-      throw new Error("Missing code execution operation selector");
-    const rulesFor = (candidate: typeof offer) =>
-      projectServiceRules(candidate, [operation], model.uid, [], observedAt);
-    const [rate] = offer.rates;
-    if (!rate) throw new Error("Missing standalone container rate");
-    const both = { any_of: offer.states.flatMap((row) => row.applicability.any_of) };
-    expect(
-      rulesFor({
-        ...offer,
-        allowances: [],
-        states: [
-          {
-            key: "metered",
-            label: "Metered pricing",
-            state: "numeric",
-            applicability: both,
-            applicability_label: "Both operations",
-          },
-        ],
-        rates: [{ ...rate, applicability: both }],
-      }),
-    ).toMatchObject([{ rates: [{ row: { amount: "$0.05" } }] }]);
-    const zero = rulesFor({
-      ...offer,
-      rates: [{ ...rate, amount: "$0", accessible_text: "USD 0 per hour" }],
-    });
-    expect(
-      zero?.flatMap((rule) =>
-        rule.rates.map(({ row }) => [rule.state.state, row.amount, row.unit]),
-      ),
-    ).toEqual([["numeric", "$0", "per hour"]]);
-    expect(rulesFor({ ...offer, rates: [] })).toBeUndefined();
-    expect(
-      rulesFor({ ...offer, rates: [rate, { ...rate, key: "overlap", amount: "$0.10" }] }),
-    ).toBeUndefined();
-    expect(
-      rulesFor({
-        ...offer,
-        allowances: offer.allowances.map((a) => ({
-          ...a,
-          applicability: { any_of: [{ all_of: [] }] },
-        })),
-      }),
-    ).toBeUndefined();
-    expect(rulesFor({ ...offer, unnormalized_count: 1 })).toBeUndefined();
+    if (operation?.kind !== "categorical") throw new Error("Missing code execution selector");
+    for (const { value } of operation.values) {
+      const selected = await renderComponent(PricingOfferBreakdown, {
+        offer,
+        service: true,
+        modelRef: model.uid,
+        boundSelectors: [{ kind: "categorical", dimension: operation.dimension, value }],
+      });
+      if (value.value === "standalone") {
+        expect(selected).toContain("$0.05");
+        expect(selected).toContain("1,550 free container-hours per organization per month");
+        expect(selected).toContain("5 minutes per code execution container");
+      } else {
+        expect(selected).toContain("No extra charge");
+        expect(selected).toMatch(/web_search_20260209.*web_fetch_20260209/);
+        expect(selected).not.toMatch(/No rates match|class="exact-rate"|free container-hours/);
+      }
+    }
     const outcomes = operation.values.map(({ value }) => {
       const query = queryWebsiteCommercialOffer(
         offer,
