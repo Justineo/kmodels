@@ -35,7 +35,7 @@ const contextSchema = z.array(
     })),
 );
 
-export function parseEvidence(sourceId: string, input: unknown, context?: unknown) {
+export function verifiedCatalogEvidence(sourceId: string, input: unknown) {
   const evidence = evidenceSchema.parse(input);
   if (evidence.source_id !== sourceId || sha256(evidence.body) !== evidence.source_hash)
     throw new Error("Replay source identity or body hash does not match its evidence");
@@ -45,6 +45,11 @@ export function parseEvidence(sourceId: string, input: unknown, context?: unknow
     throw new Error("Replay requires an exact reviewed public source ID");
   if (evidence.source_url !== source.url)
     throw new Error("Replay full-source URL does not match its reviewed source");
+  return { manifest, source, evidence };
+}
+
+export function parseEvidence(sourceId: string, input: unknown, context?: unknown) {
+  const { manifest, source, evidence } = verifiedCatalogEvidence(sourceId, input);
   const catalogModels = context === undefined ? undefined : contextSchema.parse(context);
   if (catalogModels?.some(({ provider_id }) => provider_id !== manifest.provider.id))
     throw new Error("Replay catalog context has another provider's models");
@@ -101,7 +106,7 @@ export function replayCatalogEvidence(sourceId: string, input: unknown, context?
   };
 }
 
-async function readBoundedJson(path: string): Promise<unknown> {
+export async function readBoundedJson(path: string): Promise<unknown> {
   if ((await stat(path)).size > 128 * 1024 * 1024) throw new Error("Replay file exceeds 128 MiB");
   return JSON.parse(await readFile(path, "utf8"));
 }

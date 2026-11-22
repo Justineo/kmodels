@@ -88,6 +88,9 @@ severity inside the provider as well as across providers. Exact failed-source an
 diagnostics take precedence over discovery leads until the existing age limit gives waiting work
 priority. Additional work remains explicitly deferred. Mandatory source/execution completeness
 checks and full periodic provider reviews retain their coverage contracts.
+A due exact pricing, acquisition or parser incident defers discovery for the same source while
+that incident is admitted. A separate discovery lead remains available after the specific failure
+is addressed. A selected repair is verified for the affected claims and their relevant controls.
 
 Difficulty is deterministic: transport/parser work is routine; pricing, contract and provider
 reviews are semantic; architecture and repeated attempts are complex. Investigation deadlines
@@ -200,6 +203,9 @@ visible under `/baseline/repair-probes` in verification and takeover. From `/wor
 issue receipts through the offline runner for either tree. Candidate regression receipts bind
 the final patch. Tests with hydrated inputs remain in the probe mount, where the reviewer can
 correct an assertion and run it again.
+The shared `tests/repair-provider-replay.ts` helper verifies full public receipts and runs them
+through the normal collector, accepted-pair assembly and portable unit-price lookup offline.
+Probes provide their own claim-specific assertions and counterexamples.
 The controller records the probe hashes and replays the final files offline against both
 trees with read-only evidence and a three-minute test limit per tree. A no-op needs one replay.
 Each supported claim still requires successful consumer and counterexample receipts.

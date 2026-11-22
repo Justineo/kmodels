@@ -275,6 +275,24 @@ it("admits Mistral's exact failed sources before its page discovery leads", () =
   expect(batch.deferred).toEqual(items.slice(0, 2));
 });
 
+it("defers a same-source discovery lead while admitting the exact pricing failure", () => {
+  const report = {
+    ...candidate("databricks", "source_pricing_structure"),
+    source_id: "databricks-models",
+    subject_id: "databricks-models",
+  };
+  const discovery = {
+    ...report,
+    trigger: "source_contract_change" as const,
+    subject_id: "discovery:databricks-models",
+  };
+  expect(boundedIncidentBatch([discovery, report], emptyState(), now)).toEqual({
+    selected: [report],
+    deferred: [discovery],
+  });
+  expect(boundedIncidentBatch([discovery], emptyState(), now).selected).toEqual([discovery]);
+});
+
 it("reopens changed evidence and protects aged tasks from severity starvation", () => {
   const { state, task, item } = taskState();
   recordOutcome(task, { status: "not_a_defect", reason: "Checked the contract" }, now);

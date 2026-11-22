@@ -357,7 +357,21 @@ export function boundedIncidentBatch(
         candidateKey(a).localeCompare(candidateKey(b))
       );
     });
-  const selected = due.slice(0, 2).map(({ candidate }) => candidate);
+  const exactSources = new Set(
+    due.flatMap(({ candidate }) =>
+      candidate.trigger !== "source_contract_change" && candidate.source_id
+        ? [candidate.source_id]
+        : [],
+    ),
+  );
+  const selected = due
+    .filter(
+      ({ candidate }) =>
+        !candidate.subject_id.startsWith("discovery:") ||
+        !exactSources.has(candidate.source_id ?? ""),
+    )
+    .slice(0, 2)
+    .map(({ candidate }) => candidate);
   const ids = new Set(selected.map(candidateKey));
   return {
     selected,
