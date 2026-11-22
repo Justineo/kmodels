@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { manifests } from "../../src/catalog/manifests.ts";
 import { catalogRepairCandidates } from "../../src/catalog/catalog-repair.ts";
+import { github } from "../catalog-repair-evidence.ts";
 import { readReviewEvidence, validateRepairReview } from "../catalog-repair-review.ts";
 import { githubApi, readState, repository, writeState } from "./store.ts";
 import { recordDiscovery } from "./discovery.ts";
@@ -585,10 +586,9 @@ async function main(): Promise<void> {
     )) {
       if (artifact.size_in_bytes > 64 * 1024 * 1024) continue;
       const path = join(env("RUNNER_TEMP"), "discovery", artifact.name);
-      execFileSync(
-        "gh",
-        ["run", "download", String(run.id), "--name", artifact.name, "--dir", path],
-        { timeout: 180000 },
+      await github(
+        ["run", "download", String(run.id), "--repo", repo, "--name", artifact.name, "--dir", path],
+        180_000,
       );
       for (const name of (await readdir(path)).filter((name) => name.endsWith(".json.gz"))) {
         const receipt = z

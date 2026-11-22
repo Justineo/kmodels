@@ -26,6 +26,9 @@ document the source blocker, an alternative diagnostic and a failed acquisition 
 HTTP 404 or 410 for an admitted source. The tasks remain blocked until their retry dates. A
 matching removal on cooldown can sit out the next run. Unaccounted acquisition gaps, mixed
 incidents with unresolved work, tool failures and incomplete verification still report incomplete delivery.
+After the trusted delivery job confirms the upstream wait, the workflow skips gh-aw's generic
+incomplete-report conclusion. The ledger keeps the blocked tasks and the delivery summary records
+the wait.
 
 An invalid receipt or failed execution fails its owning stage. Settlement reads the journal from
 the last stage that could have spent money. If that journal is missing, the reservation stays in
@@ -80,9 +83,11 @@ after validating the review, preserving each receipt's contents, hash and origin
 It updates the review paths before independent verification. Previous artifact directories are
 excluded from new uploads to avoid recursive growth.
 
-Incident batches admit at most two due candidates from the selected provider; additional work
-remains explicitly deferred. Mandatory source/execution completeness checks are still added, and
-periodic provider reviews retain their full coverage contract.
+Incident batches admit at most two due candidates from the selected provider. They use incident
+severity inside the provider as well as across providers. Exact failed-source and pricing
+diagnostics take precedence over discovery leads until the existing age limit gives waiting work
+priority. Additional work remains explicitly deferred. Mandatory source/execution completeness
+checks and full periodic provider reviews retain their coverage contracts.
 
 Difficulty is deterministic: transport/parser work is routine; pricing, contract and provider
 reviews are semantic; architecture and repeated attempts are complex. Investigation deadlines
@@ -185,11 +190,15 @@ exact final patch. Its handoff includes the eligible contradictions, affected fi
 and the offline replay of any preserved verifier tests on the rejected proposal. The reviser
 can act on that evidence immediately and must still prove the changed behavior.
 A fresh session checks the revised patch starting from the original verifier's saved probes.
-Partial notes and earlier counterexamples carry forward as investigation leads.
+An unfinished, allowlisted revision is saved with its base and hash as investigation evidence.
+It has no publication intent and a later run must verify any reused changes on its current base.
 
 Independent tests live in the writable `/workspace/repair-probes` mount. The same files are
-visible under `/baseline/repair-probes` for running the identical probe against the original
-checkout. The reviewer can correct a probe and run it again within the same session.
+visible under `/baseline/repair-probes` in verification and takeover. From `/workspace`, use
+`vp node /trusted/scripts/catalog-repair-review.ts probe-test SIDE KIND PHASE NAME.test.ts` to
+issue receipts through the offline runner for either tree. Candidate regression receipts bind
+the final patch. Tests with hydrated inputs remain in the probe mount, where the reviewer can
+correct an assertion and run it again.
 The controller records the probe hashes and replays the final files offline against both
 trees with read-only evidence and a three-minute test limit per tree. A no-op needs one replay.
 Each supported claim still requires successful consumer and counterexample receipts.
@@ -236,6 +245,8 @@ the ledger stores a bounded sample and reports additions or removals when the ob
 Amount-only updates do not produce these leads. Discovery is deliberately
 bounded, not exhaustive web monitoring or proof of missing facts. Due tasks may dispatch repair
 at most once per six hours, with the dispatch claim persisted first.
+Discovery downloads use the same bounded retry and isolated extraction as repair evidence. A
+failed download cannot install partial receipts or advance the discovery ledger.
 
 An agent saying repaired does not close the loop. Verified review plus a trusted publication
 receipt records `code_published`. A subsequent successfully published refresh must contain the

@@ -21,6 +21,24 @@ it("keeps the generated setup action on the reviewed compiler-compatible pin", a
   for (const ref of refs) expect(ref[1]).toBe(`${setup.sha} # ${setup.version}`);
 });
 
+it("skips the generic incomplete failure only after trusted delivery confirms an upstream wait", async () => {
+  const workflow = await readFile(compiled, "utf8");
+  const conclusion = job(workflow, "conclusion");
+  const condition = conclusion.slice(
+    conclusion.indexOf("    if:"),
+    conclusion.indexOf("    runs-on:"),
+  );
+  expect(condition.replace(/\s+/g, " ")).toContain(
+    "&& (!(needs.agent.result == 'success' && needs.semantic_review.outputs.outcome == 'pending' && " +
+      "needs.maintenance_finish.outputs.waiting_for_source == 'true' && needs.verify_delivery.result == 'success'))",
+  );
+  expect(conclusion).toContain("- name: Handle agent failure");
+  const delivery = job(workflow, "verify_delivery");
+  expect(delivery).toMatch(
+    /pending\)[\s\S]*if \[ "\$WAITING_FOR_SOURCE" = true \][\s\S]*exit 0[\s\S]*Catalog repair incomplete[\s\S]*exit 1/,
+  );
+});
+
 it("routes repair and threat detection to DeepSeek without exposing the inference key to their agents", async () => {
   const workflow = await readFile(compiled, "utf8");
   for (const name of ["agent", "detection"]) {

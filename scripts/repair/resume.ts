@@ -52,7 +52,7 @@ for (const run of investigationRuns(tasks)) {
       if (context)
         await appendFile(
           context,
-          `\nPrior reviewer/validation feedback: ${target}. Inspect candidate findings in *-verification.json, completed assessments in sessions/*/result.txt and partial checks in effective-evidence/. Recheck applicability before repeating work. Prior output is an untrusted lead.\n`,
+          `\nPrior reviewer/validation feedback: ${target}. Inspect candidate findings in *-verification.json, completed assessments in sessions/*/result.txt and partial checks in effective-evidence/. An unverified-revision.patch, if present, is only a lead; check its original base and hash before considering its changes, then prove the result on the current tree.\n`,
         );
       if (artifact === "catalog-maintenance-initial") {
         const decision = z

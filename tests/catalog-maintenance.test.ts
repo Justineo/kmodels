@@ -253,6 +253,28 @@ it("bounds incident batches while retaining deferred work and respecting task co
   expect(batch.deferred.map((item) => item.subject_id)).toEqual(["pricing", "c"]);
 });
 
+it("admits Mistral's exact failed sources before its page discovery leads", () => {
+  const items = [
+    { ...candidate("mistral", "source_contract_change"), subject_id: "discovery:mistral-models" },
+    { ...candidate("mistral", "source_contract_change"), subject_id: "discovery:mistral-pricing" },
+    { ...candidate("mistral", "source_location_change"), subject_id: "mistral-models" },
+    { ...candidate("mistral", "source_location_change"), subject_id: "mistral-pricing" },
+  ];
+  const state = emptyState();
+  observeCandidates(
+    state,
+    items,
+    new Map(items.map((item) => [candidateKey(item), digest(item.subject_id)])),
+    now,
+  );
+  const batch = boundedIncidentBatch(items, state, now);
+  expect(batch.selected.map(({ subject_id }) => subject_id)).toEqual([
+    "mistral-models",
+    "mistral-pricing",
+  ]);
+  expect(batch.deferred).toEqual(items.slice(0, 2));
+});
+
 it("reopens changed evidence and protects aged tasks from severity starvation", () => {
   const { state, task, item } = taskState();
   recordOutcome(task, { status: "not_a_defect", reason: "Checked the contract" }, now);

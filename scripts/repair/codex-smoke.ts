@@ -82,7 +82,7 @@ const gateway = await startCodexGateway({
     if (typeof options?.body !== "string") throw new Error("Missing protocol request");
     const command = local
       ? "printf catalog-tool-%s ok"
-      : 'test -z "${CATALOG_REPAIR_OPENAI_API_KEY:-}${GH_TOKEN:-}${GITHUB_TOKEN:-}" && test ! -w /workspace/package.json && test ! -w /workspace/.git/config && test -w /workspace/repair-probes && test ! -w /trusted/package.json && test ! -w /tmp/gh-aw/agent/independent-sources && test ! -e /var/run/docker.sock && test "$(ls /sys/class/net)" = lo && vp node /trusted/scripts/catalog-repair-review.ts probe consumer investigation -- test --configLoader runner --config /trusted/scripts/repair/probe.config.ts --run repair-probes/protocol.test.ts && printf catalog-tool-%s ok';
+      : 'test -z "${CATALOG_REPAIR_OPENAI_API_KEY:-}${GH_TOKEN:-}${GITHUB_TOKEN:-}" && test ! -w /workspace/package.json && test ! -w /workspace/.git/config && test -w /workspace/repair-probes && test ! -w /trusted/package.json && test ! -w /tmp/gh-aw/agent/independent-sources && test ! -e /var/run/docker.sock && test "$(ls /sys/class/net)" = lo && { rc=0; vp node /trusted/scripts/catalog-repair-review.ts probe-test baseline parser before protocol.test.ts || rc=$?; test "$rc" = 1; } && vp node /trusted/scripts/catalog-repair-review.ts probe-test candidate consumer after protocol.test.ts && printf catalog-tool-%s ok';
     const request = z
       .object({
         input: z.array(z.object({ type: z.string(), output: z.unknown().optional() })),

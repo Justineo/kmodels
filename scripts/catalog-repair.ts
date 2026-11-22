@@ -33,6 +33,12 @@ const report: unknown = JSON.parse(await readFile(reportPath, "utf8"));
 const allCandidates = catalogRepairCandidates(report);
 const preparedAt = new Date();
 const periodic = process.env.KMODELS_PERIODIC_REVIEW === "true";
+const requestedProvider = process.env.KMODELS_INCIDENT_PROVIDER || undefined;
+if (
+  requestedProvider !== undefined &&
+  (periodic || !manifests.some(({ provider }) => provider.id === requestedProvider))
+)
+  throw new Error("Incident provider must identify a registered provider outside periodic review");
 const executionPath = process.env.KMODELS_REFRESH_EXECUTION_PATH;
 const execution =
   executionPath === undefined
@@ -100,18 +106,24 @@ for (const task of maintenance?.tasks ?? []) {
       diagnostics: [],
     });
 }
-const defaultBatch = catalogRepairBatch(
-  allCandidates,
-  preparedAt,
-  periodic ? "periodic" : "incident",
+const selectable = allCandidates.filter(
+  (candidate) => requestedProvider === undefined || candidate.provider_id === requestedProvider,
 );
+const defaultBatch = catalogRepairBatch(selectable, preparedAt, periodic ? "periodic" : "incident");
 let { selected: candidates, deferred } = defaultBatch;
 if (maintenance && !periodic) {
-  const provider = chooseProvider(maintenance, allCandidates, preparedAt);
+  const provider = chooseProvider(maintenance, selectable, preparedAt);
   candidates = allCandidates.filter((candidate) => candidate.provider_id === provider);
   deferred = allCandidates.filter((candidate) => candidate.provider_id !== provider);
-}
-if (maintenance && !periodic && candidates.length === 0 && !executionNeedsReview) {
+} else if (requestedProvider !== undefined)
+  deferred.push(...allCandidates.filter(({ provider_id }) => provider_id !== requestedProvider));
+if (
+  maintenance &&
+  !periodic &&
+  requestedProvider === undefined &&
+  candidates.length === 0 &&
+  !executionNeedsReview
+) {
   const unfinished = maintenance.tasks
     .filter(
       (task) =>
@@ -184,10 +196,12 @@ for (const candidate of deferred) {
 }
 const sourceEvidenceIncomplete = catalogRepairEvidenceIncomplete(
   report,
-  candidates.length === 0 ||
-    candidates.some(({ trigger }) => trigger === "scheduled_architecture_review")
-    ? undefined
-    : new Set(candidates.map(({ provider_id }) => provider_id)),
+  requestedProvider !== undefined
+    ? new Set([requestedProvider])
+    : candidates.length === 0 ||
+        candidates.some(({ trigger }) => trigger === "scheduled_architecture_review")
+      ? undefined
+      : new Set(candidates.map(({ provider_id }) => provider_id)),
   accountedRemovals,
 );
 const admissionPath = process.env.KMODELS_REPAIR_ADMISSION;

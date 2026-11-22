@@ -359,7 +359,7 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
           key,
           existing === undefined
             ? value
-            : { ...value, message: `${existing.message} ${value.message}` },
+            : { ...existing, message: `${existing.message} ${value.message}` },
         );
         continue;
       }
@@ -462,6 +462,7 @@ export function catalogRepairEvidenceIncomplete(
   providerIds?: ReadonlySet<string>,
   accountedRemovals?: ReadonlySet<string>,
 ): boolean {
+  const sources = sourceIndex();
   return refreshSummarySchema
     .parse(input)
     .providers.filter(
@@ -471,9 +472,21 @@ export function catalogRepairEvidenceIncomplete(
       ({ provider_id, attempt }) =>
         attempt?.sources.some((source) => {
           const accounted = accountedRemovals?.has(`${provider_id}/${source.source_id}`);
+          const manifest = reviewedSource(sources, provider_id, source.source_id);
+          const inventoryAccessDenied =
+            attempt.outcome === "accepted" &&
+            attempt.pricing?.outcome !== "failed" &&
+            (source.http_status === 401 || source.http_status === 403) &&
+            manifest?.access === "authenticated" &&
+            manifest.scope === "account" &&
+            manifest.role === "inventory" &&
+            manifest.optional === true &&
+            manifest.pricingRequired !== true;
           return (
             (source.dependency_failures_omitted ?? 0) > 0 ||
-            (source.outcome === "fetch_failed" && !(accounted && repeatedMissingSource(source))) ||
+            (source.outcome === "fetch_failed" &&
+              !inventoryAccessDenied &&
+              !(accounted && repeatedMissingSource(source))) ||
             source.dependency_failures?.some(
               (failure) =>
                 failure.outcome === "fetch_failed" &&

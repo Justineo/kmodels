@@ -279,11 +279,11 @@ export function observeCandidates(
   }
 }
 
-function priority(task: MaintenanceTask): number {
-  if (/pricing_validation|provider_validation|source_parse/.test(task.trigger)) return 0;
-  if (task.status === "code_published") return 1;
-  if (/location|acquisition/.test(task.trigger)) return 2;
-  return 3;
+function priority(trigger: string, status?: MaintenanceTask["status"]): number {
+  if (/pricing_validation|provider_validation|source_parse/.test(trigger)) return 0;
+  if (status === "code_published") return 1;
+  if (/location|acquisition/.test(trigger)) return 2;
+  return trigger === "source_pricing_structure" ? 3 : 4;
 }
 export function chooseProvider(
   state: MaintenanceState,
@@ -319,7 +319,7 @@ export function chooseProvider(
   available.sort(
     (a, b) =>
       Number(waited(b) >= 7 * 86400000) - Number(waited(a) >= 7 * 86400000) ||
-      priority(a) - priority(b) ||
+      priority(a.trigger, a.status) - priority(b.trigger, b.status) ||
       waited(b) - waited(a) ||
       a.id.localeCompare(b.id),
   );
@@ -340,19 +340,24 @@ export function boundedIncidentBatch(
   state: MaintenanceState | undefined,
   now: Date,
 ) {
+  const tasks = new Map(state?.tasks.map((task) => [task.id, task]));
   const due = candidates
-    .filter((candidate) => {
-      const task = state?.tasks.find((task) => task.id === candidateKey(candidate));
-      return !task?.retry_at || Date.parse(task.retry_at) <= now.getTime();
-    })
-    .sort((a, b) => {
-      const attempted = (candidate: CatalogRepairCandidate) =>
-        state?.tasks.find((task) => task.id === candidateKey(candidate))?.last_attempt ?? "";
+    .map((candidate) => ({ candidate, task: tasks.get(candidateKey(candidate)) }))
+    .filter(({ task }) => !task?.retry_at || Date.parse(task.retry_at) <= now.getTime())
+    .sort(({ candidate: a, task: ta }, { candidate: b, task: tb }) => {
+      const attemptA = ta?.last_attempt ?? "";
+      const attemptB = tb?.last_attempt ?? "";
+      const stale = (at: string) => at !== "" && now.getTime() - Date.parse(at) >= 7 * 86400000;
+      const agedA = stale(attemptA || ta?.first_seen || "");
+      const agedB = stale(attemptB || tb?.first_seen || "");
       return (
-        attempted(a).localeCompare(attempted(b)) || candidateKey(a).localeCompare(candidateKey(b))
+        Number(agedB) - Number(agedA) ||
+        priority(a.trigger, ta?.status) - priority(b.trigger, tb?.status) ||
+        attemptA.localeCompare(attemptB) ||
+        candidateKey(a).localeCompare(candidateKey(b))
       );
     });
-  const selected = due.slice(0, 2);
+  const selected = due.slice(0, 2).map(({ candidate }) => candidate);
   const ids = new Set(selected.map(candidateKey));
   return {
     selected,

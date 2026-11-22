@@ -342,6 +342,47 @@ it.each([
 );
 
 describe("catalog repair candidate selection", () => {
+  it("keeps repeated bundle relocation actionable alongside pricing findings from the same source", () => {
+    const candidates = catalogRepairCandidates(
+      report([
+        provider({
+          provider_id: "mistral",
+          attempt: {
+            outcome: "accepted",
+            pricing: { outcome: "failed", failure_code: "source_unavailable" },
+            sources: [
+              {
+                source_id: "mistral-pricing",
+                outcome: "unchanged",
+                dependency_failures: [
+                  {
+                    dependency_id: "mistral-pricing/priority-tier",
+                    url: "https://docs.mistral.ai/inference/priority-tier.md",
+                    impact: "bundle",
+                    outcome: "fetch_failed",
+                    message: "HTTP 404",
+                    http_status: 404,
+                    consecutive_failures: 46,
+                  },
+                ],
+                pricing_reconciliation: {
+                  reason_counts: { pricing_policy_unavailable: 1 },
+                },
+              },
+            ],
+          },
+        }),
+      ]),
+    );
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        source_id: "mistral-pricing",
+        trigger: "source_location_change",
+        message: expect.stringMatching(/priority-tier: HTTP 404.*pricing_policy_unavailable/),
+      }),
+    ]);
+  });
+
   it("reviews repeated public 404/410 failures for relocation without escalating transient transport", () => {
     const input = (message: string, failures: number) =>
       report([
@@ -405,6 +446,46 @@ describe("catalog repair candidate selection", () => {
         ]),
       ),
     ).toBe(false);
+  });
+
+  it("keeps account inventory access separate from independently accepted public facts", () => {
+    const providerReport = (
+      provider_id: string,
+      source_id: string,
+      http_status: number,
+      failure_code?: "source_unavailable",
+    ) =>
+      report([
+        {
+          provider_id,
+          signals: ["persistent_source_failure"],
+          attempt: {
+            outcome: "accepted",
+            pricing:
+              failure_code === undefined
+                ? { outcome: "accepted" }
+                : { outcome: "failed", failure_code },
+            sources: [
+              { source_id, outcome: "fetch_failed", http_status, consecutive_failures: 184 },
+            ],
+          },
+        },
+      ]);
+    const denied = providerReport("xai", "xai-language-api", 403);
+    expect(catalogRepairEvidenceIncomplete(denied)).toBe(false);
+    expect(catalogRepairCandidates(denied)).toEqual([]);
+    expect(catalogRepairEvidenceIncomplete(providerReport("xai", "xai-models", 403))).toBe(true);
+    expect(catalogRepairEvidenceIncomplete(providerReport("xai", "xai-language-api", 503))).toBe(
+      true,
+    );
+    expect(catalogRepairEvidenceIncomplete(providerReport("mistral", "mistral-api-eu", 403))).toBe(
+      true,
+    );
+    expect(
+      catalogRepairEvidenceIncomplete(
+        providerReport("xai", "xai-language-api", 401, "source_unavailable"),
+      ),
+    ).toBe(true);
   });
 
   it("admits prolonged public acquisition failures retaining stale prices, including commercial companions", () => {

@@ -36,8 +36,9 @@ Status: implemented
   investigation. Preparation admits one error-driven provider per run using trusted task severity,
   cooldown and age. Work waiting seven days precedes new high-severity work. Local invocation
   without maintenance state retains the deterministic six-hour provider rotation.
-  All candidates for that error provider stay together. The context and immutable admission retain
-  every deferred candidate; they remain unreviewed and are re-evaluated from the latest refresh on
+  Within that provider, due incident work uses the same severity and aging policy before the batch
+  is capped. The context and immutable admission retain every deferred candidate; they remain
+  unreviewed and are re-evaluated from the latest refresh on
   later runs. A batch outcome does not establish that the deferred queue or whole catalog is healthy.
   This bounds investigation without allowing the agent to drop difficult candidates after admission.
   Source-acquisition completeness uses the same admitted-provider scope. A failure elsewhere stays
@@ -55,7 +56,9 @@ Status: implemented
   for the same provider. Unknown meters and unbound product names alone are not automatically
   parser failures. When transport or required commercial evidence is unavailable and no code-repair
   candidate exists, preparation reports incomplete instead of claiming a healthy no-op. Missing
-  optional credentials alone remains a normal configured scope.
+  optional credentials are a normal configured scope. HTTP 401 or 403 from an optional authenticated
+  account inventory remains visible in the refresh report. It does not open an acquisition blocker for
+  an independently accepted provider when pricing was not withheld.
   Rejected public price cells, unsupported price labels, and
   drifted optional catalog companions also carry their exact diagnostic samples into admission,
   even when source bytes are unchanged and a separate pricing partition remains retained. Replay
@@ -75,7 +78,9 @@ Status: implemented
   acquisition evidence. Public evidence receipts expose the same bounded dependency failures.
 - The same repair workflow is manually dispatchable from GitHub Actions or with
   `gh workflow run catalog-repair.lock.yml`. Manual runs use the same repair-candidate gate and publication
-  rules as scheduled runs.
+  rules as scheduled runs. The optional `provider` input limits incident selection to that
+  registered provider's due findings. Other candidates remain deferred. This input cannot be
+  combined with periodic review or publication-validation retry.
 - Refresh and repair never create GitHub issues or require a repair pull request. A completed
   repair commits validated code directly to `main`; unavailable evidence, tool failures, timeouts, and incomplete investigation remain
   visible in Actions summaries, logs, artifacts, and failed job status. Every framework issue

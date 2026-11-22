@@ -4,12 +4,39 @@ import { join } from "node:path";
 import { expect, it } from "vite-plus/test";
 import {
   checkInvestigationReview,
+  independentProbe,
   readReviewEvidence,
   reviewHash,
   validateRepairReview,
   periodicReviewAreas,
   repairScopeSummary,
 } from "../scripts/catalog-repair-review.ts";
+
+it("runs independent baseline and final-patch probes with the same offline runner", () => {
+  const baseline = independentProbe(["baseline", "parser", "before", "together.test.ts"]);
+  const candidate = independentProbe(["candidate", "regression", "after", "together.test.ts"]);
+  expect(baseline).toEqual({
+    cwd: "/baseline",
+    arguments: [
+      "parser",
+      "before",
+      "--",
+      "test",
+      "--configLoader",
+      "runner",
+      "--config",
+      "/trusted/scripts/repair/probe.config.ts",
+      "--run",
+      "repair-probes/together.test.ts",
+    ],
+  });
+  expect(candidate.cwd).toBe("/workspace");
+  expect(candidate.arguments.slice(3)).toEqual(baseline.arguments.slice(3));
+  expect(() => independentProbe(["baseline", "regression", "after", "together.test.ts"])).toThrow();
+  expect(() =>
+    independentProbe(["candidate", "regression", "after", "../tests/together.test.ts"]),
+  ).toThrow();
+});
 
 function scenario() {
   const id = "vertex/vertex-pricing";

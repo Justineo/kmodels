@@ -399,6 +399,33 @@ export async function checkInvestigationReview(
   return { summary, review: portable };
 }
 
+export function independentProbe(args: string[]) {
+  const [side, kind, phase, name] = args;
+  if (
+    args.length !== 4 ||
+    (side !== "baseline" && side !== "candidate") ||
+    (side === "baseline" && phase === "after") ||
+    !name ||
+    !/^[\w.-]+\.test\.ts$/.test(name)
+  )
+    throw new Error("Expected probe-test SIDE KIND PHASE NAME.test.ts");
+  return {
+    cwd: side === "baseline" ? "/baseline" : "/workspace",
+    arguments: [
+      text(kind),
+      text(phase),
+      "--",
+      "test",
+      "--configLoader",
+      "runner",
+      "--config",
+      "/trusted/scripts/repair/probe.config.ts",
+      "--run",
+      `repair-probes/${name}`,
+    ],
+  };
+}
+
 async function main(): Promise<void> {
   const operation = process.argv[2];
   if (operation === "hash") {
@@ -406,10 +433,9 @@ async function main(): Promise<void> {
     console.log(JSON.stringify({ path, sha256: reviewHash(await readReviewEvidence(path)) }));
     return;
   }
-  if (operation === "probe") {
-    const kind = text(process.argv[3]);
-    const phase = text(process.argv[4]);
-    const args = process.argv.slice(6);
+  if (operation === "probe" || operation === "probe-test") {
+    const probe = operation === "probe-test" ? independentProbe(process.argv.slice(3)) : undefined;
+    const [kind, phase, separator, ...args] = probe?.arguments ?? process.argv.slice(3);
     if (
       ![
         "fetch",
@@ -420,18 +446,21 @@ async function main(): Promise<void> {
         "execution",
         "consumer",
         "transition",
-      ].includes(kind) ||
-      !["before", "after", "investigation"].includes(phase) ||
-      process.argv[5] !== "--" ||
+      ].includes(kind ?? "") ||
+      !["before", "after", "investigation"].includes(phase ?? "") ||
+      separator !== "--" ||
       !["node", "test", "check", "run", "env"].includes(args[0] ?? "")
     )
       throw new Error("Expected probe KIND PHASE -- VP_ARGUMENTS");
+    if (kind === "regression" && phase === "after" && probe && process.cwd() !== probe.cwd)
+      throw new Error("Run the candidate regression from /workspace to bind its patch");
     const command = ["vp", ...args].map((arg) => JSON.stringify(arg)).join(" ");
     const patchHash =
       kind === "regression" && phase === "after" ? await checkedPatchHash() : undefined;
     const started = new Date().toISOString();
     const result = spawnSync("vp", args, {
       encoding: "utf8",
+      cwd: probe?.cwd,
       timeout: 300_000,
       maxBuffer: 8 * 1024 * 1024,
     });

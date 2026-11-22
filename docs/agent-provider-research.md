@@ -19,6 +19,9 @@ optimization and behavior-preserving refactoring. The [collection contract](coll
    charge must survive a nearby free-price sentence. Use the pair relevant to the change.
 5. **Close on evidence.** Carry the exact missing fact or failed assertion into the next attempt.
    Track the published code, the snapshot that adopted it and the matching deployment receipt.
+   For a red workflow, locate the first failed job and its attempt-specific evidence before
+   attributing the failure to collection. A trusted upstream wait must name the blocked claim;
+   an unexplained gap or failure in verification, publication or deployment remains open.
 6. **Reconcile every counterexample in a comparison.** Keep the exact seller, model version,
    field, unit, condition and observation time in a local ledger. Check sibling rows and a
    counterexample through the public lookup. A numeric-output-limit comparison must distinguish
