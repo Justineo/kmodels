@@ -50,7 +50,7 @@ function documentedId(value: string | undefined): string {
 
 function libraryEntries(body: string) {
   const lists: unknown[][] = [];
-  for (const record of fireworksFlightRecords(body)) {
+  for (const record of fireworksFlightRecords(body).records) {
     const frame = libraryFrame.safeParse(record);
     if (frame.success) lists.push(frame.data[3].models);
   }
@@ -102,7 +102,7 @@ function addConsolePrices(
     const base = models.get(id);
     const document = documents.find((item) => item.url === url);
     assertSourceConstraint(
-      "Fireworks bundle omitted a required console profile",
+      "Fireworks bundle omitted a console profile",
       base !== undefined && document !== undefined,
       id,
     );

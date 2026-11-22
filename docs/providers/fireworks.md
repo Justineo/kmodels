@@ -22,15 +22,17 @@ publisher from the structured listing and the description from the matching card
 [media guide](https://docs.fireworks.ai/guides/video-audio-inputs) supplies video input for
 its exact documented Serverless ID. The collection requires no account credential.
 
-The anonymous [model console](https://app.fireworks.ai/models/fireworks/glm-5p3) is a
-required price companion for every admitted library card. Its server-rendered price widget
-publishes typed Serverless modes, exact invocation recipes and SKU amounts. Follow only the
+The [model console](https://app.fireworks.ai/models/fireworks/glm-5p3) is a price companion
+for each admitted library card. Its server-rendered price widget can publish typed
+Serverless modes, exact invocation recipes and SKU amounts. Follow only the
 card's literal API identity, with bounded profiles, bytes and concurrency. Read genuine React
 Flight element properties, skip byte-counted text records, and validate each mode's owner.
 `usageIdentifier` supplies the literal request ID; an empty value means the card's model ID.
 `serviceTier` supplies the request flag. Do not infer router IDs from suffixes or admit
 unrendered aliases. Preserve independently documented IDs and tariffs when a console mode
-is omitted. A required profile failure rejects the fresh price partition.
+is omitted. An exact typed Flight login redirect for the requested profile can replace an
+absent widget. The profile then contributes no anonymous prices or aliases. A missing profile,
+an absent widget without the redirect, or invalid widget data rejects the fresh partition.
 
 The [List Models API schema](https://docs.fireworks.ai/api-reference/list-models) documents
 that `ServerlessMode.skuInfos` is populated live from billing by `ListServerlessModels`,
@@ -42,8 +44,9 @@ up to 200, and paginates with `pageToken` and `nextPageToken`. The schema requir
 API key. The collector-transport probe of the exact `fireworks` account route returns HTTP 401
 without one, as do the ordinary management and inference inventories. This is an access
 limit, not evidence that the API lacks prices or that the public catalog is empty.
-The anonymous console exposes the consumed mode prices without credentials, so collection
-uses that first-party structured fallback. A future authenticated inventory must preserve
+The console can expose mode prices without credentials. Where the console requires login,
+the price book, public model cards and mode-specific guides supply the supported public facts.
+A future authenticated inventory must preserve
 account-specific mode gates rather than turning them into global exclusions. API field
 definitions establish the invocation recipe; public library flags and exact cards establish
 Serverless admission.

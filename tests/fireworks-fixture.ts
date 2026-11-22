@@ -69,8 +69,17 @@ export function consoleProfile(id: string, modes: unknown[] = []) {
   const record = ["$", "$L57", null, { model: "$25:1:props:model", serverlessModes: modes }];
   return {
     url: `https://app.fireworks.ai/models/${parts[1]}/${parts[3]}`,
-    body: `<script>self.__next_f.push(${JSON.stringify([1, `55:${JSON.stringify(record)}\n`])})</script>`,
+    body: consoleFlightFrame(`55:${JSON.stringify(record)}\n`),
   };
+}
+
+export function consoleFlightFrame(record: string) {
+  return `<script>self.__next_f.push(${JSON.stringify([1, record])})</script>`;
+}
+
+export function consoleLoginRecord(id: string) {
+  const path = new URL(consoleProfile(id).url).pathname;
+  return `4d:E${JSON.stringify({ digest: `NEXT_REDIRECT;replace;/login?redirectURI=${encodeURIComponent(path)};307;` })}\n`;
 }
 
 export function consoleMode(

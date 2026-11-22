@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { fireworksFlightRecords } from "./fireworks-flight.ts";
 import { modelIdSchema } from "./identity.ts";
-import { assertSourceConstraint } from "./source-contract.ts";
+import { assertSourceConstraint, parseSourceJson } from "./source-contract.ts";
 
 export const fireworksPublicId = modelIdSchema.refine((id) =>
   /^accounts\/[a-z0-9._-]+\/(?:models|routers)\/[a-z0-9._-]+$/u.test(id),
@@ -36,9 +36,10 @@ const widgetSchema = z.tuple([
   z.null(),
   z.object({
     model: z.string().regex(/^\$[a-f0-9]+:/u),
-    serverlessModes: z.array(modeSchema).max(32),
+    serverlessModes: z.unknown(),
   }),
 ]);
+const errorSchema = z.object({ digest: z.string() });
 
 export function fireworksConsoleModes(body: string, id: string) {
   const widgets: z.infer<typeof widgetSchema>[] = [];
@@ -58,14 +59,25 @@ export function fireworksConsoleModes(body: string, id: string) {
     else if (value !== null && typeof value === "object")
       for (const child of Object.values(value)) visit(child, depth + 1);
   }
-  for (const record of fireworksFlightRecords(body)) visit(record, 0);
+  const { records, errors } = fireworksFlightRecords(body);
+  for (const record of records) visit(record, 0);
+  if (widgets.length === 0 && errors.length > 0) {
+    const profilePath = new URL(fireworksConsoleUrl(id)).pathname;
+    const digest = `NEXT_REDIRECT;replace;/login?redirectURI=${encodeURIComponent(profilePath)};307;`;
+    if (
+      errors.some((error) => {
+        const parsed = errorSchema.safeParse(parseSourceJson(error, "Fireworks Flight error"));
+        return parsed.success && parsed.data.digest === digest;
+      })
+    )
+      return [];
+  }
   assertSourceConstraint(
     "Fireworks console lost its unique price widget",
     widgets.length === 1,
     id,
   );
-  const modes = widgets[0]?.[3].serverlessModes;
-  assertSourceConstraint("Fireworks console omitted its modes", modes !== undefined, id);
+  const modes = z.array(modeSchema).max(32).parse(widgets[0]?.[3].serverlessModes);
   const names = new Set<string>();
   const recipes = new Set<string>();
   for (const mode of modes) {

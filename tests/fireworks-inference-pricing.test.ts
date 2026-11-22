@@ -5,6 +5,7 @@ import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-c
 import { sha256 } from "../src/catalog/io.ts";
 import { manifests } from "../src/catalog/manifests.ts";
 import { emptyPricingCatalog } from "../src/catalog/pricing-schema.ts";
+import { failedPricingTransition } from "../src/catalog/pricing-transition.ts";
 import { composeCatalogPair, coreCatalogVersion } from "../src/catalog/pricing-pair-transition.ts";
 import {
   prepareCatalogPair,
@@ -16,6 +17,10 @@ import type { Catalog } from "../src/catalog/schema.ts";
 import {
   embeddingId,
   chatId,
+  consoleFlightFrame,
+  consoleLoginRecord,
+  consoleMode,
+  consoleProfile,
   flexRouterId,
   fireworksBundle,
   rerankerAlias,
@@ -29,11 +34,11 @@ vi.mock("../src/catalog/fetch.ts", async (importOriginal) => ({
 }));
 const at = "2026-11-12T00:00:00.000Z";
 
-async function collect(previous?: CatalogPairCandidate) {
+async function collect(previous?: CatalogPairCandidate, bundle = fireworksBundle) {
   const manifest = manifests.find(({ provider }) => provider.id === "fireworks");
   const source = manifest?.sources[0];
   if (!manifest || !source) throw new Error("Missing Fireworks source");
-  const body = JSON.stringify(fireworksBundle);
+  const body = JSON.stringify(bundle);
   vi.mocked(fetchSource).mockResolvedValue({
     body,
     contentHash: sha256(body),
@@ -47,7 +52,7 @@ async function collect(previous?: CatalogPairCandidate) {
     { sources: {} },
     at,
   );
-  if (!result.pricing) throw new Error(JSON.stringify(result.attempt));
+  if (!result.pricing && !previous) throw new Error(JSON.stringify(result.attempt));
   const core: Catalog = {
     catalog_version: coreCatalogVersion([result.provider]),
     generated_at: at,
@@ -61,7 +66,11 @@ async function collect(previous?: CatalogPairCandidate) {
     previous?.catalog,
     core,
     previous?.pricing.data ?? emptyPricingCatalog(),
-    [{ kind: "fresh", partition: result.pricing }],
+    [
+      result.pricing
+        ? { kind: "fresh", partition: result.pricing }
+        : failedPricingTransition("fireworks", at, result.pricingFailure ?? "pricing_not_observed"),
+    ],
   );
   return compileInferencePriceMapping(
     prepareCatalogPair(composed.catalog, composed.pricing),
@@ -115,6 +124,46 @@ it("selects Standard for the exact Flex router and rejects an explicit Priority 
     }).candidates,
   ).toEqual([]);
   expect(tier(chatId, "priority").status).toBe("matched");
+});
+
+it("recovers documented rates when the console requires login and retains quotes on invalid widgets", async () => {
+  const consoleRouter = "accounts/fireworks/routers/example-console-spot";
+  const mode = consoleMode(chatId, "spot", consoleRouter, "", [700000000, 140000000, 210000000]);
+  const fake = `中文\n${consoleLoginRecord(chatId)}`;
+  const text = consoleFlightFrame(`a:T${Buffer.byteLength(fake).toString(16)},${fake}`);
+  const profile = consoleProfile(chatId, [mode]);
+  const withProfile = (body: string) => ({
+    ...fireworksBundle,
+    documents: fireworksBundle.documents.map((doc) =>
+      doc.url === profile.url ? { ...profile, body } : doc,
+    ),
+  });
+  const valid = await collect(undefined, withProfile(profile.body + text));
+  const consoleQuery = { provider_id: "fireworks", model_id: consoleRouter };
+  expect(lookup(valid)(consoleQuery).status).toBe("matched");
+  expect(inputRate(valid, `fireworks/${consoleRouter}`)).toEqual([
+    { numerator: "7", denominator: "10000000" },
+  ]);
+
+  const duplicate = consoleProfile(chatId, [mode, mode]);
+  const retained = await collect(valid, withProfile(duplicate.body + text));
+  expect(retained.pricing.data.provider_snapshots[0]?.publication).toBe("retained");
+  const retainedQuote = lookup(retained)(consoleQuery);
+  expect(retainedQuote.status).toBe("matched");
+  expect(retainedQuote.candidates).toEqual(lookup(valid)(consoleQuery).candidates);
+
+  const gated = await collect(
+    retained,
+    withProfile(consoleFlightFrame(consoleLoginRecord(chatId))),
+  );
+  expect(gated.pricing.data.provider_snapshots[0]?.publication).toBe("fresh");
+  expect(lookup(gated)(consoleQuery).status).toBe("unknown");
+  expect(lookup(gated)({ provider_id: "fireworks", model_id: `${chatId}-spot` }).status).toBe(
+    "matched",
+  );
+  expect(inputRate(gated, `fireworks/${chatId}-spot`)).toEqual([
+    { numerator: "7", denominator: "10000000" },
+  ]);
 });
 
 it("bills a retrieval card with a single per-token unit as its input rate", async () => {

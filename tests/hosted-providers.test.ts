@@ -23,6 +23,8 @@ import { createInferencePriceLookup } from "../src/pricing/inference.ts";
 import {
   chatId,
   chatSlug,
+  consoleFlightFrame,
+  consoleLoginRecord,
   consoleMode,
   consoleProfile,
   decisionId,
@@ -708,9 +710,28 @@ describe("Fireworks AI Serverless", () => {
     const frames = [text.slice(0, 28), text.slice(28)]
       .map((chunk) => `<script>self.__next_f.push(${JSON.stringify([1, chunk])})</script>`)
       .join("");
-    expect(fireworksFlightRecords(frames)).toEqual([]);
+    expect(fireworksFlightRecords(frames)).toEqual({ records: [], errors: [] });
     expect(() => fireworksConsoleModes(frames, id)).toThrow(/unique price widget/);
     expect(() => fireworksFlightRecords(frames.replace("a:T", "a:Tffff"))).toThrow(/truncated/);
+  });
+
+  it("allows only a typed login redirect for the exact profile to replace an absent widget", () => {
+    const valid = consoleFlightFrame(consoleLoginRecord(chatId));
+    expect(fireworksConsoleModes(valid, chatId)).toEqual([]);
+    for (const body of [
+      consoleFlightFrame(consoleLoginRecord(decisionId)),
+      valid.replace(";307;", ";308;"),
+      valid.replace("4d:E", "4d:"),
+      valid.replace("%2Fmodels", "https%3A%2F%2Fother.example%2Fmodels"),
+    ])
+      expect(() => fireworksConsoleModes(body, chatId)).toThrow(/unique price widget/);
+    const profile = consoleProfile(chatId);
+    expect(() => fireworksConsoleModes(profile.body.repeat(2) + valid, chatId)).toThrow(
+      /unique price widget/,
+    );
+    expect(() =>
+      fireworksConsoleModes(consoleProfile(chatId, [{}]).body + valid, chatId),
+    ).toThrow();
   });
 
   function consoleBundle() {

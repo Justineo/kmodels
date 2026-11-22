@@ -3,7 +3,7 @@ import { z } from "zod";
 import { assertSourceConstraint, parseSourceJson } from "./source-contract.ts";
 
 // React Flight text records carry a UTF-8 byte length and may contain fake record headers.
-export function fireworksFlightRecords(body: string): unknown[] {
+export function fireworksFlightRecords(body: string) {
   const $ = load(body);
   const chunks = $("script")
     .toArray()
@@ -22,6 +22,7 @@ export function fireworksFlightRecords(body: string): unknown[] {
     });
   const bytes = Buffer.from(chunks.join(""));
   const records: unknown[] = [];
+  const errors: string[] = [];
   let offset = 0;
   while (offset < bytes.length) {
     if (bytes[offset] === 10) {
@@ -52,7 +53,8 @@ export function fireworksFlightRecords(body: string): unknown[] {
     const end = newline < 0 ? bytes.length : newline;
     const payload = bytes.subarray(offset, end).toString();
     if (/^[[{]/u.test(payload)) records.push(parseSourceJson(payload, "Fireworks Flight record"));
+    else if (payload.startsWith("E{")) errors.push(payload.slice(1));
     offset = end + 1;
   }
-  return records;
+  return { records, errors };
 }
