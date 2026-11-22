@@ -20,10 +20,13 @@ export function serviceOperationCopy(
 } {
   if (value.namespace === "provider") {
     if (value.provider_id === "anthropic" && value.value === "web-assisted")
-      return { label: "Request includes web search or web fetch", detail: webToolRequirement };
+      return {
+        label: "Request includes qualifying web search or web fetch",
+        detail: webToolRequirement,
+      };
     if (value.provider_id === "deepseek") {
-      if (value.value === "server_tools") return { label: "Called by the model" };
-      if (value.value === "standalone") return { label: "Direct API call" };
+      if (value.value === "server_tools") return { label: "Model tool call" };
+      if (value.value === "standalone") return { label: "Successful direct API call" };
     }
     if (value.value === "standalone") return { label: "Used on its own" };
   }

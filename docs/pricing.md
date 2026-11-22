@@ -1239,7 +1239,8 @@ The website projection emits offers in the presentation order above and retains 
 references so changing Pricing offer also filters its related costs.
 
 The model-rate block never merges meters. Related services are closed by default and use the
-user-facing kinds `Service charge`, `Included feature`, `Automatic charge`, and `Separate service`.
+relationship as a group heading. The service list shows published prices and their units on each
+row wherever the offer resolves without further input.
 Expanding that group shows each offer without merging its meters. These are prices, not request
 controls: Kmodels does not configure a request, accept quantities, or calculate a total. Public
 running-capacity rates appear in their own block when exact model compatibility is established;

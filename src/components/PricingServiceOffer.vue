@@ -27,18 +27,11 @@ const title = computed(() => {
       : undefined);
   return serviceOfferTitle(resource, props.offer.title);
 });
-const kind = computed(() => {
-  if (pricing.value?.group === "optional_service")
-    return props.offer.state_summary === "Included" ? "Included feature" : "Service charge";
-  if (pricing.value?.group === "automatic_component") return "Automatic charge";
-  return "Separate service";
-});
 </script>
 
 <template>
   <article class="rate-offer" :data-kind="pricing?.group ?? 'standalone'">
-    <header class="rate-offer-heading">
-      <small class="rate-kind">{{ kind }}</small>
+    <header v-if="!pricing" class="rate-offer-heading">
       <h5>{{ title }}</h5>
     </header>
     <PricingOfferBreakdown
@@ -47,6 +40,7 @@ const kind = computed(() => {
       :model-ref
       :preferred-region
       :pricing-context
+      :service-title="title"
       service
     />
     <PricingStatus v-else-if="error" heading="Pricing unavailable" :message="error" refresh />
@@ -64,6 +58,8 @@ const kind = computed(() => {
 <style scoped>
 .rate-offer {
   min-width: 0;
+  padding-block: var(--space-2-5);
+  border-top: var(--stroke-hairline) solid var(--color-border-subtle);
 }
 
 .rate-offer-heading {
@@ -77,16 +73,8 @@ const kind = computed(() => {
   font-size: var(--font-size-body);
 }
 
-.rate-kind,
 .service-status {
   color: var(--color-text-muted);
   font-size: var(--font-size-meta);
-}
-
-.rate-kind {
-  color: var(--color-accent);
-  font-weight: var(--font-weight-medium);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
 }
 </style>

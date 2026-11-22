@@ -54,6 +54,7 @@ const props = defineProps<{
   offer: WebsitePricingOffer;
   modelRef?: string | undefined;
   service?: boolean;
+  serviceTitle?: string;
   boundSelectors?: readonly PricingSelection[] | undefined;
   showCandidateRates?: boolean;
   matchedRows?: readonly string[] | undefined;
@@ -612,7 +613,22 @@ function showNoteScope(scope: ScopeCopy): boolean {
 </script>
 
 <template>
-  <div class="offer-breakdown">
+  <component :is="serviceTitle && !serviceRules ? 'details' : 'div'" class="offer-breakdown">
+    <summary v-if="serviceTitle && !serviceRules" class="rate-offer-heading">
+      <h5>{{ serviceTitle }}</h5>
+      <span>{{
+        hasConflictingPrices
+          ? "Conflicting prices"
+          : incompletePrices.length
+            ? "Partial pricing"
+            : timeline.upcoming
+              ? "Upcoming rates"
+              : unresolvedRateDimensions.length
+                ? "Choose conditions"
+                : "View pricing"
+      }}</span>
+      <UiIcon name="chevron-right" />
+    </summary>
     <div v-if="matchedRows === undefined && timeline.upcoming" class="pricing-change">
       <span class="pricing-change-icon"><UiIcon name="calendar-clock" /></span>
       <p>
@@ -659,7 +675,11 @@ function showNoteScope(scope: ScopeCopy): boolean {
       }}
     </p>
 
-    <PricingServiceRules v-if="serviceRules" :items="serviceRules" />
+    <PricingServiceRules
+      v-if="serviceRules"
+      :items="serviceRules"
+      :title="serviceTitle ?? offer.title"
+    />
     <section
       v-else-if="visibleRates.length > 0 || showUnmatchedRates"
       class="offer-section"
@@ -783,16 +803,44 @@ function showNoteScope(scope: ScopeCopy): boolean {
       </div>
     </details>
 
-    <details v-if="service && chargeDrivers.length > 0" class="pricing-disclosure">
+    <details v-if="service && !serviceRules && chargeDrivers.length > 0" class="pricing-disclosure">
       <summary>
-        <span><UiIcon name="chevron-right" />What this rate charges for</span>
+        <span><UiIcon name="chevron-right" />Billing details</span>
       </summary>
       <ChargeDriverFacts v-for="(driver, index) in chargeDrivers" :key="index" :driver />
     </details>
-  </div>
+  </component>
 </template>
 
 <style scoped>
+.rate-offer-heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  cursor: pointer;
+  list-style: none;
+}
+.rate-offer-heading::-webkit-details-marker {
+  display: none;
+}
+.rate-offer-heading h5 {
+  flex: 1;
+  margin: 0;
+  font-size: var(--font-size-body);
+}
+.rate-offer-heading > span,
+.rate-offer-heading .ui-icon {
+  color: var(--color-text-muted);
+}
+.rate-offer-heading > span {
+  font-size: var(--font-size-meta);
+}
+.offer-breakdown[open] > .rate-offer-heading {
+  margin-bottom: var(--space-2);
+}
+.offer-breakdown[open] > .rate-offer-heading .ui-icon {
+  transform: rotate(90deg);
+}
 .offer-breakdown {
   min-width: 0;
 }

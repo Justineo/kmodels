@@ -309,10 +309,13 @@ Show alternatives together when each row can state a complete, readable rule. Us
 only for an evidenced complement. Two observed values alone do not establish exhaustive coverage.
 Preserve independent conditions where they matter. DeepSeek's direct API price depends on currency
 and a successful request, while its server-tool free state can be read without choosing a currency.
-The compact comparison covers two to four operations with at most three billing currencies.
+The service list uses the same price row for a flat tariff, currency-only prices and up to four
+operations with at most three billing currencies. Show equivalent billing units once beside the
+published amounts. Keep separate meters or units distinct. The closed row keeps operation labels,
+allowances and prices visible. Opening it reveals billing definitions and exact qualifications.
 Each operation and currency combination must resolve to one state and, when metered, one exact
 rate. An allowance must belong to one operation and apply across its displayed currencies.
-An identical metered price covering every operation appears once in the normal rate view.
+An identical metered price covering every operation appears once in the list.
 Keep the existing controls for overlapping conditions or combinations that need further input.
 Preserve qualifiers and incomplete pricing notes wherever they can change a displayed outcome.
 

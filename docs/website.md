@@ -227,12 +227,13 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   separately and never combined
   into a total. When Pricing offer is selectable, the selected choice already names the active base
   mechanism and its rate block does not repeat that title. Supplementary offers use the user-facing
-  kinds `Service charge`, `Included feature`, `Automatic charge`, or `Separate service`; they do not
-  expose the schema term `optional`. Account plans and prepaid commitments are omitted.
-  Service cards lead with the resource name. Compare short, fully resolved operation tariffs
-  directly, including their currencies and allowances. Label an included service charge
+  relationship as a group heading. Independently offered services share one provider heading and
+  compatibility note. Each row aligns its service name with its published prices. Where operation
+  changes the price, show one labeled line per operation. Group currency amounts for the same
+  meter, unit and charge definition with one unit below. Opening a row reveals how usage is counted.
+  Account plans and prepaid commitments are omitted. Label an included service charge
   **No extra charge** and a published free state **Free**. Keep the unit on numeric zero prices.
-  Overlapping scopes and unresolved prices use the normal selectors and pricing notes.
+  Overlapping scopes and unresolved prices open the existing selectors and pricing notes from the same list.
   See [Service prices](commercial-topology.md#service-prices) for the projection rules.
   Offer choices show one
   reviewed title; they omit generated book labels, repeated default `Metered pricing` copy, and
@@ -332,8 +333,8 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   URL preserves the selected model and loads the current catalog and JavaScript modules
   together when a deployment has replaced assets used by an open tab.
 - Model-associated charges and independently callable provider services share one collapsed
-  `Other charges & services` disclosure and one `PricingServiceOffer` card. Both use the same heading,
-  kind, context controls, current/upcoming timeline, rate grid, notes and charge definitions. Resource
+  `Other charges & services` disclosure and one `PricingServiceOffer` row. Both use the same
+  price summaries, context controls, current/upcoming timeline, notes and charge definitions. Resource
   scope affects applicability and the card's context, never a second service browser or provider-specific
   presentation path. Provider services remain explicitly independent of model compatibility.
   When inference pricing is active, its surviving plan references scope model-associated cards.

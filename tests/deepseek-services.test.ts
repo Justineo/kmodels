@@ -241,8 +241,8 @@ describe("DeepSeek native Search and Fetch charges", () => {
         offer: granted.current,
         resourceTitle: resource.title,
       });
-      expect(html).toContain("Called by the model");
-      expect(html).toContain("Direct API call");
+      expect(html).toContain("Model tool call");
+      expect(html).toContain("Successful direct API call");
       expect(html).toContain("Free");
       expect(html).toContain("CNY 5");
       expect(html).toContain("USD 0.75");

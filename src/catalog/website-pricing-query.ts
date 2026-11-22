@@ -37,13 +37,13 @@ export interface WebsiteRateQuery {
 }
 
 export interface ServiceRule {
-  operation: Extract<WebsitePricingSelector, { kind: "categorical" }>["values"][number];
+  operation?: Extract<WebsitePricingSelector, { kind: "categorical" }>["values"][number];
   state: WebsitePricingOffer["states"][number];
   rates: { row: WebsiteRateRow; currency?: string }[];
   allowances: WebsitePricingOffer["allowances"];
 }
 
-/** Compare small operation tariffs only when every displayed context has one exact outcome. */
+/** A service can publish a flat price, currency quotes, or a small set of operation tariffs. */
 export function projectServiceRules(
   offer: WebsitePricingOffer,
   selectors: readonly WebsitePricingSelector[],
@@ -51,16 +51,18 @@ export function projectServiceRules(
   fixed: readonly PricingSelection[],
   instant: string,
 ): ServiceRule[] | undefined {
-  const operation = selectors.find(
-    (s) => s.dimension.namespace === "kmodels" && s.dimension.value === "operation",
-  );
-  const currency = selectors.find(
-    (s) => s.dimension.namespace === "kmodels" && s.dimension.value === "billing_currency",
-  );
+  function dimension(name: "operation" | "billing_currency") {
+    const matches = (s: WebsitePricingSelector) =>
+      s.dimension.namespace === "kmodels" && s.dimension.value === name;
+    return (
+      selectors.find(matches) ??
+      offer.selectors.find((s) => matches(s) && s.kind === "categorical" && s.values.length === 1)
+    );
+  }
+  const operation = dimension("operation");
+  const currency = dimension("billing_currency");
   if (
-    operation?.kind !== "categorical" ||
-    operation.values.length < 2 ||
-    operation.values.length > 4 ||
+    (operation && (operation.kind !== "categorical" || operation.values.length > 4)) ||
     (currency && (currency.kind !== "categorical" || currency.values.length > 3)) ||
     selectors.some((s) => s !== operation && s !== currency) ||
     offer.unnormalized_count ||
@@ -77,12 +79,15 @@ export function projectServiceRules(
     row: { applicability: WebsitePriceApplicability },
     selections: readonly PricingSelection[],
   ) => evaluate(row.applicability, modelRef, selections).state;
-  for (const option of operation.values) {
-    if (option.schedule) return;
-    const context: PricingSelection[] = [
-      ...fixed,
-      { kind: "categorical", dimension: operation.dimension, value: option.value },
-    ];
+  for (const option of operation?.values ?? [undefined]) {
+    if (option?.schedule) return;
+    const context =
+      operation && option
+        ? [
+            ...fixed,
+            { kind: "categorical" as const, dimension: operation.dimension, value: option.value },
+          ]
+        : fixed;
     const states = offer.states.filter((row) => match(row, context) !== "false");
     const state = states[0];
     if (states.length !== 1 || !state) return;
@@ -110,18 +115,22 @@ export function projectServiceRules(
       const row = possible[0];
       if (!row) continue;
       if (match(row, selections) !== "true") return;
-      if (denomination && match(row, context) !== "true")
+      if (denomination && (currency?.values.length === 1 || match(row, context) !== "true"))
         rates.push({ row, currency: denomination.label });
       else if (!rates.some((rate) => rate.row === row)) rates.push({ row });
     }
-    rules.push({ operation: option, state, rates, allowances });
+    rules.push({ ...(option ? { operation: option } : {}), state, rates, allowances });
   }
-  // The ordinary rate view already shows an invariant price once across all operations.
   if (
-    rules.every((rule) => rule.state.state === "numeric" && rule.allowances.length === 0) &&
-    projectWebsiteRateQuery(offer, modelRef, fixed).unresolved_dimensions.length === 0
-  )
-    return;
+    rules.length > 1 &&
+    rules.every((rule) => rule.state.state === "numeric" && !rule.allowances.length)
+  ) {
+    const invariant = projectWebsiteRateQuery(offer, modelRef, fixed);
+    const rate = invariant.rates[0];
+    const first = rules[0];
+    if (!invariant.unresolved_dimensions.length && invariant.rates.length === 1 && rate && first)
+      return [{ state: first.state, rates: [{ row: rate.row }], allowances: [] }];
+  }
   return rules;
 }
 

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { load } from "cheerio";
 import ProviderPricingDetails from "../src/components/ProviderPricingDetails.vue";
 import PricingServiceOffer from "../src/components/PricingServiceOffer.vue";
 import PricingOfferBreakdown from "../src/components/PricingOfferBreakdown.vue";
@@ -136,6 +137,63 @@ function pricingOffer(): WebsitePricingOffer {
 }
 
 describe("provider pricing details", () => {
+  it("shows currency-only quotes together, sharing only matching meters and units", async () => {
+    const offer = pricingOffer();
+    const dimension = { namespace: "kmodels", value: "billing_currency" } as const;
+    const values = ["CNY", "USD"].map((code) => ({
+      key: code,
+      label: code,
+      value: { namespace: "kmodels" as const, value: code },
+    }));
+    offer.selectors = [
+      {
+        kind: "categorical",
+        dimension,
+        key: JSON.stringify(dimension),
+        label: "Billing currency",
+        values,
+      },
+    ];
+    offer.states = [
+      {
+        key: "metered",
+        state: "numeric",
+        label: "Metered pricing",
+        applicability: allContexts,
+        applicability_label: "All currencies",
+      },
+    ];
+    offer.rates = values.map(({ value }, index) => ({
+      key: value.value,
+      term_ref: "c".repeat(64),
+      label: "Processed pages",
+      amount: index === 0 ? "CNY 1.5" : "$0.225",
+      unit: "per 1K pages",
+      accessible_text: `${value.value} per 1K pages`,
+      applicability: {
+        any_of: [{ all_of: [{ kind: "categorical", dimension, values: [value] }] }],
+      },
+      applicability_label: value.value,
+    }));
+    const inspect = async () =>
+      load(await renderComponent(PricingServiceOffer, { offer, resourceTitle: "File parsing" }));
+    const $ = await inspect();
+    const summary = $("summary.service-overview");
+    expect(
+      summary
+        .find(".amounts strong")
+        .map((_, el) => $(el).text())
+        .get(),
+    ).toEqual(["CNY 1.5", "USD 0.225"]);
+    expect(summary.find(".quote small").text()).toBe("per 1K pages");
+    expect(summary.find("h5").text()).toContain("File parsing");
+    expect($("fieldset")).toHaveLength(0);
+    expect($("details.service-disclosure").attr("open")).toBeUndefined();
+    offer.rates = offer.rates.map((row, i) => (i === 1 ? { ...row, unit: "per page" } : row));
+    const distinctMeters = await inspect();
+    expect(distinctMeters(".service-overview .quote small")).toHaveLength(2);
+    expect(distinctMeters("details.service-disclosure")).toHaveLength(0);
+  });
   it("keeps fixed plan properties when the selected service operation is included", async () => {
     const offer = pricingOffer();
     offer.states = offer.states.map((row) =>
@@ -561,8 +619,8 @@ describe("provider pricing details", () => {
       expect(html).toMatch(/<legend\b[^>]*>Usage conditions<\/legend>/);
       expect(html).not.toContain('class="provider-offer"');
     }
-    expect(modelHtml).toContain("Service charge");
-    expect(providerHtml).toContain("Separate service");
+    expect(modelHtml).toContain('data-kind="optional_service"');
+    expect(providerHtml).toContain('data-kind="standalone"');
   });
 
   it("keeps pending and failed offer details explicit in the common card", async () => {

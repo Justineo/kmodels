@@ -150,10 +150,10 @@ async function fillVisibleEntries(): Promise<void> {
     <p v-if="loading" class="service-status" aria-live="polite">Loading other service pricing…</p>
     <PricingStatus v-else-if="error" heading="Pricing unavailable" :message="error" refresh />
     <template v-else-if="detail">
-      <p v-if="entries.length > 0" class="service-status">
-        Provider services are offered independently; their published scope does not establish
-        availability for this model.
-      </p>
+      <header v-if="entries.length > 0" class="service-group-intro">
+        <h4>{{ provider.name }} services</h4>
+        <p class="service-status">Offered independently. Model compatibility is unconfirmed.</p>
+      </header>
       <p v-if="detail.snapshot?.publication === 'retained'" class="service-status" role="status">
         Service prices were last verified <RelativeTime :value="detail.snapshot.observed_at" />.
         {{ detail.snapshot.refresh_failure.message }}
@@ -197,7 +197,13 @@ async function fillVisibleEntries(): Promise<void> {
 
 <style scoped>
 .provider-service-offers {
-  display: contents;
+  min-width: 0;
+}
+.service-group-intro {
+  margin-bottom: var(--space-2);
+}
+.service-search {
+  margin-block: var(--space-2);
 }
 
 .service-status {

@@ -123,6 +123,24 @@ const supplementaryOffers = computed(() => {
   );
 });
 
+const serviceGroups = computed(() => {
+  const groups = new Map<string, WebsitePricingOffer[]>();
+  for (const offer of supplementaryOffers.value) {
+    const heading =
+      offer.group === "automatic_component"
+        ? "Automatic charges"
+        : offer.group === "standalone"
+          ? "Separate services"
+          : offer.state_summary === "Included"
+            ? "Included features"
+            : "Service charges";
+    const group = groups.get(heading);
+    if (group) group.push(offer);
+    else groups.set(heading, [offer]);
+  }
+  return [...groups].map(([heading, offers]) => ({ heading, offers }));
+});
+
 watch(
   () => props.model.uid,
   () => {
@@ -298,14 +316,17 @@ watch(hasOtherCharges, (available) => {
       </button>
 
       <div v-show="otherChargesOpen" :id="otherChargesId" class="supplementary-list">
-        <PricingServiceOffer
-          v-for="offer in supplementaryOffers"
-          :key="offer.id"
-          :offer
-          :model-ref="model.uid"
-          :preferred-region
-          :pricing-context="chargesContext"
-        />
+        <section v-for="group in serviceGroups" :key="group.heading" class="service-group">
+          <h4>{{ group.heading }}</h4>
+          <PricingServiceOffer
+            v-for="offer in group.offers"
+            :key="offer.id"
+            :offer
+            :model-ref="model.uid"
+            :preferred-region
+            :pricing-context="chargesContext"
+          />
+        </section>
         <ProviderServices
           v-if="provider && provider.pricing_coverage.standalone_resources > 0"
           :key="provider.id"

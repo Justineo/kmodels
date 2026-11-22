@@ -2423,7 +2423,7 @@ describe("Anthropic adapters", () => {
     if (!offer) throw new Error("Missing model-linked code execution offer");
     const html = await renderComponent(PricingServiceOffer, { offer, modelRef: model.uid });
     expect(html).toMatch(/<h5[^>]*>Code Execution</);
-    expect(html).toContain("Request includes web search or web fetch");
+    expect(html).toContain("Request includes qualifying web search or web fetch");
     expect(html).toContain("No extra charge");
     expect(html).toContain("$0.05");
     expect(html).toContain("1,550 free container-hours per organization per month");
@@ -2455,7 +2455,7 @@ describe("Anthropic adapters", () => {
         ],
         rates: [{ ...rate, applicability: both }],
       }),
-    ).toBeUndefined();
+    ).toMatchObject([{ rates: [{ row: { amount: "$0.05" } }] }]);
     const zero = rulesFor({
       ...offer,
       rates: [{ ...rate, amount: "$0", accessible_text: "USD 0 per hour" }],
