@@ -14,7 +14,7 @@ import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { assertRepairChanges, parseRepairOutcome } from "../catalog-repair-publication.ts";
-import { validateRepairReview } from "../catalog-repair-review.ts";
+import { isPeriodicReview, validateRepairReview } from "../catalog-repair-review.ts";
 import { canTakeOver, digest, leaseSchema, stateSchema } from "./state.ts";
 import { takeoverFindings } from "./takeover.ts";
 import { readSharedFile, writePrivateJson } from "./files.ts";
@@ -340,7 +340,7 @@ async function main(): Promise<void> {
     .object({
       base_sha: z.literal(base),
       difficulty: z.enum(["routine", "semantic", "complex"]),
-      candidates: z.array(z.object({ id: z.string() }).passthrough()),
+      candidates: z.array(z.object({ id: z.string(), trigger: z.string() }).passthrough()),
     })
     .passthrough()
     .parse(JSON.parse(admissionText));
@@ -566,6 +566,13 @@ async function main(): Promise<void> {
         });
       }
       const expected = closedCandidates(review);
+      const periodicRepairs = admission.candidates
+        .filter(
+          ({ id, trigger }) =>
+            isPeriodicReview(trigger) &&
+            review.candidates.some((row) => row.id === id && row.status === "repaired"),
+        )
+        .map(({ id }) => id);
       const baseline = await freshWork(`${label}-baseline`, "");
       gateway.startPhase();
       const work = patch ? await freshWork(`${label}-proposal`, patch) : baseline;
@@ -575,7 +582,7 @@ async function main(): Promise<void> {
       const text = await run(
         "verify",
         work,
-        `Independently check exactly ${JSON.stringify(expected)} against original provider evidence. /workspace holds the proposal and /baseline holds its base. Run your consumer and counterexample on the relevant trees; fix probe errors in this session. Verify lifecycle, retention and other neighboring behavior when it is part of the named claim or the changed contract. No full provider review is required for a scoped incident. The patch and proposer receipts under /tmp/gh-aw/agent/proposer are leads. Record your own successful receipts for supported findings. Return concrete_error for a demonstrated expected/actual contradiction or insufficient_evidence for an unresolved claim.`,
+        `Independently check exactly ${JSON.stringify(expected)} against original provider evidence. For these periodic repair rows ${JSON.stringify(periodicRepairs)}, the verdict covers the exact patch, the repaired claim and its changed contracts. Independently check that scope even when other areas of the periodic review need more evidence. The periodic review remains open after a repair. A periodic not_a_defect row instead requires an independent verdict for the full review. /workspace holds the proposal and /baseline holds its base. Run your consumer and counterexample on the relevant trees; fix probe errors in this session. Verify lifecycle, retention and other neighboring behavior when it is part of the named claim or the changed contract. No full provider review is required for a scoped incident. The patch and proposer receipts under /tmp/gh-aw/agent/proposer are leads. Record your own successful receipts for supported findings. Return concrete_error for a demonstrated expected/actual contradiction or insufficient_evidence for an unresolved claim within your verification scope.`,
         verificationInputs,
         verificationOutputSchema,
         baseline,

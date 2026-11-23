@@ -216,9 +216,12 @@ A calendar slot is an attempt, not proof of completed coverage. Failed or unfini
 incomplete. The workflow artifact retains conclusions and evidence limits. This complements
 targeted repair without introducing another scheduler.
 Periodic records cover discovery, identity/lifecycle, pricing, accounting, publication, consumers,
-diagnostics/repair and simplicity separately, with hashed evidence per area. Publication and
-consumer completion require their own successful transition/consumer receipts. A repair can be
-delivered while another area is blocked, but that does not complete the comprehensive review.
+diagnostics/repair and simplicity. Reviewed and blocked areas carry hashed evidence. Pending areas
+carry a reason and next action. Publication and consumer completion require their own successful
+transition/consumer receipts. The independent verdict for a periodic repair covers its exact patch,
+repaired claim and changed contracts. After delivery the ledger keeps the comprehensive review
+pending with its saved coverage and the repair revision. A complete periodic review needs an
+independent assessment of every area.
 The checker rejects the source-fetch/parser-replay helpers when mislabeled as consumer or
 transition checks. A check kind is still a claim to inspect, not proof of what an arbitrary
 script actually exercised.

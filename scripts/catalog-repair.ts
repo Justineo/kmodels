@@ -8,7 +8,7 @@ import {
 } from "../src/catalog/catalog-repair.ts";
 import { dirname, join } from "node:path";
 import { refreshExecutionSchema } from "./catalog-repair-evidence.ts";
-import { periodicReviewAreas } from "./catalog-repair-review.ts";
+import { isPeriodicReview, periodicReviewAreas } from "./catalog-repair-review.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import {
   candidateKey,
@@ -255,12 +255,13 @@ if (admissionPath !== undefined) {
           next_action: "Inspect source evidence and replay the actual parser",
           evidence: [],
           checks: [],
-          ...(["scheduled_provider_review", "scheduled_architecture_review"].includes(trigger)
+          ...(isPeriodicReview(trigger)
             ? {
                 coverage: periodicReviewAreas.map((area) => ({
                   area,
                   status: "pending",
                   reason: "Not reviewed yet",
+                  next_action: `Review ${area} against current source and consumer evidence`,
                   evidence: [],
                 })),
               }

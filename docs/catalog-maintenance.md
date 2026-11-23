@@ -176,6 +176,11 @@ all-no-defect run. Pending and blocked rows retain their existing meaning. An em
 requires no model call. One independent Codex session receives the immutable admission, original checkout and exact proposed patch. It checks the full original sources and runs its own consumer and counterexample against both trees before returning a per-candidate decision. Selected excerpts and changed-file risk heuristics do
 not decide whether verification is required.
 
+For a repaired periodic row, this decision covers the exact patch and changed contract. The
+repair follows the ordinary publication gates with independent consumer and counterexample proof.
+The periodic audit remains pending with the saved coverage, remaining work and published repair
+revision. A periodic no-defect conclusion still requires independent verification of the full review.
+
 A supported conclusion needs hash-bound original evidence and successful consumer and
 counterexample command receipts. A concrete error needs distinct expected and actual behavior
 with supporting evidence. Receipt validation checks structure, hashes, coverage and successful

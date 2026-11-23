@@ -329,6 +329,35 @@ it("reopens changed evidence and protects aged tasks from severity starvation", 
   expect(difficulty([task])).toBe("complex");
 });
 
+it("retains the repair revision while an independently scoped periodic audit remains due", () => {
+  const { task } = taskState();
+  task.trigger = "scheduled_provider_review";
+  task.coverage = [
+    {
+      area: "accounting",
+      status: "pending",
+      reason: "Unreviewed quantities",
+      next_action: "Check the meter",
+    },
+  ];
+  const revision = "a".repeat(40);
+  recordOutcome(
+    task,
+    { status: "repaired", reason: "Corrected a scoped tariff", published_revision: revision },
+    now,
+  );
+  expect(task.status).toBe("pending");
+  expect(task.code_revision).toBe(revision);
+  expect(task.next_action).toContain(revision);
+  expect(task.coverage[0]?.next_action).toBe("Check the meter");
+  recordOutcome(
+    task,
+    { status: "not_a_defect", reason: "The remaining review is independently complete" },
+    now,
+  );
+  expect(task.status).toBe("not_a_defect");
+});
+
 it("requires publication, fresh accepted versions and consumer proof before adoption", () => {
   const { task } = taskState();
   recordOutcome(task, { status: "repaired", reason: "Agent proposal" }, now);

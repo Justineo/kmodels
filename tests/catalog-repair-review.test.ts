@@ -218,6 +218,37 @@ it("keeps a blocked periodic area visible while allowing an independently verifi
   ).rejects.toThrow("healthy review");
 });
 
+it("accepts a scoped periodic repair with pending areas but rejects closing that audit as a no-op", async () => {
+  const s = scenario();
+  const admission = JSON.stringify({
+    schema_version: 1,
+    candidates: [{ id: s.id, trigger: "scheduled_provider_review" }],
+  });
+  const row = s.repaired();
+  const coverage = periodicReviewAreas.map((area) => ({
+    area,
+    status: area === "pricing" ? "reviewed" : "pending",
+    reason: area === "pricing" ? "Reviewed the changed price scope" : "Review is incomplete",
+    evidence: area === "pricing" ? row.evidence : [],
+    next_action: `Review ${area} independently`,
+  }));
+  const review = (status = "repaired") =>
+    JSON.stringify({
+      admission_sha256: reviewHash(admission),
+      candidates: [{ ...row, coverage, status }],
+    });
+  await expect(
+    validateRepairReview(admission, review(), s.read, { requireRepair: true }),
+  ).resolves.toMatchObject({ repaired: 1 });
+  const summary = repairScopeSummary(admission, review());
+  expect(summary).toContain('"review_complete": false');
+  expect(summary).toContain('"pending_areas"');
+  expect(summary).toContain("Review accounting independently");
+  await expect(
+    validateRepairReview(admission, review("not_a_defect"), s.read, { requireNoDefect: true }),
+  ).rejects.toThrow("Pending periodic area cannot establish a healthy review");
+});
+
 it("rejects missing, duplicate, unknown, or stale candidate reviews", async () => {
   const s = scenario();
   await expect(validateRepairReview(s.admission, s.report([]), s.read)).rejects.toThrow(

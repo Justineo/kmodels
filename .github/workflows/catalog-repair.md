@@ -885,10 +885,12 @@ alone cannot establish either result.
 For `scheduled_provider_review`, trace the provider's discovery, identity/lifecycle, pricing,
 accounting, publication, consumers, diagnostics/repair and simplicity. For
 `scheduled_architecture_review`, trace those same boundaries across providers. Use the eight
-prepared coverage entries. Each needs a reason and hashed evidence. A blocked area needs a next
-action and alternative check. Reviewed consumers and publication need successful `consumer`
-and `transition` receipts respectively. Report incomplete areas even when a narrower repair
-can ship. For a manually admitted `semantic_coverage_review`, use `docs/semantic-audit.md`
+prepared coverage entries. Reviewed and blocked areas need a reason and hashed evidence. A blocked
+area needs a next action and alternative check. Leave unfinished areas `pending` with a reason and
+next action. Reviewed consumers and publication need successful `consumer` and `transition`
+receipts respectively. Submit a proved scoped repair with its exact regression while the other
+areas remain open. Independent verification of a scoped repair does not close the periodic review.
+For a manually admitted `semantic_coverage_review`, use `docs/semantic-audit.md`
 and replay the supplied snapshot.
 
 ## Submit once

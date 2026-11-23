@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { CatalogRepairCandidate } from "../../src/catalog/catalog-repair.ts";
+import { isPeriodicReview } from "../catalog-repair-review.ts";
 
 const timestamp = z.iso.datetime({ offset: true });
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
@@ -35,7 +36,14 @@ export const taskSchema = z.object({
   deployed_run: z.string().regex(/^\d+$/).optional(),
   source_versions: z.record(z.string(), z.string()).default({}),
   coverage: z
-    .array(z.object({ area: z.string(), status: z.string(), reason: z.string().max(8000) }))
+    .array(
+      z.object({
+        area: z.string(),
+        status: z.string(),
+        reason: z.string().max(8000),
+        next_action: z.string().max(8000).optional(),
+      }),
+    )
     .max(8)
     .default([]),
 });
@@ -391,12 +399,15 @@ export function recordOutcome(
 ): void {
   delete task.source_wait_reason_hash;
   task.reason = result.reason.slice(0, 8000);
+  const periodicRepair = result.status === "repaired" && isPeriodicReview(task.trigger);
   task.next_action = (
-    result.next_action ?? "Recheck evidence and continue the unfinished investigation."
+    periodicRepair && result.published_revision
+      ? `Scoped repair published as ${result.published_revision}. Reuse applicable saved evidence and independently finish the remaining review areas.`
+      : (result.next_action ?? "Recheck evidence and continue the unfinished investigation.")
   ).slice(0, 8000);
   task.status =
     result.status === "repaired"
-      ? result.published_revision
+      ? result.published_revision && !periodicRepair
         ? "code_published"
         : "pending"
       : result.status;

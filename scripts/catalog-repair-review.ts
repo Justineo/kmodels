@@ -17,6 +17,10 @@ export const periodicReviewAreas = [
   "simplicity",
 ] as const;
 
+export function isPeriodicReview(trigger: unknown): boolean {
+  return trigger === "scheduled_provider_review" || trigger === "scheduled_architecture_review";
+}
+
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -171,11 +175,7 @@ export async function validateRepairReview(
             retryStarted === undefined ||
             (typeof check.started_at === "string" && Date.parse(check.started_at) >= retryStarted)),
       );
-    if (
-      ["scheduled_provider_review", "scheduled_architecture_review"].includes(
-        text(candidate.trigger),
-      )
-    ) {
+    if (isPeriodicReview(text(candidate.trigger))) {
       const coverage = records(row.coverage);
       const areas = new Set<string>();
       for (const area of coverage) {
@@ -185,6 +185,13 @@ export async function validateRepairReview(
         areas.add(name);
         text(area.reason);
         const evidence = records(area.evidence);
+        if (area.status === "pending") {
+          text(area.next_action);
+          if (row.status === "not_a_defect")
+            throw new Error(`Pending periodic area cannot establish a healthy review: ${name}`);
+          for (const ref of evidence) await proof(ref);
+          continue;
+        }
         if (evidence.length === 0) throw new Error(`Periodic review area needs evidence: ${name}`);
         for (const ref of evidence) await proof(ref);
         if (area.status === "blocked") {
@@ -297,11 +304,7 @@ export function repairScopeSummary(admissionText: string, reviewText: string): s
   const rows = records(record(JSON.parse(reviewText)).candidates);
   const periodic = new Set(
     records(admission.candidates)
-      .filter((candidate) =>
-        ["scheduled_provider_review", "scheduled_architecture_review"].includes(
-          text(candidate.trigger),
-        ),
-      )
+      .filter((candidate) => isPeriodicReview(text(candidate.trigger)))
       .map((candidate) => text(candidate.id)),
   );
   const summary = {
@@ -318,15 +321,18 @@ export function repairScopeSummary(admissionText: string, reviewText: string): s
         : row.status === "pending"
           ? { review_complete: false }
           : {
-              review_complete: records(row.coverage).every((area) => area.status === "reviewed"),
+              review_complete: row.status === "not_a_defect",
               blocked_areas: records(row.coverage)
                 .filter((area) => area.status === "blocked")
+                .map((area) => ({ area: text(area.area), next_action: text(area.next_action) })),
+              pending_areas: records(row.coverage)
+                .filter((area) => area.status === "pending")
                 .map((area) => ({ area: text(area.area), next_action: text(area.next_action) })),
             }),
     })),
     deferred: records(admission.deferred_candidates ?? []).map((candidate) => text(candidate.id)),
   };
-  return `\n## Checked repair scope\n\nPending and blocked candidates, blocked review areas, and deferred candidates remain unresolved.\n\n\`\`\`json\n${JSON.stringify(summary, null, 2).replaceAll("`", "\\u0060")}\n\`\`\`\n`;
+  return `\n## Checked repair scope\n\nPending and blocked candidates and review areas, and deferred candidates remain unresolved.\n\n\`\`\`json\n${JSON.stringify(summary, null, 2).replaceAll("`", "\\u0060")}\n\`\`\`\n`;
 }
 
 export async function readReviewEvidence(path: string, root = evidenceDirectory): Promise<string> {
