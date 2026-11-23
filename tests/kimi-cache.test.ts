@@ -153,10 +153,8 @@ async function compiled(
     provider_vocabularies: [partition.vocabulary],
     model_dispositions: partition.model_dispositions,
   };
-  const exported = priceDataExport(core, createPricingCatalogEnvelope(pricing, core));
-  const offer = exported.providers[0]?.books[0]?.offers.find(
-    ({ offer_key }) => offer_key === "sync",
-  );
+  priceDataExport(core, createPricingCatalogEnvelope(pricing, core));
+  const offer = partition.books[0]?.offers.find(({ offer_key }) => offer_key === "sync");
   if (offer === undefined) throw new Error("Missing Kimi synchronous offer");
   return { offer, region, currency };
 }
@@ -294,7 +292,9 @@ describe("Kimi cache-write accounting", () => {
           ?.flatMap(({ input_sources }) => input_sources ?? [])
           .map(({ locator }) => locator.value),
       ).not.toContain("/usage/input_tokens_details/cached_tokens");
-      expect(binding?.evidence.some(({ source_ref }) => source_ref === "kimi-openapi")).toBe(false);
+      expect(binding?.observations.some(({ source_ref }) => source_ref === "kimi-openapi")).toBe(
+        false,
+      );
       expect(
         binding?.quantity_methods
           ?.flatMap(({ input_sources }) => input_sources ?? [])

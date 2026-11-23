@@ -8471,7 +8471,13 @@ describe("Vercel adapter", () => {
       expect(terms.flatMap(({ raw_variants }) => raw_variants)).toEqual([]);
       const additional = terms.find(({ term_key: key }) => key === `web_search:${operation}`);
       expect(additional?.variants[0]).toEqual(
-        expect.objectContaining({ charge_binding: expect.any(Object) }),
+        expect.objectContaining({
+          charge_binding: expect.any(Object),
+          price: expect.objectContaining({
+            value: { numerator: "1", denominator: "1000" },
+            per: { factors: [{ unit: { namespace: "kmodels", value: "item" }, power: 1 }] },
+          }),
+        }),
       );
       expect(additional?.variants[0]?.charge_binding?.quantity_methods?.[0]?.calculation).toEqual({
         nodes: [

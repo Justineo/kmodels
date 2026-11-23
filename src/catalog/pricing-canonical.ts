@@ -7,14 +7,14 @@ import {
 } from "./canonical-value.ts";
 import { pricingLimits } from "./pricing-constants.ts";
 import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
-import {
-  type PriceApplicability,
-  type PriceCategoricalValue,
-  type PriceCondition,
-  type PriceDimension,
-  type PriceRateVariant,
-  type PriceContributionVariant,
-  type UnitExpression,
+import type {
+  PriceApplicability,
+  PriceCategoricalValue,
+  PriceCondition,
+  PriceDimension,
+  PriceRateVariant,
+  PriceContributionVariant,
+  UnitExpression,
 } from "./pricing-schema.ts";
 
 export const unconditionalApplicability: PriceApplicability = {

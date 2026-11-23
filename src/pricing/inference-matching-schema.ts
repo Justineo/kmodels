@@ -7,7 +7,6 @@ import {
 import { isCanonicalInstant } from "../catalog/pricing-time.ts";
 import { priceStates, rawPricingImpacts } from "../catalog/pricing-vocabulary.ts";
 import { selectorSchema } from "./schema.ts";
-import { executionChoiceSchema } from "./inference-schema.ts";
 
 const identifier = z.string().min(1);
 const instant = z.string().refine(isCanonicalInstant);
@@ -50,7 +49,6 @@ export const inferenceMatchDataSchema = z.strictObject({
       model_ref: identifier.optional(),
       offer_refs: z.array(identifier).min(1),
       fixed_selectors: z.array(selectorSchema),
-      execution_choices: z.array(executionChoiceSchema.omit({ evidence: true })).optional(),
     }),
   ),
   offers: z.array(offer),

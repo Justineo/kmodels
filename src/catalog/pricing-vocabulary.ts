@@ -201,6 +201,16 @@ export const standardResourceKinds = [
 ] as const;
 
 export const publishedTimePrecisions = ["year", "month", "date", "datetime"] as const;
+export const recurringWeekdays = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+] as const;
+
 export const pricingRefreshFailureCodes = [
   "source_unavailable",
   "source_schema_changed",

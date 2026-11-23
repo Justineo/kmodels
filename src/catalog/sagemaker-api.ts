@@ -1,16 +1,11 @@
-import {
-  DescribeHubContentCommand,
-  ListHubContentsCommand,
-  SageMakerClient,
-} from "@aws-sdk/client-sagemaker";
 import { z } from "zod";
-import { mapConcurrent } from "./concurrency.ts";
 import { baseModel } from "./model.ts";
 import { modalitySchema } from "./schema.ts";
 import type { SourceParseInput, SourceParseResult } from "./source-parse.ts";
 import { sagemakerModalities } from "./sagemaker-sdk.ts";
 import { modelCardSchema } from "./model-metadata.ts";
 import { modelIdSchema } from "./identity.ts";
+import { fetchSagemakerPublicHubModels } from "./transport/sagemaker-fetch.ts";
 
 const documentSchema = z.object({
   InputModalities: z.array(z.string()).optional(),
@@ -43,93 +38,40 @@ export async function fetchSagemakerInventory(
   admitted: ReadonlySet<string>,
   maxBytes: number,
 ): Promise<string> {
-  const client = new SageMakerClient({ region, maxAttempts: 3, retryMode: "adaptive" });
-  const common = { HubName: "SageMakerPublicHub", HubContentType: "Model" as const };
-  try {
-    const selected = new Map<string, { id: string; version: string }>();
-    const tokens = new Set<string>();
-    let next: string | undefined;
-    let finished = false;
-    for (let page = 0; page < 100; page += 1) {
-      const result = await client.send(
-        new ListHubContentsCommand({
-          ...common,
-          MaxResults: 100,
-          ...(next === undefined ? {} : { NextToken: next }),
-        }),
-        { abortSignal: AbortSignal.timeout(90_000) },
-      );
-      for (const row of result.HubContentSummaries ?? []) {
-        if (row.HubContentName === undefined || !admitted.has(row.HubContentName)) continue;
-        if (!row.HubContentVersion || selected.has(row.HubContentName))
-          throw new Error("SageMaker public hub summary identity changed");
-        selected.set(row.HubContentName, {
-          id: row.HubContentName,
-          version: row.HubContentVersion,
-        });
-      }
-      next = result.NextToken;
-      if (!next) {
-        finished = true;
-        break;
-      }
-      if (tokens.has(next)) throw new Error("SageMaker public hub pagination repeated a token");
-      tokens.add(next);
-    }
-    if (!finished || selected.size === 0)
-      throw new Error("SageMaker public hub inventory was incomplete");
-    const models = await mapConcurrent([...selected.values()], 2, async ({ id, version }) => {
-      const result = await client.send(
-        new DescribeHubContentCommand({
-          ...common,
-          HubContentName: id,
-          HubContentVersion: version,
-        }),
-        { abortSignal: AbortSignal.timeout(90_000) },
-      );
-      if (
-        result.HubContentName !== id ||
-        result.HubContentVersion !== version ||
-        !result.HubContentDocument
-      )
-        throw new Error("SageMaker public hub detail identity changed");
-      const document = documentSchema.parse(JSON.parse(result.HubContentDocument));
-      return modelSchema.parse({
-        id,
-        name: result.HubContentDisplayName ?? id,
-        ...(result.HubContentDescription === undefined
-          ? {}
-          : { description: result.HubContentDescription }),
-        input: sagemakerModalities(document.InputModalities),
-        output: sagemakerModalities(document.OutputModalities),
-        model_card: Object.fromEntries(
-          [
-            ["publisher", document.Provider],
-            ["license", document.License],
-            ["size", document.ModelSize],
-            ["context_window", document.ContextWindow],
-            ["languages", document.Languages],
-            ["upstream_id", document.HuggingfaceId],
-            ["access", document.ModelAccess],
-            ["framework", document.MlFramework],
-          ].filter(([, value]) => value !== undefined && value !== ""),
-        ),
-        ...(document.FineTuningSupported === undefined
-          ? {}
-          : { fineTuning: document.FineTuningSupported }),
-        available:
-          result.HubContentStatus === "Available" &&
-          result.SupportStatus === "Supported" &&
-          (document.SupportedInferenceInstanceTypes?.length ?? 0) > 0,
-      });
+  const rawModels = await fetchSagemakerPublicHubModels(region, admitted);
+  const models = rawModels.map((row) => {
+    const document = documentSchema.parse(JSON.parse(row.document));
+    return modelSchema.parse({
+      id: row.id,
+      name: row.displayName ?? row.id,
+      ...(row.description === undefined ? {} : { description: row.description }),
+      input: sagemakerModalities(document.InputModalities),
+      output: sagemakerModalities(document.OutputModalities),
+      model_card: Object.fromEntries(
+        [
+          ["publisher", document.Provider],
+          ["license", document.License],
+          ["size", document.ModelSize],
+          ["context_window", document.ContextWindow],
+          ["languages", document.Languages],
+          ["upstream_id", document.HuggingfaceId],
+          ["access", document.ModelAccess],
+          ["framework", document.MlFramework],
+        ].filter(([, value]) => value !== undefined && value !== ""),
+      ),
+      ...(document.FineTuningSupported === undefined
+        ? {}
+        : { fineTuning: document.FineTuningSupported }),
+      available:
+        row.hubContentStatus === "Available" &&
+        row.supportStatus === "Supported" &&
+        (document.SupportedInferenceInstanceTypes?.length ?? 0) > 0,
     });
-    const body = JSON.stringify({ region, models });
-    if (Buffer.byteLength(body) > maxBytes)
-      throw new Error("SageMaker inventory exceeded byte limit");
-    return body;
-  } finally {
-    client.destroy();
-  }
+  });
+  const body = JSON.stringify({ region, models });
+  if (Buffer.byteLength(body) > maxBytes)
+    throw new Error("SageMaker inventory exceeded byte limit");
+  return body;
 }
 
 export function parseSagemakerInventory(input: SourceParseInput): SourceParseResult {

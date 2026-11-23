@@ -2,6 +2,7 @@ import type { AssetSource } from "./asset-pack.ts";
 import type { WebsiteCatalogIndex, WebsitePricingSummaries } from "./website-schema.ts";
 
 export const WEBSITE_CORE_CHUNK_MAX_BYTES = 128 * 1024;
+export const WEBSITE_DETAIL_CHUNK_MAX_BYTES = 2 * 1024 * 1024;
 
 interface WebsiteCoreChunk {
   schema_version: 1;

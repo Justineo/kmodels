@@ -1603,11 +1603,18 @@ function offerStateSummary(offer: PricingOffer, modelRef: string | undefined): s
   )
     return "Incomplete";
   const states = [
-    ...new Set(
-      offer.states
+    ...new Set([
+      ...offer.states
         .filter(({ applicability }) => applicabilityPossible(applicability, modelRef))
         .map(({ state }) => stateLabel(state)),
-    ),
+      ...(offer.terms.some(
+        (term) =>
+          term.kind === "rate" &&
+          term.variants.some(({ applicability }) => applicabilityPossible(applicability, modelRef)),
+      )
+        ? [stateLabel("numeric")]
+        : []),
+    ]),
   ];
   if (states.length === 0) return "No matching state";
   return states.length === 1 ? states[0]! : `${states.length} pricing states`;

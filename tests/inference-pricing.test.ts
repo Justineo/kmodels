@@ -48,7 +48,6 @@ import {
 } from "../src/catalog/inference-price-options.ts";
 import { multiplyRationals } from "../src/catalog/pricing-rational.ts";
 import { canonicalJson, compareUtf8Sequences } from "../src/catalog/canonical-value.ts";
-import { projectCommercialSelections } from "../src/catalog/commercial-selection-compilation.ts";
 import { inferencePricingPublication } from "../src/catalog/inference-pricing.ts";
 const at = "2026-10-30T00:00:00.000Z";
 const fixture = (name: string) => readFile(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
@@ -570,10 +569,17 @@ it("resolves ID-fixed regional unit prices without changing catalog identity", a
       dimension,
       definition: `Synthetic billing Region ${region.value}`,
     });
+  const regionIds = regions.map((region) => {
+    const id = provider.applicabilities.length;
+    provider.applicabilities.push({
+      any_of: [{ all_of: [{ kind: "categorical" as const, dimension, values: [region] }] }],
+    });
+    return id;
+  });
   for (const term of offer.terms) {
     if (term.kind !== "rate") continue;
     term.variants = term.variants.flatMap((variant) =>
-      regions.map((region, index) => ({
+      regionIds.map((applicability_id, index) => ({
         ...structuredClone(variant),
         price: {
           ...variant.price,
@@ -582,9 +588,7 @@ it("resolves ID-fixed regional unit prices without changing catalog identity", a
             denominator: "1",
           }),
         },
-        applicability: {
-          any_of: [{ all_of: [{ kind: "categorical" as const, dimension, values: [region] }] }],
-        },
+        applicability_id,
       })),
     );
   }
@@ -728,14 +732,13 @@ it("does not let a caller overwrite model identity or repeat a price condition",
     lookup({ provider_id: "typesafe", model_id: "jev-1.13.0", selectors: [identity, identity] }),
   ).toThrow(/repeat a dimension/);
 });
-it("resolves unit prices without usage bindings and ignores accounting-only differences", () => {
+it("resolves unit prices and accepts equivalent duplicate rate variants", () => {
   const data = structuredClone(typesafe);
   const rate = data.providers[0]?.books[0]?.offers[0]?.terms.find((term) => term.kind === "rate");
   const original = rate?.variants[0];
   if (!rate || !original) throw new Error("Missing TypeSafe rate");
-  const unbound = structuredClone(original);
-  delete unbound.charge_binding;
-  rate.variants.push(unbound);
+  const duplicate = structuredClone(original);
+  rate.variants.push(duplicate);
   const query = { provider_id: "typesafe", model_id: "jev-1.13.0", meter: rate.meter };
   const lookup = createInferencePriceLookup(data, mapping(data, [typesafeRule()]));
   const matched = lookup(query);
@@ -749,7 +752,7 @@ it("resolves unit prices without usage bindings and ignores accounting-only diff
       variants: [{ price: original.price }, { price: original.price }],
     },
   ]);
-  rate.variants = [unbound];
+  rate.variants = [duplicate];
   expect(createInferencePriceLookup(data, mapping(data, [typesafeRule()]))(query).status).toBe(
     "matched",
   );
@@ -820,7 +823,23 @@ it("reports canonical raw conflicts through public model/resource lookup and web
       expect.objectContaining({ code: "conflicting_variants", reason: "conflicting_values" }),
     ]);
     const selected = query.candidates.flatMap(({ offer }) => offer.terms);
-    expect(selected).toEqual(data.providers[0]?.books[0]?.offers[0]?.terms);
+    const wireTerms = data.providers[0]?.books[0]?.offers[0]?.terms ?? [];
+    expect(selected.map(({ id, kind, term_key }) => ({ id, kind, term_key }))).toEqual(
+      wireTerms.map(({ id, kind, term_key }) => ({ id, kind, term_key })),
+    );
+    expect(
+      selected.flatMap((term) =>
+        (term.kind === "raw" ? term.variants : term.raw_variants).map(
+          ({ impact, reason, possible_scope }) => ({ impact, reason, possible_scope }),
+        ),
+      ),
+    ).toEqual([
+      {
+        impact: "base_price",
+        reason: "conflicting_values",
+        possible_scope: { any_of: [{ all_of: [] }] },
+      },
+    ]);
     expect(inferencePriceExplanation(query)).toContain("Published prices conflict");
   }
   const price = websiteInferencePrice(result);
@@ -877,8 +896,11 @@ it.each(["disjoint", "expired", "future", "informational"])(
     if (!original) throw new Error("Missing rate fixture");
     rate.variants = structuredClone(original.variants);
     for (const raw of rate.raw_variants) {
-      if (scenario === "disjoint")
-        raw.possible_scope = {
+      if (scenario === "disjoint") {
+        const provider = data.providers[0];
+        if (!provider) throw new Error("Missing fixture provider");
+        const scopeId = provider.applicabilities.length;
+        provider.applicabilities.push({
           any_of: [
             {
               all_of: [
@@ -890,7 +912,9 @@ it.each(["disjoint", "expired", "future", "informational"])(
               ],
             },
           ],
-        };
+        });
+        raw.possible_scope_id = scopeId;
+      }
       if (scenario === "expired")
         raw.validity = { until: { value: "2026-01-01T00:00:00.000Z", precision: "datetime" } };
       if (scenario === "future")
@@ -924,20 +948,23 @@ it("requires remaining conditions before presenting a scoped raw conflict as app
   );
   if (!original) throw new Error("Missing rate fixture");
   rate.variants = structuredClone(original.variants);
-  for (const raw of rate.raw_variants)
-    raw.possible_scope = {
-      any_of: [
-        {
-          all_of: [
-            {
-              kind: "categorical",
-              dimension: { namespace: "kmodels", value: "execution" },
-              values: [{ namespace: "kmodels", value: "batch" }],
-            },
-          ],
-        },
-      ],
-    };
+  const provider = data.providers[0];
+  if (!provider) throw new Error("Missing fixture provider");
+  const batchScopeId = provider.applicabilities.length;
+  provider.applicabilities.push({
+    any_of: [
+      {
+        all_of: [
+          {
+            kind: "categorical",
+            dimension: { namespace: "kmodels", value: "execution" },
+            values: [{ namespace: "kmodels", value: "batch" }],
+          },
+        ],
+      },
+    ],
+  });
+  for (const raw of rate.raw_variants) raw.possible_scope_id = batchScopeId;
   const query = createInferencePriceLookup(data, mapping(data, [typesafeRule()]));
   const result = query({ provider_id: "typesafe", model_id: "jev-1.13.0" });
   expect(result.status).toBe("candidates");
@@ -981,15 +1008,8 @@ it.each(["conflicting_variants", "unresolved_validity", "historical_evidence_mis
     );
   },
 );
-it("does not require usage acquisition or charge binding just to identify a published price", () => {
+it("identifies a published price without accounting fields in the portable schema", () => {
   const data = structuredClone(typesafe);
-  for (const provider of data.providers)
-    for (const book of provider.books)
-      for (const offer of book.offers)
-        for (const term of offer.terms) {
-          if (term.kind === "rate")
-            for (const variant of term.variants) delete variant.charge_binding;
-        }
   const result = createInferencePriceLookup(
     data,
     mapping(data, [typesafeRule()]),
@@ -1028,19 +1048,18 @@ it("requires reviewed execution metadata and never interprets an offer name or k
     model_id: "jev-1.13.0",
     execution_mode: "request",
   } as const;
+  const unreviewed = structuredClone(typesafe);
+  for (const provider of unreviewed.providers)
+    for (const book of provider.books) for (const offer of book.offers) delete offer.selection;
   expect(
-    createInferencePriceLookup(typesafe, mapping(typesafe, [association]))(query),
+    createInferencePriceLookup(unreviewed, mapping(unreviewed, [association]))(query),
   ).toMatchObject({
     status: "unknown",
     reason: "unreviewed_execution_mode",
     candidates: [],
   });
-  const pair = fixturePairs.get("typesafe");
-  if (pair === undefined) throw new Error("Missing accepted fixture");
   const source = mapping(typesafe, [association]);
-  const canonical = projectCommercialSelections(pair.envelope, source);
-  expect(projectCommercialSelections(pair.envelope, canonical)).toEqual(canonical);
-  const lookup = createInferencePriceLookup(typesafe, canonical);
+  const lookup = createInferencePriceLookup(typesafe, source);
   const result = lookup(query);
   expect(result.status).toBe("matched");
   expect(
@@ -1061,13 +1080,10 @@ it("requires reviewed execution metadata and never interprets an offer name or k
     candidates: [],
   });
   expect(lookup({ ...query, offer_ref: "0".repeat(64) }).candidates).toEqual([]);
-  expect(canonical.rules.map(({ execution_choices: _choices, ...rule }) => rule)).toEqual(
-    source.rules,
-  );
 });
 it("resolves canonical served-tier selection to its native price condition", async () => {
   const suite = lookupFixtureSchema.parse(JSON.parse(await fixture("pricing/lookup.json")));
-  const data = suite.datasets.tier;
+  const data = structuredClone(suite.datasets.tier);
   const provider = data?.providers[0];
   const book = provider?.books[0];
   const offer = book?.offers[0];
@@ -1079,6 +1095,36 @@ it("resolves canonical served-tier selection to its native price condition", asy
     value: { namespace: "provider", provider_id: "example", value: "priority" },
   } as const;
   if (!data || !provider || !book || !offer || !modelRef) throw new Error("Missing tier fixture");
+  let unconditionalId = provider.applicabilities.findIndex(
+    ({ any_of }) => any_of.length === 1 && any_of[0]?.all_of.length === 0,
+  );
+  if (unconditionalId === -1) {
+    unconditionalId = provider.applicabilities.length;
+    provider.applicabilities.push({ any_of: [{ all_of: [] }] });
+  }
+  const priorityId = provider.applicabilities.findIndex(
+    ({ any_of }) =>
+      any_of.length === 1 &&
+      any_of[0]?.all_of.length === 1 &&
+      any_of[0].all_of[0]?.kind === "categorical" &&
+      any_of[0].all_of[0].dimension.value === "served_service_tier" &&
+      any_of[0].all_of[0].values[0]?.value === "priority",
+  );
+  if (priorityId === -1) throw new Error("Missing priority applicability");
+  offer.selection = [
+    {
+      dimension: "served_service_tier",
+      coverage: "complete",
+      applicability_id: unconditionalId,
+      alternatives: [
+        {
+          value: { namespace: "kmodels", value: "priority" },
+          applicability_id: priorityId,
+        },
+      ],
+      evidence: book.evidence,
+    },
+  ];
   const associations = mapping(data, [
     {
       provider_id: provider.snapshot.provider_id,
@@ -1089,33 +1135,6 @@ it("resolves canonical served-tier selection to its native price condition", asy
       evidence: book.evidence,
     },
   ]);
-  associations.offer_selections = [
-    {
-      offer_ref: offer.id,
-      selection: [
-        {
-          dimension: "served_service_tier",
-          coverage: "complete",
-          applicability: { any_of: [{ all_of: [] }] },
-          alternatives: [
-            {
-              value: { namespace: "kmodels", value: "priority" },
-              applicability: {
-                any_of: [
-                  {
-                    all_of: [
-                      { kind: "categorical", dimension: tier.dimension, values: [tier.value] },
-                    ],
-                  },
-                ],
-              },
-            },
-          ],
-          evidence: book.evidence,
-        },
-      ],
-    },
-  ];
   const selected = createInferencePriceLookup(
     data,
     associations,
@@ -1153,10 +1172,37 @@ it("returns the mechanism-selected offer with independent price conditions", asy
       dimension,
       definition: `Synthetic ${value} mechanism`,
     });
+  const unconditionalId = provider.applicabilities.findIndex(
+    ({ any_of }) => any_of.length === 1 && any_of[0]?.all_of.length === 0,
+  );
+  if (unconditionalId === -1) throw new Error("Missing unconditional applicability");
+  const regionScopeIds = ["interactive", "deferred"].map((value) => {
+    const id = provider.applicabilities.length;
+    provider.applicabilities.push({
+      any_of: [
+        {
+          all_of: [
+            {
+              kind: "categorical" as const,
+              dimension,
+              values: [
+                {
+                  namespace: "provider" as const,
+                  provider_id: provider.snapshot.provider_id,
+                  value,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    return id;
+  });
   for (const term of offer.terms) {
     if (term.kind !== "rate") continue;
     term.variants = term.variants.flatMap((variant) =>
-      ["interactive", "deferred"].map((value, index) => ({
+      regionScopeIds.map((applicability_id, index) => ({
         ...structuredClone(variant),
         price: {
           ...variant.price,
@@ -1165,28 +1211,20 @@ it("returns the mechanism-selected offer with independent price conditions", asy
             denominator: String(index + 1),
           }),
         },
-        applicability: {
-          any_of: [
-            {
-              all_of: [
-                {
-                  kind: "categorical" as const,
-                  dimension,
-                  values: [
-                    {
-                      namespace: "provider" as const,
-                      provider_id: provider.snapshot.provider_id,
-                      value,
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
+        applicability_id,
       })),
     );
   }
+  const executionClaim = (mode: "request" | "batch") => ({
+    dimension: "execution" as const,
+    coverage: "complete" as const,
+    applicability_id: unconditionalId,
+    alternatives: [
+      { value: { namespace: "kmodels" as const, value: mode }, applicability_id: unconditionalId },
+    ],
+    evidence: book.evidence,
+  });
+  offer.selection = [executionClaim("request")];
   const association: InferencePriceRule = {
     provider_id: provider.snapshot.provider_id,
     model_id: "literal-id",
@@ -1194,19 +1232,14 @@ it("returns the mechanism-selected offer with independent price conditions", asy
     offer_refs: [offer.id],
     fixed_selectors: [],
     evidence: book.evidence,
-    execution_choices: [{ mode: "request", offer_ref: offer.id, evidence: book.evidence }],
   };
   const batch = structuredClone(offer);
   batch.id = sha256("batch-offer");
   batch.offer_key = "batch";
+  batch.selection = [executionClaim("batch")];
   batch.terms = batch.terms.map((term, index) => ({ ...term, id: sha256(`batch-term-${index}`) }));
   book.offers.push(batch);
   association.offer_refs.push(batch.id);
-  association.execution_choices?.push({
-    mode: "batch",
-    offer_ref: batch.id,
-    evidence: book.evidence,
-  });
   const lookup = createInferencePriceLookup(data, mapping(data, [association]));
   const query = { provider_id: provider.snapshot.provider_id, model_id: "literal-id" };
   expect(lookup(query)).toMatchObject({
@@ -1242,30 +1275,15 @@ it("returns the mechanism-selected offer with independent price conditions", asy
       "batch",
     ).candidates[0]?.selectors,
   ).toEqual(candidate.selectors);
-  const unrelated = structuredClone(association);
-  const choice = unrelated.execution_choices?.[0];
-  if (!choice) throw new Error("Missing execution choice");
-  choice.offer_ref = "0".repeat(64);
-  expect(() => createInferencePriceLookup(data, mapping(data, [unrelated]))).toThrow(
-    /unrelated offer/,
+  const unreviewedBatch = structuredClone(data);
+  const unreviewedOffer = unreviewedBatch.providers[0]?.books[0]?.offers.find(
+    ({ id }) => id === batch.id,
   );
-  const conflicting = structuredClone(association);
-  conflicting.execution_choices?.push({
-    mode: "batch",
-    offer_ref: offer.id,
-    evidence: book.evidence,
-  });
-  expect(() => createInferencePriceLookup(data, mapping(data, [conflicting]))).toThrow(
-    /Conflicting execution modes/,
-  );
-  const partial = {
-    ...association,
-    execution_choices: [{ mode: "request" as const, offer_ref: offer.id, evidence: book.evidence }],
-  };
+  if (unreviewedOffer !== undefined) delete unreviewedOffer.selection;
   expect(
     createInferencePriceLookup(
-      data,
-      mapping(data, [partial]),
+      unreviewedBatch,
+      mapping(unreviewedBatch, [association]),
     )({ ...query, offer_ref: batch.id, execution_mode: "batch" }),
   ).toMatchObject({
     status: "unknown",
@@ -1288,18 +1306,10 @@ it("retains all commercial offers in lookup and prompts the inspector for a plan
   book.offers.push(alternative);
   const association = typesafeRule();
   association.offer_refs.push(alternative.id);
-  const classified: InferencePriceRule = {
-    ...association,
-    execution_choices: association.offer_refs.map((offer_ref) => ({
-      mode: "request",
-      offer_ref,
-      evidence: association.evidence,
-    })),
-  };
   expect(
     createInferencePriceLookup(
       data,
-      mapping(data, [classified]),
+      mapping(data, [association]),
     )({ provider_id: "typesafe", model_id: "jev-1.13.0", execution_mode: "request" }),
   ).toMatchObject({
     status: "candidates",
@@ -1632,17 +1642,13 @@ function mixedPublication() {
     catalog,
   );
   const prices = priceDataExport(catalog, pricing);
-  const associations = projectCommercialSelections(
-    pricing,
-    mapping(prices, [typesafeRule(), profileRule("us")]),
-  );
+  const associations = mapping(prices, [typesafeRule(), profileRule("us")]);
   return { catalog, pricing, prices, associations };
 }
-it("publishes complete mixed-provider selections with equivalent partition lookups and owned data", () => {
+it("publishes complete mixed-provider mappings with equivalent partition lookups and owned data", () => {
   const { catalog, pricing, prices, associations } = mixedPublication();
   const original = structuredClone(associations);
   const published = inferencePricingPublication(catalog, pricing, associations);
-  expect(published.mapping.offer_selections).toEqual(original.offer_selections);
   const full = createInferencePriceLookup(prices, published.mapping);
   for (const query of [
     { provider_id: "typesafe", model_id: "jev-1.13.0" },
@@ -1662,8 +1668,6 @@ it("publishes complete mixed-provider selections with equivalent partition looku
     ).toEqual(full(query));
   }
   expect(associations).toEqual(original);
-  associations.offer_selections = [];
-  expect(published.mapping.offer_selections).toEqual(original.offer_selections);
 });
 
 it("shares a checked price export across website projection without changing owned inputs or output", () => {
@@ -1696,70 +1700,9 @@ it("isolates commercial queries over the shared snapshot from caller mutation", 
   changedSibling.snapshot.pricingDataVersion = "f".repeat(64);
   prices.providers.length = 0;
   associations.rules.length = 0;
-  associations.offer_selections = [];
   expect(lookup(modelQuery)).toEqual(originalModel);
   expect(lookup(siblingQuery)).toEqual(originalSibling);
 });
-
-it.each(["duplicate", "empty_evidence"])(
-  "rejects %s foreign selections before website projection even without mapping rules",
-  (kind) => {
-    const { catalog, pricing, prices, associations } = mixedPublication();
-    const validated = validatePriceData(prices);
-    associations.rules = associations.rules.filter(({ provider_id }) => provider_id === "typesafe");
-    const foreignOffers = new Set(
-      pricing.data.books
-        .filter(({ provider_id }) => provider_id === "amazon-bedrock")
-        .flatMap(({ offers }) => offers.map(({ id }) => id)),
-    );
-    const selections = associations.offer_selections;
-    const foreign = selections?.find(
-      ({ offer_ref, selection }) => foreignOffers.has(offer_ref) && selection.length > 0,
-    );
-    if (foreign === undefined || selections === undefined)
-      throw new Error("Missing foreign selection fixture");
-    if (kind === "duplicate") selections.push(structuredClone(foreign));
-    else {
-      const claim = foreign.selection[0];
-      if (claim === undefined) throw new Error("Missing foreign selection claim");
-      claim.evidence = [];
-    }
-    const failure = kind === "duplicate" ? /repeats an offer identity/ : /Too small/;
-    expect(() => websiteInferencePrices(catalog, pricing, associations)).toThrow(failure);
-    expect(() => websiteInferencePrices(catalog, pricing, associations, validated)).toThrow(
-      failure,
-    );
-  },
-);
-it.each(["missing", "duplicate", "unknown", "different"])(
-  "rejects %s selections globally even for a provider without mapping rules",
-  (kind) => {
-    const { catalog, pricing, associations } = mixedPublication();
-    associations.rules = associations.rules.filter(({ provider_id }) => provider_id === "typesafe");
-    const foreignOffers = new Set(
-      pricing.data.books
-        .filter(({ provider_id }) => provider_id === "amazon-bedrock")
-        .flatMap(({ offers }) => offers.map(({ id }) => id)),
-    );
-    const selections = associations.offer_selections;
-    const target = selections?.find(
-      ({ offer_ref, selection }) => foreignOffers.has(offer_ref) && selection.length > 0,
-    );
-    if (!target || !selections) throw new Error("Missing foreign commercial selection");
-    if (kind === "missing")
-      associations.offer_selections = selections.filter((selection) => selection !== target);
-    else if (kind === "duplicate") selections.push(structuredClone(target));
-    else if (kind === "unknown") target.offer_ref = "f".repeat(64);
-    else target.selection = [];
-    expect(() => inferencePricingPublication(catalog, pricing, associations)).toThrow(
-      kind === "unknown"
-        ? /absent offer/
-        : kind === "different"
-          ? /disagrees/
-          : /incomplete or repeats/,
-    );
-  },
-);
 it("uses shared lookup candidates for the website and preserves raw regional IDs", async () => {
   const pair = fixturePairs.get("amazon-bedrock");
   if (!pair) throw new Error("Missing fixture pair");

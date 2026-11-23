@@ -601,14 +601,6 @@ function addSourceTerm(
       }),
     );
     rate.variants.push(...variants);
-    offer.states.push(
-      ...variants.map(({ applicability, validity, observation }) => ({
-        state: "numeric" as const,
-        applicability,
-        ...(validity === undefined ? {} : { validity }),
-        observation,
-      })),
-    );
     target = rate;
   } else if (term.kind === "allowance") {
     const allowance: AtomicAllowanceTerm =
@@ -827,14 +819,6 @@ function addRate(
     return;
   }
 
-  const stateFact = { ...fact };
-  delete stateFact.formula;
-  offer.states.push({
-    state: "numeric",
-    applicability: normalized.applicability,
-    ...(normalized.validity === undefined ? {} : { validity: normalized.validity }),
-    observation: normalizedObservation(sourceRef, locator, stateFact, normalized.applicability),
-  });
   term.variants.push({
     price: normalized.price,
     applicability: normalized.applicability,
@@ -975,10 +959,7 @@ function normalizeRate(context: AdapterContext, rate: SourcePriceFact): Normaliz
   if (unit === undefined)
     return {
       kind: "raw",
-      reason:
-        rate.unit === "thousand_tokens_per_minute_hour"
-          ? "requires_usage_aggregation"
-          : "unknown_unit",
+      reason: "unknown_unit",
       applicability,
       ...(validity === undefined ? {} : { validity }),
     };

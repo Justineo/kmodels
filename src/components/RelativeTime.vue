@@ -6,7 +6,7 @@ defineProps<{ value: string }>();
 </script>
 
 <template>
-  <UiTooltip as="button" class="tooltip-text-trigger" :content="formatLocalDateTime(value)">
+  <UiTooltip class="tooltip-text-trigger" tabindex="0" :content="formatLocalDateTime(value)">
     <time :datetime="value">{{ formatRelativeTime(value) }}</time>
   </UiTooltip>
 </template>

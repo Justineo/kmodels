@@ -106,24 +106,4 @@ export function hasStructuredCapabilityDetails(
   );
 }
 
-export function capabilityStatementsConflict(
-  left: CapabilityStatement,
-  right: CapabilityStatement,
-): boolean {
-  if (left.scope !== right.scope) return false;
-  if (left.kind === "capability_support" && right.kind === "capability_support")
-    return (
-      left.capability === right.capability &&
-      left.applicability.endpoint === right.applicability.endpoint &&
-      left.applicability.interface === right.applicability.interface &&
-      left.applicability.condition === right.applicability.condition &&
-      left.applicability.parameter === right.applicability.parameter &&
-      left.supported !== right.supported
-    );
-  if (left.kind !== "reasoning_effort" || right.kind !== "reasoning_effort") return false;
-  return (
-    left.default_value !== undefined &&
-    right.default_value !== undefined &&
-    left.default_value !== right.default_value
-  );
-}
+export { capabilityStatementsConflict } from "./model-claim-helpers.ts";

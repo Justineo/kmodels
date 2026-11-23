@@ -1,5 +1,7 @@
 <script setup lang="ts" vapor>
-import { computed, onBeforeUnmount, onMounted, ref, toRaw, watch } from "vue";
+import { computed, ref, watch } from "vue";
+import { useClipboardCopy } from "../composables/useClipboardCopy.ts";
+import { usePricingClock } from "../composables/usePricingClock.ts";
 import type {
   WebsiteInferencePrice,
   WebsitePricingOffer,
@@ -34,7 +36,7 @@ import {
 } from "../catalog/website-pricing-context.ts";
 import { matchInferencePrices, type InferenceMatchResult } from "../pricing/inference-matching.ts";
 import type { CommercialChoice } from "../catalog/pricing-schema.ts";
-import { commercialConditionDimension } from "../pricing/commercial-vocabulary.ts";
+import { commercialConditionDimension } from "../pricing/commercial-labels.ts";
 import { fixedPricingDetailVisible } from "../pricing/condition-presentation.ts";
 import {
   formatConditionValue,
@@ -54,10 +56,28 @@ const selectedOffer = ref("");
 // A condition value can exclude the selected ID while several compatible IDs remain.
 const idPending = ref(false);
 const commercialChoices = ref<CommercialChoice[]>([]);
-const copiedId = ref("");
-let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
+const { copiedValue: copiedId, copy: copyId, reset: resetCopyFeedback } = useClipboardCopy();
 const inputs = ref<Record<string, string>>({});
-const evaluatedAt = ref(new Date().toISOString());
+const { now: evaluatedAt, schedule: scheduleClock } = usePricingClock((nowMs) => {
+  const data = selectedPrice.value?.matching;
+  if (data === undefined) return undefined;
+  const rows = [
+    ...data.offers.flatMap((offer) => [...offer.states, ...offer.relations]),
+    ...[...data.offers.flatMap(({ terms }) => terms), ...data.referenced_rates].flatMap((term) => [
+      ...term.variants,
+      ...term.raw_variants,
+    ]),
+  ];
+  const changes = [
+    Date.parse(data.observed_at),
+    ...rows.flatMap(({ validity }) =>
+      [validity?.from, validity?.until].flatMap((boundary) =>
+        boundary?.precision === "datetime" ? [Date.parse(boundary.value)] : [],
+      ),
+    ),
+  ].filter((time) => time >= nowMs);
+  return changes.length > 0 ? Math.min(...changes) : undefined;
+});
 const priceGroups = computed(() => {
   const groups = new Map<string, [WebsiteInferencePrice, ...WebsiteInferencePrice[]]>();
   for (const price of props.prices) {
@@ -87,11 +107,11 @@ const idOptions = computed(() =>
   compatibleIds.value.map((model_id) => ({ value: model_id, label: model_id })),
 );
 const unselectedMatch = computed(() => {
-  const matching = toRaw(selectedPrice.value?.matching);
+  const matching = selectedPrice.value?.matching;
   return matching === undefined ? undefined : matchInferencePrices(matching, [], evaluatedAt.value);
 });
 const baseCommercialMatch = computed(() => {
-  const matching = toRaw(selectedPrice.value?.matching);
+  const matching = selectedPrice.value?.matching;
   return matching === undefined
     ? undefined
     : matchInferencePrices(
@@ -104,7 +124,7 @@ const baseCommercialMatch = computed(() => {
       );
 });
 const unfilteredConditionOptions = computed(() => {
-  const price = toRaw(selectedPrice.value);
+  const price = selectedPrice.value;
   const initial = unselectedMatch.value;
   if (price?.matching === undefined || initial === undefined) return [];
   return inferencePriceOptions(
@@ -130,7 +150,7 @@ const fixedNativeSelections = computed(() => {
   return fixedInferenceSelections(options, current);
 });
 const commercialMatch = computed(() => {
-  const matching = toRaw(selectedPrice.value?.matching);
+  const matching = selectedPrice.value?.matching;
   if (matching === undefined || fixedNativeSelections.value.length === 0)
     return baseCommercialMatch.value;
   return matchInferencePrices(
@@ -143,7 +163,7 @@ const commercialMatch = computed(() => {
   );
 });
 const commercialOptions = computed(() => {
-  const matching = toRaw(selectedPrice.value?.matching);
+  const matching = selectedPrice.value?.matching;
   if (matching === undefined) return [];
   return commercialControlChoices(
     unselectedMatch.value?.available_choices ?? [],
@@ -159,7 +179,7 @@ const commercialOptions = computed(() => {
   );
 });
 const fixedChoices = computed(() => {
-  const matching = toRaw(selectedPrice.value?.matching);
+  const matching = selectedPrice.value?.matching;
   const current = commercialMatch.value;
   if (matching === undefined || current === undefined) return [];
   return fixedInferenceCommercialChoices(
@@ -185,7 +205,7 @@ const offerOptions = computed(() => {
     .map(({ id, title }) => ({ value: id, label: title }));
 });
 function matchConditions(selections: readonly PricingSelection[]) {
-  const matching = toRaw(selectedPrice.value?.matching);
+  const matching = selectedPrice.value?.matching;
   if (matching === undefined) return;
   return matchInferencePrices(
     matching,
@@ -201,7 +221,7 @@ function excludesPrices(result: InferenceMatchResult | undefined): boolean {
 }
 const initialMatch = computed(() => matchConditions([]));
 const availableConditionOptions = computed(() => {
-  const price = toRaw(selectedPrice.value);
+  const price = selectedPrice.value;
   const initial = initialMatch.value;
   if (price?.matching === undefined || initial === undefined) return [];
   return inferencePriceOptions(
@@ -250,7 +270,7 @@ const activeMatch = computed(() => {
   return values.length === 0 ? initialMatch.value : matchConditions(values);
 });
 const selected = computed(() => {
-  const price = toRaw(selectedPrice.value);
+  const price = selectedPrice.value;
   return price === undefined ? undefined : presentWebsiteInferencePrice(price, activeMatch.value);
 });
 watch(
@@ -342,38 +362,7 @@ function reconcileId(): void {
   if (only !== undefined && others.length === 0) selectId(only);
   else idPending.value = true;
 }
-let clock: ReturnType<typeof setTimeout> | undefined;
-function scheduleClock(): void {
-  if (clock !== undefined) clearTimeout(clock);
-  clock = undefined;
-  const now = Date.now();
-  evaluatedAt.value = new Date(now).toISOString();
-  const data = selectedPrice.value?.matching;
-  if (data === undefined) return;
-  const rows = [
-    ...data.offers.flatMap((offer) => [...offer.states, ...offer.relations]),
-    ...[...data.offers.flatMap(({ terms }) => terms), ...data.referenced_rates].flatMap((term) => [
-      ...term.variants,
-      ...term.raw_variants,
-    ]),
-  ];
-  const changes = [
-    Date.parse(data.observed_at),
-    ...rows.flatMap(({ validity }) =>
-      [validity?.from, validity?.until].flatMap((boundary) =>
-        boundary?.precision === "datetime" ? [Date.parse(boundary.value)] : [],
-      ),
-    ),
-  ].filter((time) => time >= now);
-  if (changes.length > 0)
-    clock = setTimeout(scheduleClock, Math.min(Math.min(...changes) - now + 1, 2_147_483_647));
-}
-onMounted(scheduleClock);
 watch(() => props.prices, scheduleClock);
-onBeforeUnmount(() => {
-  if (clock !== undefined) clearTimeout(clock);
-  resetCopyFeedback();
-});
 function conditionItem(selector: Exclude<PricingSelection, { kind: "decimal_range" }>): {
   label: string;
   value: string;
@@ -478,7 +467,7 @@ function retainInputs(previous: ReturnType<typeof inferencePriceOptions>): void 
 }
 function selectCommercial(choices: CommercialChoice[]): void {
   const previous = availableConditionOptions.value.map(({ option }) => option);
-  const matching = toRaw(selectedPrice.value?.matching);
+  const matching = selectedPrice.value?.matching;
   commercialChoices.value = retainCommercialChoices(
     commercialChoices.value,
     choices,
@@ -496,21 +485,6 @@ function selectCommercial(choices: CommercialChoice[]): void {
     (selections) => !excludesPrices(matchConditions(selections)),
   );
   reconcileId();
-}
-function resetCopyFeedback(): void {
-  copiedId.value = "";
-  if (copyResetTimer !== undefined) clearTimeout(copyResetTimer);
-  copyResetTimer = undefined;
-}
-async function copyId(id: string): Promise<void> {
-  resetCopyFeedback();
-  try {
-    await navigator.clipboard.writeText(id);
-    copiedId.value = id;
-    copyResetTimer = setTimeout(resetCopyFeedback, 2_000);
-  } catch {
-    copiedId.value = "";
-  }
 }
 </script>
 

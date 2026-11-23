@@ -56,31 +56,6 @@ export type LimitStatement = z.infer<typeof limitStatementSchema>;
 export type LimitDetailGroup = z.infer<typeof limitDetailGroupSchema>;
 export type WebsiteLimitDetailGroup = z.infer<typeof websiteLimitDetailGroupSchema>;
 
-export function limitScopeKey({ applicability, scope, account_tier }: LimitStatement): string {
-  if (account_tier) return JSON.stringify([account_tier, applicability ?? null]);
-  if (applicability === undefined) return scope;
-  const { endpoint, beta_header: beta } = applicability;
-  return JSON.stringify([endpoint, beta?.name, beta?.value, beta?.present]);
-}
-
-export function limitStatementsConflict(left: LimitStatement, right: LimitStatement): boolean {
-  if (
-    left.quantity !== right.quantity ||
-    left.measurement !== right.measurement ||
-    limitScopeKey(left) !== limitScopeKey(right)
-  )
-    return false;
-  if (left.kind === "default" || right.kind === "default")
-    return left.kind === "default" && right.kind === "default" && left.tokens !== right.tokens;
-  if (left.kind === "no_separate_cap" || right.kind === "no_separate_cap")
-    return left.kind !== right.kind;
-  if (left.kind === "published_maximum_label" || right.kind === "published_maximum_label")
-    return (
-      left.kind === "published_maximum_label" &&
-      right.kind === "published_maximum_label" &&
-      left.label !== right.label
-    );
-  return left.tokens !== right.tokens;
-}
+export { limitScopeKey, limitStatementsConflict } from "./model-claim-helpers.ts";
 
 export { validateModelDetailSources as validateLimitDetailSources } from "./model-claim-details.ts";

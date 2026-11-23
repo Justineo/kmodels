@@ -10,16 +10,11 @@ import {
   type PriceDataEnvelope,
   type PriceDataOffer,
   type PriceDataProvider,
+  type PriceDataSelection,
   type PriceDataTerm,
 } from "./schema.ts";
 import { PricingError } from "./errors.ts";
-import { pricingSemantics } from "./selection.ts";
-import { validateBinding } from "./validation-quantity.ts";
-import {
-  unitKey,
-  validateProviderProperties,
-  validateSelectorSources,
-} from "./validation-vocabulary.ts";
+import { unitKey, validateProviderProperties } from "./validation-vocabulary.ts";
 
 interface ProviderReferences {
   provider: PriceDataProvider;
@@ -39,7 +34,10 @@ export function validatePriceData(input: unknown): PriceDataEnvelope {
     "schemaVersion" in input &&
     input.schemaVersion !== priceDataSchemaVersion
   ) {
-    throw new PricingError("UNSUPPORTED_SCHEMA", "Supported price data schema: 2.0");
+    throw new PricingError(
+      "UNSUPPORTED_SCHEMA",
+      `Supported price data schema: ${priceDataSchemaVersion}`,
+    );
   }
   try {
     return withPricingCanonicalCache(() => {
@@ -139,13 +137,6 @@ function validateBook(book: PriceDataBook, references: ProviderReferences): void
   for (const modelRef of book.scope.model_refs) {
     if (!references.modelIds.has(modelRef)) throw new Error("Missing model reference");
   }
-  for (const edge of book.resource_edges) {
-    const targetRefs =
-      edge.target.kind === "books" ? edge.target.book_refs : edge.target.model_refs;
-    const availableRefs = edge.target.kind === "books" ? references.bookIds : references.modelIds;
-    if (targetRefs.some((ref) => !availableRefs.has(ref)))
-      throw new Error("Missing resource edge target");
-  }
   for (const offer of book.offers) validateOffer(offer, book, references);
 }
 
@@ -157,6 +148,7 @@ function validateOffer(
   registerIdentity(references.globalIds, offer.id);
   if (offer.model_refs?.some((ref) => !book.scope.model_refs.includes(ref)))
     throw new Error("Offer model outside book scope");
+  for (const claim of offer.selection ?? []) validateSelectionClaim(claim, offer, book);
   for (const relation of offer.relations) {
     if (
       relation.target.offer_refs.some((ref) => ref === offer.id || !references.offerIds.has(ref))
@@ -167,18 +159,52 @@ function validateOffer(
   for (const term of offer.terms) validateTerm(term, references);
 }
 
+function validateSelectionClaim(
+  claim: PriceDataSelection,
+  offer: PriceDataOffer,
+  book: PriceDataBook,
+): void {
+  if (
+    (claim.coverage === "complete" && claim.alternatives.length === 0) ||
+    (claim.coverage === "not_applicable" && claim.alternatives.length > 0) ||
+    claim.excluded_values?.some((value) =>
+      claim.alternatives.some(
+        (alternative) => canonicalJson(value) === canonicalJson(alternative.value),
+      ),
+    )
+  ) {
+    throw new Error("Commercial coverage disagrees with its alternatives");
+  }
+  if (
+    claim.dimension === "billing_mode" &&
+    claim.alternatives.some(
+      ({ value }) => canonicalJson(value) !== canonicalJson(offer.billing_mode),
+    )
+  ) {
+    throw new Error("Commercial selection changes the billing basis");
+  }
+  if (
+    claim.dimension === "resource_kind" &&
+    (book.scope.kind !== "provider_resource" ||
+      claim.alternatives.some(
+        ({ value }) =>
+          canonicalJson(value) !==
+          canonicalJson(
+            book.scope.kind === "provider_resource" ? book.scope.resource_kind : undefined,
+          ),
+      ))
+  ) {
+    throw new Error("Commercial selection changes the resource kind");
+  }
+}
+
 function validateTerm(term: PriceDataTerm, references: ProviderReferences): void {
   registerIdentity(references.globalIds, term.id);
   if (term.kind === "raw") return;
   if (term.variants.length + term.raw_variants.length === 0) throw new Error("Empty term");
   switch (term.kind) {
     case "rate":
-      for (const rate of term.variants) {
-        validateSelectorSources(rate, references.provider);
-        unitKey(rate.price.per);
-        if (rate.charge_binding !== undefined)
-          validateBinding(rate.charge_binding, references.provider, rate.price.per);
-      }
+      for (const rate of term.variants) unitKey(rate.price.per);
       return;
     case "contribution":
       for (const contribution of term.variants) validateContribution(contribution, references);
@@ -192,20 +218,10 @@ function validateContribution(
   contribution: PriceDataContribution,
   references: ProviderReferences,
 ): void {
-  const bindingKeys = new Set<string>();
-  for (const binding of contribution.charge_bindings) {
-    const key = canonicalJson(pricingSemantics(binding));
-    if (bindingKeys.has(key)) throw new Error("Contribution repeats a charge binding");
-    bindingKeys.add(key);
-  }
   for (const rateRef of contribution.target_rate_refs) {
     const targetRate = references.terms.get(rateRef);
     if (targetRate?.kind !== "rate" || targetRate.variants.length === 0)
       throw new Error("Missing contribution rate");
-    for (const binding of contribution.charge_bindings) {
-      for (const variant of targetRate.variants)
-        validateBinding(binding, references.provider, variant.price.per);
-    }
   }
 }
 

@@ -97,8 +97,8 @@ async function compiled(publicPrices: boolean) {
     provider_vocabularies: [partition.vocabulary],
     model_dispositions: partition.model_dispositions,
   };
-  const exported = priceDataExport(core, createPricingCatalogEnvelope(pricing, core));
-  const offer = exported.providers[0]?.books.find(({ scope }) =>
+  priceDataExport(core, createPricingCatalogEnvelope(pricing, core));
+  const offer = partition.books.find(({ scope }) =>
     scope.model_refs.includes("cerebras/gemma-4-31b"),
   )?.offers[0];
   if (offer === undefined) throw new Error("Missing Gemma offer");

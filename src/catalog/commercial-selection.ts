@@ -2,11 +2,15 @@ import { canonicalJson, uniqueCanonicalValues } from "./canonical-value.ts";
 import {
   applicabilitiesOverlap,
   canonicalizeApplicability,
+  clauseContainedIn,
   unconditionalApplicability,
 } from "./pricing-canonical.ts";
+import { pricingLimits } from "./pricing-constants.ts";
 import type {
   CommercialSelection,
+  PriceApplicability,
   PriceCategoricalValue,
+  PriceCondition,
   PricingOffer,
   PricingScope,
   RawPriceObservation,
@@ -143,14 +147,15 @@ export function commercialSelection(
             dimension !== "speed"
           )
             continue;
+          const matchedObservations = evidence.filter((observation) =>
+            applicabilitiesOverlap(observation.establishes_applicability, { any_of: [clause] }),
+          );
           result.push({
             dimension,
             coverage: "complete",
             applicability: { any_of: [clause] },
             ...(variant.validity === undefined ? {} : { validity: variant.validity }),
-            observations: evidence.filter((observation) =>
-              applicabilitiesOverlap(observation.establishes_applicability, { any_of: [clause] }),
-            ),
+            observations: matchedObservations.length > 0 ? matchedObservations : evidence,
             alternatives: condition.values.map((value) => ({
               value:
                 policy?.aliases?.[dimension]?.[value.value] !== undefined ||
@@ -172,29 +177,167 @@ export function commercialSelection(
       if (!result.some((claim) => claim.dimension === dimension))
         result.push({ ...base, dimension, coverage: "not_applicable", alternatives: [] });
     }
-  const claims = new Map<string, CommercialSelection>();
-  for (const input of result) {
-    const claim = {
-      ...input,
-      applicability: canonicalizeApplicability(input.applicability),
-      alternatives: input.alternatives.map((alternative) => ({
-        ...alternative,
-        applicability: canonicalizeApplicability(alternative.applicability),
-      })),
-    };
-    const { observations: _observations, ...scope } = claim;
-    const key = canonicalJson(scope);
-    if (!claims.has(key))
-      claims.set(key, {
-        ...claim,
-        observations: claim.observations.map(({ source_ref, locator, raw }) => ({
-          source_ref,
-          locator,
-          raw,
-        })),
+  return compactCommercialSelections(result);
+}
+
+type Clause = PriceApplicability["any_of"][number];
+
+function factorCategoricalClauses(clauses: readonly Clause[]): Clause[] {
+  let current = [...clauses];
+  const dimensionKeys = uniqueCanonicalValues(
+    current.flatMap((clause) =>
+      clause.all_of
+        .filter((condition) => condition.kind === "categorical")
+        .map((condition) => condition.dimension),
+    ),
+  );
+  // Factor `region` first so geographic unions stay intact before cross-dimension factoring.
+  dimensionKeys.sort((left, right) => {
+    const leftRegion = left.namespace === "kmodels" && left.value === "region" ? 0 : 1;
+    const rightRegion = right.namespace === "kmodels" && right.value === "region" ? 0 : 1;
+    return leftRegion - rightRegion;
+  });
+  for (const dimension of dimensionKeys) {
+    const dimKey = canonicalJson(dimension);
+    const groups = new Map<
+      string,
+      {
+        rest: PriceCondition[];
+        values: PriceCategoricalValue[];
+        clauses: Clause[];
+      }
+    >();
+    const untouched: Clause[] = [];
+    for (const clause of current) {
+      const targetIndex = clause.all_of.findIndex(
+        (condition) =>
+          condition.kind === "categorical" && canonicalJson(condition.dimension) === dimKey,
+      );
+      if (targetIndex === -1) {
+        untouched.push(clause);
+        continue;
+      }
+      const target = clause.all_of[targetIndex];
+      if (target?.kind !== "categorical") {
+        untouched.push(clause);
+        continue;
+      }
+      const rest = clause.all_of.filter((_, index) => index !== targetIndex);
+      const restKey = canonicalJson(rest);
+      const group = groups.get(restKey) ?? { rest, values: [], clauses: [] };
+      group.values.push(...target.values);
+      group.clauses.push(clause);
+      groups.set(restKey, group);
+    }
+    const next: Clause[] = [...untouched];
+    for (const group of groups.values()) {
+      if (group.clauses.length === 1) {
+        next.push(...group.clauses);
+        continue;
+      }
+      const mergedValues = uniqueCanonicalValues(group.values);
+      if (mergedValues.length > pricingLimits.categoricalValuesPerCondition) {
+        next.push(...group.clauses);
+        continue;
+      }
+      const canonical = canonicalizeApplicability({
+        any_of: [
+          {
+            all_of: [
+              ...group.rest,
+              {
+                kind: "categorical",
+                dimension,
+                values: mergedValues,
+              },
+            ],
+          },
+        ],
       });
+      next.push(...canonical.any_of);
+    }
+    current = next;
   }
-  return uniqueCanonicalValues([...claims.values()]);
+  return current;
+}
+
+function splitApplicabilityClauses(clauses: readonly Clause[]): PriceApplicability[] {
+  const result: PriceApplicability[] = [];
+  let bucket: Clause[] = [];
+  let bucketBytes = 12;
+  for (const clause of clauses) {
+    const clauseBytes = Buffer.byteLength(JSON.stringify(clause)) + 1;
+    if (
+      bucket.length > 0 &&
+      (bucket.length >= pricingLimits.applicabilityClauses ||
+        bucketBytes + clauseBytes > pricingLimits.applicabilityBytes)
+    ) {
+      result.push(canonicalizeApplicability({ any_of: bucket }));
+      bucket = [];
+      bucketBytes = 12;
+    }
+    bucket.push(clause);
+    bucketBytes += clauseBytes;
+  }
+  if (bucket.length > 0) result.push(canonicalizeApplicability({ any_of: bucket }));
+  return result;
+}
+
+export function compactCommercialSelections(
+  input: readonly CommercialSelection[],
+): CommercialSelection[] {
+  const groups = new Map<
+    string,
+    {
+      template: Omit<CommercialSelection, "applicability" | "observations">;
+      clauses: Clause[];
+      observations: RawPriceObservation[];
+    }
+  >();
+  for (const rawClaim of input) {
+    const applicability = canonicalizeApplicability(rawClaim.applicability);
+    const alternatives = rawClaim.alternatives.map((alternative) => ({
+      ...alternative,
+      applicability: canonicalizeApplicability(alternative.applicability),
+    }));
+    const template: Omit<CommercialSelection, "applicability" | "observations"> = {
+      dimension: rawClaim.dimension,
+      ...(rawClaim.target === undefined ? {} : { target: rawClaim.target }),
+      coverage: rawClaim.coverage,
+      ...(rawClaim.excluded_values === undefined
+        ? {}
+        : { excluded_values: rawClaim.excluded_values }),
+      ...(rawClaim.validity === undefined ? {} : { validity: rawClaim.validity }),
+      alternatives,
+    };
+    const key = canonicalJson(template);
+    const group = groups.get(key) ?? { template, clauses: [], observations: [] };
+    group.clauses.push(...applicability.any_of);
+    for (const { source_ref, locator, raw } of rawClaim.observations) {
+      group.observations.push({ source_ref, locator, raw });
+    }
+    groups.set(key, group);
+  }
+  const compacted: CommercialSelection[] = [];
+  for (const group of groups.values()) {
+    const uniqueClauses = uniqueCanonicalValues(group.clauses);
+    const factored = factorCategoricalClauses(uniqueClauses);
+    const retained: Clause[] = [];
+    for (const clause of [...factored].sort((a, b) => a.all_of.length - b.all_of.length)) {
+      if (!retained.some((other) => clauseContainedIn(clause.all_of, other.all_of))) {
+        retained.push(clause);
+      }
+    }
+    const uniqueObservations = uniqueCanonicalValues(group.observations);
+    for (const applicability of splitApplicabilityClauses(retained)) {
+      compacted.push({
+        ...group.template,
+        applicability,
+        observations: uniqueObservations,
+      });
+    }
+  }
+  return uniqueCanonicalValues(compacted);
 }
 
 export function applyCommercialSelections(

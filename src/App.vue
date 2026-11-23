@@ -12,7 +12,7 @@ import {
 } from "vue";
 import { afterFirstPaint } from "./after-first-paint.ts";
 import { modelLifecycles } from "./catalog/catalog-vocabulary.ts";
-import { loadWebsiteModelDetail, preloadWebsiteSchemas } from "./catalog/website-loader.ts";
+import { loadWebsiteModelDetail, preloadWebsiteModelDetail } from "./catalog/website-loader.ts";
 import {
   groupModels,
   modelGroupKey,
@@ -80,11 +80,13 @@ const tableBody = useTemplateRef<HTMLTableSectionElement>("tableBody");
 const tableVerticalScrollbarSlot = useTemplateRef<HTMLDivElement>("tableVerticalScrollbarSlot");
 const tableScrollOffset = ref(0);
 const tableViewportSize = ref(0);
-let tableResizeObserver: ResizeObserver | undefined;
+const MAX_CACHED_MODEL_DETAILS = 64;
+const PRELOAD_IDLE_MS = 180;
 const detailCache = new Map<string, NonNullable<typeof detailsState.detail>>();
 let detailRequest = "";
 let applyingRoute = false;
 let detailPreloadingEnabled = false;
+let preloadTimer: ReturnType<typeof setTimeout> | undefined;
 let virtualItemSize = INITIAL_VIRTUAL_ITEM_SIZE;
 const updateTableHorizontalScrollbar = useOverlayScrollbars(() => ({
   target: tableScrollHost.value,
@@ -317,7 +319,7 @@ function syncRoute(): void {
     modelUid: selectedModelUid.value,
   });
   if (search === location.search) return;
-  history.pushState(history.state, "", `${location.pathname}${search}${location.hash}`);
+  history.replaceState(history.state, "", `${location.pathname}${search}${location.hash}`);
 }
 
 function reconcileRouteSelections(): void {
@@ -468,15 +470,33 @@ async function loadModelDetail(model: WebsiteModel | undefined): Promise<void> {
 
 async function cacheModelDetail(model: WebsiteModel) {
   const detail = await loadWebsiteModelDetail(props.catalog.data_version, model);
+  if (detailCache.has(model.uid)) detailCache.delete(model.uid);
   detailCache.set(model.uid, detail);
+  while (detailCache.size > MAX_CACHED_MODEL_DETAILS) {
+    const oldest = detailCache.keys().next().value;
+    if (oldest === undefined) break;
+    detailCache.delete(oldest);
+  }
   return detail;
 }
 
-function preloadLikelyModelDetails(): void {
+function preloadVisibleDetails(): void {
   if (!detailPreloadingEnabled) return;
-  for (const row of virtualRows.value)
-    if (row.kind === "model" && !detailCache.has(row.model.uid))
-      void cacheModelDetail(row.model).catch(() => undefined);
+  const seen = new Set<string>();
+  for (const row of virtualRows.value) {
+    if (row.kind !== "model" || detailCache.has(row.model.uid) || seen.has(row.model.uid)) continue;
+    seen.add(row.model.uid);
+    void preloadWebsiteModelDetail(props.catalog.data_version, row.model).catch(() => undefined);
+  }
+}
+
+function schedulePreloadLikelyModelDetails(): void {
+  if (!detailPreloadingEnabled) return;
+  if (preloadTimer !== undefined) clearTimeout(preloadTimer);
+  preloadTimer = setTimeout(() => {
+    preloadTimer = undefined;
+    preloadVisibleDetails();
+  }, PRELOAD_IDLE_MS);
 }
 
 detailsState.close = () => {
@@ -502,7 +522,18 @@ watch(
   },
   { immediate: true },
 );
-watch(virtualRows, preloadLikelyModelDetails, { flush: "post" });
+watch(virtualRows, schedulePreloadLikelyModelDetails, { flush: "post" });
+watch(
+  tableBody,
+  (body, _, onCleanup) => {
+    if (body === null) return;
+    const observer = new ResizeObserver(updateVirtualRange);
+    observer.observe(body);
+    updateVirtualRange();
+    onCleanup(() => observer.disconnect());
+  },
+  { flush: "post" },
+);
 
 async function loadDeferredUi(): Promise<void> {
   const deferred = [
@@ -510,11 +541,10 @@ async function loadDeferredUi(): Promise<void> {
       filterPopover.value = module.default;
     }),
     import("./details-app.ts").then(({ mountDetailsApp }) => mountDetailsApp()),
-    preloadWebsiteSchemas(),
   ];
   searchIndex ??= indexModels(models);
   detailPreloadingEnabled = true;
-  preloadLikelyModelDetails();
+  schedulePreloadLikelyModelDetails();
   await Promise.all(deferred);
 }
 
@@ -525,11 +555,6 @@ onMounted(() => {
   window.addEventListener("popstate", applyRoute);
   window.addEventListener("resize", dismissTooltips);
   window.addEventListener("scroll", dismissTooltips, true);
-  const body = tableBody.value;
-  if (body !== null) {
-    tableResizeObserver = new ResizeObserver(updateVirtualRange);
-    tableResizeObserver.observe(body);
-  }
   updateVirtualRange();
   syncRoute();
   void afterFirstPaint().then(loadDeferredUi).catch(console.error);
@@ -540,7 +565,7 @@ onUnmounted(() => {
   window.removeEventListener("popstate", applyRoute);
   window.removeEventListener("resize", dismissTooltips);
   window.removeEventListener("scroll", dismissTooltips, true);
-  tableResizeObserver?.disconnect();
+  if (preloadTimer !== undefined) clearTimeout(preloadTimer);
 });
 </script>
 

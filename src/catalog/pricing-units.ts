@@ -7,12 +7,12 @@ import {
 } from "./pricing-rational.ts";
 import { normalizeUnitExpression } from "./pricing-canonical.ts";
 import { pricingLimits } from "./pricing-constants.ts";
-import {
-  type BillingUnit,
-  type PriceQuantity,
-  type Rational,
-  type UnitExpression,
-  type UnitPrice,
+import type {
+  BillingUnit,
+  PriceQuantity,
+  Rational,
+  UnitExpression,
+  UnitPrice,
 } from "./pricing-schema.ts";
 
 export type FixedUnitScale =

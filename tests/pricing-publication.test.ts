@@ -12,8 +12,12 @@ import {
   prepareRecompiledCatalogPair,
   readCatalogPairMirrors,
   recoverCatalogPair,
+  withInferencePriceMapping,
   type CatalogPairPaths,
 } from "../src/catalog/pricing-publication.ts";
+import { canonicalJson } from "../src/catalog/canonical-json.ts";
+import { sha256 } from "../src/catalog/io.ts";
+import { catalogPairId } from "../src/catalog/pair-identity.ts";
 import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
 import type { ProjectionPaths } from "../src/catalog/projection-paths.ts";
 import { catalogSchema, type Catalog } from "../src/catalog/schema.ts";
@@ -394,5 +398,101 @@ describe("crash-consistent catalog pair publication", () => {
     });
     const candidate = prepareCatalogPair(input, pricing);
     expect(candidate.catalog.providers[0]).not.toHaveProperty("last_successful_sync_at");
+  });
+
+  it("keeps pricingAssetSource lazy when attaching inference mappings (F17)", () => {
+    const base = prepareCatalogPair(catalog(), pricing);
+    const joinSpy = vi.spyOn(Array.prototype, "join");
+    try {
+      const mapped = withInferencePriceMapping(base, {
+        core_catalog_version: base.catalog.catalog_version,
+        pricing_data_version: base.pricing.pricing_data_version,
+        rules: [],
+        sources: [],
+      });
+      // pricingAssetSource is non-enumerable and was not eagerly joined by spread/attachment.
+      expect(Object.keys(mapped)).not.toContain("pricingAssetSource");
+      expect(joinSpy.mock.instances).not.toContain(base.pricingAssetChunks);
+      // Accessing pricingAssetSource explicitly triggers the lazy join and returns exact JSON.
+      const source = mapped.pricingAssetSource;
+      expect(joinSpy.mock.instances).toContain(base.pricingAssetChunks);
+      expect(source).toBe(base.pricingAssetChunks.join(""));
+    } finally {
+      joinSpy.mockRestore();
+    }
+  });
+
+  it("recovers and migrates legacy v2 .catalog-state snapshots idempotently while rejecting corruption (F02)", async () => {
+    const basePaths = await paths();
+    const output: CatalogPairPaths = {
+      ...basePaths,
+      inferenceMirror: join(basePaths.stateDirectory, "..", "inference-pricing.json"),
+    };
+    const base = prepareCatalogPair(catalog(), pricing);
+    const legacyInferenceSource = canonicalJson({
+      core_catalog_version: base.catalog.catalog_version,
+      pricing_data_version: base.pricing.pricing_data_version,
+      rules: [],
+      sources: [],
+      offer_selections: [],
+    });
+    const legacyIdentity = {
+      catalog_asset_sha256: base.identity.catalog_asset_sha256,
+      pricing_asset_sha256: base.identity.pricing_asset_sha256,
+      inference_asset_sha256: sha256(legacyInferenceSource),
+    };
+    const legacyPairId = catalogPairId(legacyIdentity);
+    const snapshotDir = join(output.stateDirectory, "snapshots", legacyPairId);
+    await mkdir(snapshotDir, { recursive: true });
+    await Promise.all([
+      writeFile(join(snapshotDir, "catalog.json"), base.catalogStorageSource),
+      writeFile(join(snapshotDir, "catalog-asset.json"), base.catalogAssetSource),
+      writeFile(join(snapshotDir, "pricing.json"), base.pricingStorageChunks.join("")),
+      writeFile(join(snapshotDir, "inference-pricing.json"), legacyInferenceSource),
+      writeFile(
+        join(output.stateDirectory, "current.json"),
+        canonicalJson({
+          version: 2,
+          pair_id: legacyPairId,
+          ...legacyIdentity,
+          core_data_sha256: base.pricing.core_data_sha256,
+        }),
+      ),
+    ]);
+
+    // First recovery migrates v2 -> v3 and commits updated v3 manifest & projections.
+    const first = await recoverCatalogPair(output);
+    expect(first).toBeDefined();
+    expect(first?.pairId).not.toBe(legacyPairId);
+    expect(first?.inference?.mapping).not.toHaveProperty("offer_selections");
+
+    // Second recovery is idempotent on the migrated v3 state.
+    const second = await recoverCatalogPair(output);
+    expect(second?.pairId).toBe(first?.pairId);
+
+    // Corrupted legacy snapshot MUST be rejected before migration.
+    const corruptBase = await paths();
+    const corruptOutput: CatalogPairPaths = {
+      ...corruptBase,
+      inferenceMirror: join(corruptBase.stateDirectory, "..", "inference-pricing.json"),
+    };
+    const corruptSnap = join(corruptOutput.stateDirectory, "snapshots", legacyPairId);
+    await mkdir(corruptSnap, { recursive: true });
+    await Promise.all([
+      writeFile(join(corruptSnap, "catalog.json"), base.catalogStorageSource),
+      writeFile(join(corruptSnap, "catalog-asset.json"), base.catalogAssetSource),
+      writeFile(join(corruptSnap, "pricing.json"), base.pricingStorageChunks.join("")),
+      writeFile(join(corruptSnap, "inference-pricing.json"), `${legacyInferenceSource} `),
+      writeFile(
+        join(corruptOutput.stateDirectory, "current.json"),
+        canonicalJson({
+          version: 2,
+          pair_id: legacyPairId,
+          ...legacyIdentity,
+          core_data_sha256: base.pricing.core_data_sha256,
+        }),
+      ),
+    ]);
+    await expect(recoverCatalogPair(corruptOutput)).rejects.toThrow("does not match its manifest");
   });
 });

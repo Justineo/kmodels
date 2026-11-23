@@ -8,7 +8,6 @@ import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts";
 import { publishedRate } from "../src/catalog/pricing.ts";
 import { catalogSchema } from "../src/catalog/schema.ts";
-import { type PriceDataEnvelope } from "../src/pricing/index.ts";
 import { sonicDocuments, sonicBundle } from "./bedrock-sonic-fixtures.ts";
 // Native price rows: AmazonBedrock/current/index.json, observed 2026-10-19T06:49:30.039Z,
 // SHA256 f1a16e43dd44b6bc42d72cf41fd2a2cef2ed066f04373b424f3752aad7071d3a.
@@ -217,8 +216,12 @@ async function compiled(
   );
   return { partition, exported };
 }
-function modelOffer(exported: PriceDataEnvelope, model: string, mechanism = "on-demand") {
-  const offer = exported.providers[0]?.books
+function modelOffer(
+  partition: { books: readonly import("../src/catalog/pricing-schema.ts").PricingBook[] },
+  model: string,
+  mechanism = "on-demand",
+) {
+  const offer = partition.books
     .find(({ book_key }) => book_key === `model:amazon-bedrock/${model}`)
     ?.offers.flatMap(priceContexts)
     .find(({ context_key }) => context_key === mechanism);
@@ -229,17 +232,17 @@ describe("Bedrock modality pricing", () => {
   it.each([false, true])(
     "keeps the quote's native text role independent of missing peers (generic=%s)",
     async (generic) => {
-      const { exported } = await compiled(generic ? "same" : undefined, {
+      const { partition } = await compiled(generic ? "same" : undefined, {
         documents: await sonicDocuments(),
         omitAudioRates: true,
       });
-      const offer = modelOffer(exported, "amazon.nova-2-sonic-v1:0");
+      const offer = modelOffer(partition, "amazon.nova-2-sonic-v1:0");
       expect(offer.terms.filter(({ kind }) => kind === "rate")).toHaveLength(2);
     },
   );
   it("does not borrow a generic invocation-log selector for a Bidi-only model", async () => {
-    const { exported } = await compiled("same", { documents: await sonicDocuments() });
-    const offer = modelOffer(exported, "amazon.nova-2-sonic-v1:0");
+    const { partition } = await compiled("same", { documents: await sonicDocuments() });
+    const offer = modelOffer(partition, "amazon.nova-2-sonic-v1:0");
     const sources = offer.terms.flatMap((term) =>
       term.kind === "rate"
         ? term.variants.flatMap(({ selector_sources }) => selector_sources ?? [])
@@ -250,8 +253,8 @@ describe("Bedrock modality pricing", () => {
   it.each(["amazon.nova-sonic-v1:0", "amazon.nova-2-sonic-v1:0"])(
     "preserves the native event boundary in the price basis for %s",
     async (model) => {
-      const { exported } = await compiled(undefined, { documents: await sonicDocuments() });
-      const offer = modelOffer(exported, model);
+      const { partition } = await compiled(undefined, { documents: await sonicDocuments() });
+      const offer = modelOffer(partition, model);
       for (const term of offer.terms) {
         if (term.kind !== "rate") continue;
         for (const variant of term.variants)
@@ -274,21 +277,21 @@ describe("Bedrock modality pricing", () => {
           '"speechTokens": number, // input speech tokens',
           '"renamed": number, // input speech tokens',
         );
-      const { exported } = await compiled(undefined, { documents });
-      const offer = modelOffer(exported, "amazon.nova-2-sonic-v1:0");
+      const { partition } = await compiled(undefined, { documents });
+      const offer = modelOffer(partition, "amazon.nova-2-sonic-v1:0");
       expect(offer.terms.filter(({ kind }) => kind === "rate")).toHaveLength(4);
     },
   );
   it.each(["model", "api", "endpoint", "batch"])(
     "does not lend Sonic counters to another %s scope",
     async (boundary) => {
-      const { exported } = await compiled(boundary === "batch" ? "batch" : undefined, {
+      const { partition } = await compiled(boundary === "batch" ? "batch" : undefined, {
         documents: await sonicDocuments(),
         ...(boundary === "api" ? { apiPath: "model/{modelId}/invoke" } : {}),
         ...(boundary === "endpoint" ? { priceEndpoint: "bedrock-mantle" } : {}),
       });
       const offer = modelOffer(
-        exported,
+        partition,
         boundary === "model" ? "amazon.nova-2-5-sonic-v1:0" : "amazon.nova-2-sonic-v1:0",
         boundary === "batch" ? "batch" : "on-demand",
       );
@@ -332,9 +335,9 @@ describe("Bedrock modality pricing", () => {
     ]);
     expect(sonic?.raw_price_facts).toEqual([]);
   });
-  it("preserves semantic audio token charges in the portable export without inventing locators", async () => {
-    const { exported } = await compiled();
-    const book = exported.providers[0]?.books.find(({ book_key }) =>
+  it("preserves semantic audio token charges in canonical pricing without inventing locators", async () => {
+    const { partition } = await compiled();
+    const book = partition.books.find(({ book_key }) =>
       book_key.endsWith("amazon.nova-2-sonic-v1:0"),
     );
     const offer = book?.offers.find(({ offer_key }) => offer_key === "on-demand");
@@ -379,8 +382,8 @@ describe("Bedrock modality pricing", () => {
   it.each(["same", "region", "currency", "validity", "batch"] as const)(
     "keeps aggregate counters out of overlapping modality tariffs (%s control)",
     async (scope) => {
-      const { exported } = await compiled(scope);
-      const offer = exported.providers[0]?.books
+      const { partition } = await compiled(scope);
+      const offer = partition.books
         .find(({ book_key }) => book_key.endsWith("amazon.nova-2-sonic-v1:0"))
         ?.offers.flatMap(priceContexts)
         .find(({ context_key }) => context_key === "on-demand");

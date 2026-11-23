@@ -20,6 +20,7 @@ import {
   type WebsitePublication,
 } from "../src/catalog/website-data.ts";
 import { loadWebsiteCatalog, parseWebsiteCatalog } from "../src/catalog/website-runtime.ts";
+import { loadWebsiteModelDetail } from "../src/catalog/website-loader.ts";
 import { WEBSITE_CORE_CHUNK_MAX_BYTES, websiteCoreAssets } from "../src/catalog/website-core.ts";
 import type { WebsiteModelDetail, WebsitePricingOffer } from "../src/catalog/website-schema.ts";
 import { generatedData } from "./generated-data-context.ts";
@@ -394,5 +395,33 @@ describe("website data", () => {
         compareUtf8(left.fileName, right.fileName),
       ),
     );
+
+    // Verify the actual browser loader (`loadWebsiteModelDetail`) validates and hydrates
+    // every single published model across all detail and offer chunks (100% coverage).
+    const assetsByPath = new Map(actual.map(({ fileName, source }) => [`/${fileName}`, source]));
+    const runtimeCatalog = parseWebsiteCatalog(publication.catalog, publication.pricing);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const rawUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const pathname = new URL(rawUrl, "http://localhost").pathname;
+      const body = assetsByPath.get(pathname);
+      if (body === undefined) return new Response("Not Found", { status: 404 });
+      return new Response(body, {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+    try {
+      let loadedCount = 0;
+      for (const model of runtimeCatalog.models) {
+        const detail = await loadWebsiteModelDetail(dataVersion, model);
+        expect(detail.model_ref).toBe(model.uid);
+        loadedCount += 1;
+      }
+      expect(loadedCount).toBe(runtimeCatalog.models.length);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   }, 90_000);
 });

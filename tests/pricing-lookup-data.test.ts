@@ -36,6 +36,7 @@ describe("unit-price exports", () => {
       );
       expect(provider.books.map((book) => book.id)).toEqual(canonicalBooks.map((book) => book.id));
       expectExportedOffers(
+        provider.applicabilities,
         provider.books.flatMap((book) => book.offers),
         canonicalBooks,
       );
@@ -128,6 +129,7 @@ describe("unit-price exports", () => {
 });
 
 function expectExportedOffers(
+  applicabilities: PriceDataEnvelope["providers"][number]["applicabilities"],
   exportedOffers: PriceDataOffer[],
   canonicalBooks: PricingBook[],
 ): void {
@@ -136,27 +138,29 @@ function expectExportedOffers(
     for (const canonicalOffer of book.offers) {
       const exported = offersById.get(canonicalOffer.id);
       if (exported === undefined) throw new Error("Missing exported offer");
-      expectOfferMatchesCanonical(exported, canonicalOffer);
+      expectOfferMatchesCanonical(applicabilities, exported, canonicalOffer);
     }
   }
 }
 
-function expectOfferMatchesCanonical(exported: PriceDataOffer, canonical: PricingOffer): void {
-  expect(exported.enrollment.map(({ evidence: _evidence, ...value }) => value)).toEqual(
-    canonical.enrollment.map(({ observations: _observations, ...value }) => value),
-  );
-  expect(exported.settlement.map(({ evidence: _evidence, ...value }) => value)).toEqual(
-    canonical.settlement.map(({ observations: _observations, ...value }) => value),
-  );
+function expectOfferMatchesCanonical(
+  applicabilities: PriceDataEnvelope["providers"][number]["applicabilities"],
+  exported: PriceDataOffer,
+  canonical: PricingOffer,
+): void {
   expect(exported.terms.map((term) => term.id)).toEqual(canonical.terms.map((term) => term.id));
   for (const canonicalTerm of canonical.terms) {
     const exportedTerm = exported.terms.find((term) => term.id === canonicalTerm.id);
     if (exportedTerm === undefined) throw new Error("Missing exported term");
-    expectTermMatchesCanonical(exportedTerm, canonicalTerm);
+    expectTermMatchesCanonical(applicabilities, exportedTerm, canonicalTerm);
   }
 }
 
-function expectTermMatchesCanonical(exported: PriceDataTerm, canonical: PricingTerm): void {
+function expectTermMatchesCanonical(
+  applicabilities: PriceDataEnvelope["providers"][number]["applicabilities"],
+  exported: PriceDataTerm,
+  canonical: PricingTerm,
+): void {
   expect(exported.kind).toBe(canonical.kind);
   expect(exported.variants.length).toBe(canonical.variants.length);
   if (canonical.kind === "allowance" && exported.kind === "allowance") {
@@ -173,19 +177,18 @@ function expectTermMatchesCanonical(exported: PriceDataTerm, canonical: PricingT
   for (const [index, canonicalRate] of canonical.variants.entries()) {
     const exportedRate = exported.variants[index];
     if (exportedRate === undefined) throw new Error("Missing exported variant");
-    expectRateMatchesCanonical(exportedRate, canonicalRate);
+    expectRateMatchesCanonical(applicabilities, exportedRate, canonicalRate);
   }
 }
 
-function expectRateMatchesCanonical(exported: PriceDataRate, canonical: PriceRateVariant): void {
+function expectRateMatchesCanonical(
+  applicabilities: PriceDataEnvelope["providers"][number]["applicabilities"],
+  exported: PriceDataRate,
+  canonical: PriceRateVariant,
+): void {
   expect(exported.price).toEqual(canonical.price);
-  expect(exported.applicability).toEqual(canonical.applicability);
+  expect(applicabilities[exported.applicability_id]).toEqual(canonical.applicability);
   expect(exported.validity).toEqual(canonical.validity);
-  if (canonical.charge_binding === undefined) return;
-  if (exported.charge_binding === undefined) throw new Error("Missing exported binding");
-  const { observations: _observations, ...canonicalBinding } = canonical.charge_binding;
-  const { evidence: _evidence, ...exportedBinding } = exported.charge_binding;
-  expect(exportedBinding).toEqual(canonicalBinding);
 }
 
 function expectCoverageMatchesTerms(

@@ -154,6 +154,19 @@ it("associates current Embed, Parse and token-denominated Rerank 5 meters", asyn
         variants: [
           expect.objectContaining({
             price: expect.objectContaining({ value: { numerator: "1", denominator } }),
+          }),
+        ],
+      }),
+    );
+    const matchedOfferId = result.candidates[0]?.offer.id;
+    const canonicalOffer = candidate.pricing.data.books
+      .flatMap(({ offers }) => offers)
+      .find(({ id }) => id === matchedOfferId);
+    expect(canonicalOffer?.terms).toContainEqual(
+      expect.objectContaining({
+        meter: { namespace: "kmodels", value: "rerank" },
+        variants: [
+          expect.objectContaining({
             charge_binding: expect.objectContaining({
               signal: { namespace: "kmodels", value: "input_tokens" },
             }),

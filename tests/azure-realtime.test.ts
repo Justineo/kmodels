@@ -133,7 +133,7 @@ async function compiled(
       }),
     ),
   );
-  const exported = priceDataExport(
+  priceDataExport(
     core,
     createPricingCatalogEnvelope(
       {
@@ -145,7 +145,7 @@ async function compiled(
       core,
     ),
   );
-  const offer = exported.providers[0]?.books[0]?.offers.find(
+  const offer = partition.books[0]?.offers.find(
     ({ offer_key }) => offer_key === (batch ? "batch" : "sync"),
   );
   if (offer === undefined) throw new Error("Missing execution offer");

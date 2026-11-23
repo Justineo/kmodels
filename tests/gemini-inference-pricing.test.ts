@@ -377,9 +377,12 @@ it("treats Contributor as an invitation and data-sharing pricing program, not an
   expect(result.status).toBe("matched");
   expect(result.missing_conditions).toEqual([]);
   expect(rates(result, "input_text")).toEqual([{ numerator: "1", denominator: "1000000" }]);
+  const matchedIds = new Set(result.candidates.map(({ offer }) => offer.id));
   expect(
-    result.candidates
-      .flatMap(({ offer }) =>
+    baseline.pricing.data.books
+      .flatMap(({ offers }) => offers)
+      .filter(({ id }) => matchedIds.has(id))
+      .flatMap((offer) =>
         offer.terms.flatMap((term) =>
           term.kind === "rate"
             ? term.variants.flatMap(({ selector_sources }) => selector_sources ?? [])

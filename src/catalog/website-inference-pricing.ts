@@ -23,7 +23,7 @@ export function websiteInferencePrices(
   validatedPrices?: PriceDataEnvelope,
 ): Map<string, WebsiteInferencePrice[]> {
   const results = new Map<string, WebsiteInferencePrice[]>();
-  for (const [providerIndex, provider] of pricing.data.provider_snapshots.entries()) {
+  for (const provider of pricing.data.provider_snapshots) {
     const providerId = provider.provider_id;
     const priceSnapshot =
       validatedPrices === undefined
@@ -36,21 +36,10 @@ export function websiteInferencePrices(
           });
     const rules = mapping.rules.filter(({ provider_id }) => provider_id === providerId);
     const sources = mapping.sources.filter(({ provider_id }) => provider_id === providerId);
-    const offerIds = priceSnapshot.offers;
-    // The first lookup checks the shared selection schema and duplicate identities.
-    // Later providers need only their owned selection rows, with the same semantic checks.
-    const { lookup, snapshot, selections } = prepareInferencePriceLookup(priceSnapshot, {
+    const { lookup, snapshot } = prepareInferencePriceLookup(priceSnapshot, {
       ...mapping,
       rules,
       sources,
-      ...(mapping.offer_selections === undefined
-        ? {}
-        : {
-            offer_selections:
-              providerIndex === 0
-                ? mapping.offer_selections
-                : mapping.offer_selections.filter(({ offer_ref }) => offerIds.has(offer_ref)),
-          }),
     });
     const rulesByModel = groupRules(rules, "model_ref");
     const rulesById = groupRules(rules, "model_id");
@@ -65,13 +54,13 @@ export function websiteInferencePrices(
         model.uid,
         [...ids].map((model_id) => {
           const result = lookup({ provider_id: providerId, model_id });
-          const matching = inferenceMatchData(snapshot, rulesById.get(model_id) ?? [], selections);
+          const matching = inferenceMatchData(snapshot, rulesById.get(model_id) ?? []);
           const pricing_options = inferencePricingOptions(
             [...new Set(matching.rules.flatMap(({ offer_refs }) => offer_refs))].flatMap((ref) => {
               const owner = snapshot.offers.get(ref);
               return owner === undefined
                 ? []
-                : offerApplicabilities(snapshot, owner.offer).flatMap(({ any_of }) =>
+                : offerApplicabilities(snapshot, owner).flatMap(({ any_of }) =>
                     any_of.flatMap(({ all_of }) => all_of),
                   );
             }),

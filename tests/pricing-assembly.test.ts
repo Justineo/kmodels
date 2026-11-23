@@ -547,7 +547,7 @@ describe("canonical pricing canonical assembly", () => {
     },
   );
 
-  it("uses the conservative single-parent numeric-state containment rule", () => {
+  it("omits redundant materialized numeric states while retaining normalized rate variants", () => {
     const source = input([
       rate(
         {
@@ -581,10 +581,12 @@ describe("canonical pricing canonical assembly", () => {
         observation: observation(region("EU"), "state EU"),
       },
     ];
-    const term = assemble(source).books[0]!.offers[0]!.terms[0]!;
+    const offer = assemble(source).books[0]!.offers[0]!;
+    expect(offer.states).toEqual([]);
+    const term = offer.terms[0]!;
     if (term.kind !== "rate") throw new Error("fixture term is not a rate");
-    expect(term.variants).toEqual([]);
-    expect(term.raw_variants[0]!.reason).toBe("unsupported_structure");
+    expect(term.variants).toHaveLength(1);
+    expect(term.raw_variants).toEqual([]);
   });
 
   it("rejects an all-contradictory atomic selector instead of widening it", () => {

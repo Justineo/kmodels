@@ -12,7 +12,7 @@ const suite = lookupFixtureSchema.parse(
   JSON.parse(readFileSync(new URL("./fixtures/pricing/lookup.json", import.meta.url), "utf8")),
 );
 function dataset(name: string) {
-  return validatePriceData(suite.datasets[name]);
+  return structuredClone(validatePriceData(suite.datasets[name]));
 }
 function offer(data: PriceDataEnvelope) {
   const value = data.providers[0]?.books[0]?.offers[0];
@@ -25,35 +25,16 @@ function rate(data: PriceDataEnvelope) {
     throw new Error("Missing fixture rate");
   return term.variants[0];
 }
-function mappedTier() {
-  const data = dataset("tier");
-  const variant = rate(data);
-  const condition = variant.applicability.any_of[0]?.all_of[0];
-  if (condition?.kind !== "categorical" || condition.values[0] === undefined)
-    throw new Error("Missing tier condition");
-  const entry = { source_value: "standard", value: condition.values[0] };
-  const source = {
-    dimension: condition.dimension,
-    channel: "response" as const,
-    locator: { kind: "json_pointer" as const, value: "/served_tier" },
-    availability: "terminal_only" as const,
-    absent_value: condition.values[0],
-    normalization: {
-      kind: "categorical_map" as const,
-      entries: [entry],
-    },
-    evidence: structuredClone(variant.evidence),
-  };
-  variant.selector_sources = [source];
-  return { data, variant, source, entry };
-}
 
 describe("public pricing contracts", () => {
-  it("preserves selector evidence and isolates lookup results from caller mutation", () => {
-    const { data, source } = mappedTier();
-    const book = data.providers[0]?.books[0];
+  it("hydrates interned applicabilities and isolates lookup results from caller mutation", () => {
+    const data = dataset("tier");
+    const provider = data.providers[0];
+    const book = provider?.books[0];
     const modelRef = book?.scope.model_refs[0];
-    if (!book || !modelRef) throw new Error("Missing fixture model");
+    if (!provider || !book || !modelRef) throw new Error("Missing fixture model");
+    const variant = rate(data);
+    const expectedApplicability = provider.applicabilities[variant.applicability_id];
     const lookup = createInferencePriceLookup(data, {
       core_catalog_version: data.snapshot.coreCatalogVersion,
       pricing_data_version: data.snapshot.pricingDataVersion,
@@ -75,12 +56,10 @@ describe("public pricing contracts", () => {
     expect(
       result.candidates.flatMap(({ offer }) =>
         offer.terms.flatMap((term) =>
-          term.kind === "rate"
-            ? term.variants.flatMap((variant) => variant.selector_sources ?? [])
-            : [],
+          term.kind === "rate" ? term.variants.map((v) => v.applicability) : [],
         ),
       ),
-    ).toContainEqual(source);
+    ).toContainEqual(expectedApplicability);
     result.candidates.length = 0;
     data.providers.length = 0;
     expect(lookup(query)).toEqual(original);
@@ -88,7 +67,7 @@ describe("public pricing contracts", () => {
   });
 
   it("rejects retired schemas and usage/cost request fields", () => {
-    for (const schemaVersion of ["1.0", "1.1"])
+    for (const schemaVersion of ["1.0", "1.1", "2.0"])
       expect(() => validatePriceData({ ...dataset("base"), schemaVersion })).toThrowError(
         expect.objectContaining({ code: "UNSUPPORTED_SCHEMA" }),
       );
@@ -104,48 +83,61 @@ describe("public pricing contracts", () => {
       expect(commercialPriceQuerySchema.safeParse({ subject, [field]: [] }).success).toBe(false);
   });
 
-  const invalidMappings: Array<[string, (fixture: ReturnType<typeof mappedTier>) => void]> = [
+  const invalidDatasets: Array<[string, (data: PriceDataEnvelope) => void]> = [
     [
-      "foreign mapped value",
-      ({ entry }) => {
-        entry.value = { namespace: "provider", provider_id: "foreign", value: "standard" };
+      "out-of-range applicability_id",
+      (data) => {
+        rate(data).applicability_id = 999;
       },
     ],
     [
-      "unregistered mapped value",
-      ({ entry }) => {
-        entry.value = { namespace: "provider", provider_id: "example", value: "unregistered" };
+      "duplicate applicability table entry",
+      (data) => {
+        const provider = data.providers[0];
+        const first = provider?.applicabilities[0];
+        if (!provider || !first) throw new Error("Missing applicability");
+        provider.applicabilities.push(structuredClone(first));
       },
     ],
     [
-      "value outside variant scope",
-      ({ entry }) => {
-        entry.value = { namespace: "provider", provider_id: "example", value: "priority" };
+      "complete selection with empty alternatives",
+      (data) => {
+        const book = data.providers[0]?.books[0];
+        if (!book) throw new Error("Missing book");
+        offer(data).selection = [
+          {
+            dimension: "execution",
+            coverage: "complete",
+            applicability_id: 0,
+            alternatives: [],
+            evidence: book.evidence,
+          },
+        ];
       },
     ],
     [
-      "foreign absent value",
-      ({ source }) => {
-        source.absent_value = { namespace: "provider", provider_id: "foreign", value: "standard" };
-      },
-    ],
-    [
-      "unrelated dimension",
-      ({ source }) => {
-        source.dimension = { namespace: "kmodels", value: "region" };
-      },
-    ],
-    [
-      "duplicate source input",
-      ({ source, entry }) => {
-        source.normalization.entries.push(structuredClone(entry));
+      "billing_mode selection disagreeing with offer billing_mode",
+      (data) => {
+        const book = data.providers[0]?.books[0];
+        if (!book) throw new Error("Missing book");
+        offer(data).selection = [
+          {
+            dimension: "billing_mode",
+            coverage: "complete",
+            applicability_id: 0,
+            alternatives: [
+              { value: { namespace: "kmodels", value: "capacity" }, applicability_id: 0 },
+            ],
+            evidence: book.evidence,
+          },
+        ];
       },
     ],
   ];
-  it.each(invalidMappings)("rejects %s at initialization", (_name, change) => {
-    const fixture = mappedTier();
-    change(fixture);
-    expect(() => validatePriceData(fixture.data)).toThrowError(
+  it.each(invalidDatasets)("rejects %s at initialization", (_name, change) => {
+    const data = dataset("tier");
+    change(data);
+    expect(() => validatePriceData(data)).toThrowError(
       expect.objectContaining({ code: "INVALID_DATA" }),
     );
   });

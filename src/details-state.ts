@@ -1,4 +1,4 @@
-import { reactive } from "vue";
+import { shallowReactive } from "vue";
 import type {
   WebsiteModel,
   WebsiteModelDetail,
@@ -18,7 +18,7 @@ interface DetailsState {
   navigate: (offset: -1 | 1) => void;
 }
 
-export const detailsState = reactive<DetailsState>({
+export const detailsState = shallowReactive<DetailsState>({
   model: undefined,
   providerName: "",
   provider: undefined,

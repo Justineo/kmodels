@@ -2465,7 +2465,7 @@ describe("Anthropic adapters", () => {
     expect(outcomes).toEqual([
       {
         operation: "standalone",
-        states: ["numeric"],
+        states: [],
         rates: [["$0.05", "per hour"]],
         allowances: ["1,550 hours"],
         fixed: ["billing_mode", "resource_kind"],

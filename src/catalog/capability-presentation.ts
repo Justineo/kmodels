@@ -1,7 +1,7 @@
-import {
-  capabilityStatementsConflict,
-  type CapabilityStatement,
-  type WebsiteCapabilityDetailGroup,
+import { capabilityStatementsConflict } from "./model-claim-helpers.ts";
+import type {
+  CapabilityStatement,
+  WebsiteCapabilityDetailGroup,
 } from "./model-capability-details.ts";
 import type { ProviderModel } from "./schema.ts";
 

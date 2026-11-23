@@ -230,13 +230,10 @@ describe("DeepSeek native Search and Fetch charges", () => {
       expect(timeline.next_change_at).toBe("2026-11-18T04:00:00.000Z");
       expect(timeline.upcoming?.effective_at).toBe("2026-11-18T04:00:00.000Z");
       expect(timeline.upcoming?.offer.rates).toHaveLength(2);
-      expect(timeline.upcoming?.offer.states.map((state) => state.state)).toEqual([
-        "free",
-        "numeric",
-      ]);
+      expect(timeline.upcoming?.offer.states.map((state) => state.state)).toEqual(["free"]);
       const granted = projectWebsitePricingTimeline(detail, "2026-11-18T04:00:00.000Z");
       expect(granted.current.rates).toHaveLength(2);
-      expect(granted.current.states.map((state) => state.state)).toEqual(["free", "numeric"]);
+      expect(granted.current.states.map((state) => state.state)).toEqual(["free"]);
       expect(granted.next_change_at).toBeUndefined();
       expect(granted.upcoming).toBeUndefined();
       const html = await renderComponent(PricingServiceOffer, {

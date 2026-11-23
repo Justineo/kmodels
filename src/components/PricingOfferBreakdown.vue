@@ -1,12 +1,13 @@
 <script setup lang="ts" vapor>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
+import { usePricingClock } from "../composables/usePricingClock.ts";
 import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
 import type { CommercialChoice } from "../catalog/pricing-schema.ts";
 import { queryWebsiteCommercialOffer } from "../catalog/website-commercial-query.ts";
 import {
   commercialConditionDimension,
   commercialDimensionLabels,
-} from "../pricing/commercial-vocabulary.ts";
+} from "../pricing/commercial-labels.ts";
 import { pricingConditionHeading, conditionWording } from "../pricing/condition-presentation.ts";
 import {
   formatConditionValue,
@@ -74,7 +75,10 @@ interface ScopeCopy {
 
 const inputs = ref<Record<string, string>>({});
 const commercialChoices = ref<CommercialChoice[]>([]);
-const liveNow = ref(new Date().toISOString());
+const { now: liveNow, schedule: scheduleClockRefresh } = usePricingClock(() => {
+  const nextChangeAt = timeline.value.next_change_at;
+  return nextChangeAt === undefined ? undefined : Date.parse(nextChangeAt);
+});
 const viewingUpcoming = ref(false);
 const timeline = computed(() => projectWebsitePricingTimeline(props.offer, liveNow.value));
 const unfilteredOffer = computed(() =>
@@ -344,10 +348,18 @@ const pricingNoteGroups = computed(() => {
   }
   return [...groups.values()];
 });
+const hasImpliedNumericState = computed(
+  () =>
+    unfilteredOffer.value.rates.length > 0 &&
+    !unfilteredOffer.value.states.some(({ state }) => state === "numeric"),
+);
+const effectiveStateCount = computed(
+  () => unfilteredOffer.value.states.length + (hasImpliedNumericState.value ? 1 : 0),
+);
 const showOfferStates = computed(
   () =>
     visibleStates.value.length > 0 &&
-    (unfilteredOffer.value.states.length > 1 ||
+    (effectiveStateCount.value > 1 ||
       (props.service && visibleStates.value.some((row) => row.state !== "numeric"))),
 );
 const showUnmatchedRates = computed(
@@ -438,23 +450,6 @@ watch(
     viewingUpcoming.value = false;
   },
 );
-
-let clockTimer: ReturnType<typeof setTimeout> | undefined;
-
-onMounted(scheduleClockRefresh);
-onBeforeUnmount(() => {
-  if (clockTimer !== undefined) clearTimeout(clockTimer);
-});
-
-function scheduleClockRefresh(): void {
-  if (clockTimer !== undefined) clearTimeout(clockTimer);
-  clockTimer = undefined;
-  liveNow.value = new Date().toISOString();
-  const nextChangeAt = timeline.value.next_change_at;
-  if (nextChangeAt === undefined) return;
-  const delay = Math.min(Math.max(Date.parse(nextChangeAt) - Date.now() + 1, 1), 2_147_483_647);
-  clockTimer = setTimeout(scheduleClockRefresh, delay);
-}
 
 function toggleUpcoming(): void {
   viewingUpcoming.value = !viewingUpcoming.value;

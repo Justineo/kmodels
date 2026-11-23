@@ -78,10 +78,9 @@ function compiled(batch: boolean) {
     core,
   );
   const exported = priceDataExport(core, pricing);
-  const offer = exported.providers[0]?.books[0]?.offers.find(
-    ({ offer_key }) => offer_key === (batch ? "batch" : "sync"),
-  );
-  if (offer === undefined) throw new Error("Missing offer");
+  const book = exported.providers[0]?.books[0];
+  const offer = book?.offers.find(({ offer_key }) => offer_key === (batch ? "batch" : "sync"));
+  if (book === undefined || offer === undefined) throw new Error("Missing offer");
   const websiteOffer = websitePublication(core, pricing.data, "b".repeat(64))
     .offers.flatMap(({ offers }) => offers)
     .find(({ id }) => id === offer.id);
@@ -97,7 +96,7 @@ function compiled(batch: boolean) {
         model_ref: model.uid,
         offer_refs: [offer.id],
         fixed_selectors: [],
-        evidence: offer.states.flatMap(({ evidence }) => evidence),
+        evidence: book.evidence,
       },
     ],
   });

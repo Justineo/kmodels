@@ -10,7 +10,7 @@ import {
   commercialDefinitions,
   commercialValueLabel,
   commercialConditionDimension,
-} from "../pricing/commercial-vocabulary.ts";
+} from "../pricing/commercial-labels.ts";
 import UiChoice from "./UiChoice.vue";
 import PricingConditions from "./PricingConditions.vue";
 import PricingSelectionPrompt from "./PricingSelectionPrompt.vue";

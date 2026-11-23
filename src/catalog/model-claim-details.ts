@@ -1,8 +1,26 @@
 import { z } from "zod";
-import type { Catalog, ProviderModel } from "./schema.ts";
 
 export const modelClaimFields = ["limit_details", "capability_details"] as const;
 export type ModelClaimField = (typeof modelClaimFields)[number];
+
+interface ModelClaimOwner {
+  limit_details?: readonly ModelClaimGroup[] | undefined;
+  capability_details?: readonly ModelClaimGroup[] | undefined;
+}
+
+interface CatalogClaimValidationInput {
+  models: readonly (ModelClaimOwner & {
+    uid: string;
+    provider_id: string;
+    source_refs: readonly string[];
+  })[];
+  sources: readonly {
+    id: string;
+    provider_id: string;
+    field_paths: readonly string[];
+    role: string;
+  }[];
+}
 
 const documentEvidenceSchema = z.strictObject({
   document_url: z
@@ -40,10 +58,13 @@ export function hasClaimStatements(
   return groups?.some(({ statements }) => statements.length > 0) ?? false;
 }
 
-export function filterModelClaims(
-  model: ProviderModel,
+export function filterModelClaims<L extends ModelClaimGroup, C extends ModelClaimGroup>(
+  model: {
+    limit_details?: L[] | undefined;
+    capability_details?: C[] | undefined;
+  },
   includes: (field: ModelClaimField, group: ModelClaimGroup) => boolean,
-): Pick<ProviderModel, ModelClaimField> {
+): { limit_details: L[] | undefined; capability_details: C[] | undefined } {
   const limitDetails = model.limit_details?.filter((group) => includes("limit_details", group));
   const capabilityDetails = model.capability_details?.filter((group) =>
     includes("capability_details", group),
@@ -54,7 +75,7 @@ export function filterModelClaims(
   };
 }
 
-export function validateModelDetailSources(core: Pick<Catalog, "models" | "sources">): void {
+export function validateModelDetailSources(core: CatalogClaimValidationInput): void {
   const sources = new Map(core.sources.map((source) => [source.id, source]));
   for (const model of core.models)
     for (const field of modelClaimFields)

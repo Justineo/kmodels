@@ -1,14 +1,24 @@
-import { canonicalJson, uniqueCanonicalValues } from "./canonical-value.ts";
+import { canonicalJson, compareUtf8, uniqueCanonicalValues } from "./canonical-value.ts";
 import {
-  priceDataBookSchema,
   priceDataSchemaVersion,
+  type Evidence,
+  type PriceDataBook,
   type PriceDataEnvelope,
+  type PriceDataOffer,
   type PriceDataProvider,
+  type PriceDataRaw,
+  type PriceDataSelection,
+  type PriceDataTerm,
 } from "../pricing/schema.ts";
 import type {
-  PricingCatalogEnvelope,
+  PriceApplicability,
   PricingBook,
+  PricingCatalogEnvelope,
+  PricingOffer,
+  PricingTerm,
   ProviderPricingSnapshot,
+  RawPriceObservation,
+  RawPricingVariant,
 } from "./pricing-schema.ts";
 import type { Catalog } from "./schema.ts";
 import { priceDataCoverage } from "./pricing-coverage.ts";
@@ -77,6 +87,7 @@ function exportProvider(
         modelsWithOffers.add(modelRef);
     }
   }
+  const { applicabilities, intern } = buildApplicabilityTable(books);
   return {
     snapshot:
       snapshot.publication === "fresh"
@@ -92,7 +103,8 @@ function exportProvider(
             refresh_failure: snapshot.refresh_failure,
           },
     vocabulary,
-    books: books.map(exportBook),
+    applicabilities,
+    books: books.map((book) => exportBook(book, intern)),
     models: models.map((model) => ({
       model_ref: model.uid,
       disposition: modelDisposition(model.uid, modelsWithOffers, notApplicableModels),
@@ -111,6 +123,54 @@ function exportProvider(
   };
 }
 
+function buildApplicabilityTable(books: readonly PricingBook[]): {
+  applicabilities: PriceApplicability[];
+  intern: (scope: PriceApplicability) => number;
+} {
+  const unique = new Map<string, PriceApplicability>();
+  const collect = (scope: PriceApplicability) => {
+    const key = canonicalJson(scope);
+    if (!unique.has(key)) unique.set(key, scope);
+  };
+  for (const book of books) {
+    for (const offer of book.offers) {
+      for (const state of offer.states) collect(state.applicability);
+      for (const claim of offer.selection ?? []) {
+        collect(claim.applicability);
+        for (const alternative of claim.alternatives) collect(alternative.applicability);
+      }
+      for (const relation of offer.relations) collect(relation.applicability);
+      for (const term of offer.terms) {
+        if (term.kind === "raw") {
+          for (const variant of term.variants) {
+            if (variant.possible_scope !== undefined) collect(variant.possible_scope);
+          }
+        } else {
+          for (const variant of term.variants) collect(variant.applicability);
+          for (const variant of term.raw_variants) {
+            if (variant.possible_scope !== undefined) collect(variant.possible_scope);
+          }
+        }
+      }
+    }
+  }
+  const sortedEntries = [...unique.entries()].sort(([left], [right]) => compareUtf8(left, right));
+  const applicabilities: PriceApplicability[] = [];
+  const index = new Map<string, number>();
+  for (const [key, scope] of sortedEntries) {
+    index.set(key, applicabilities.length);
+    applicabilities.push(scope);
+  }
+  return {
+    applicabilities,
+    intern: (scope) => {
+      const id = index.get(canonicalJson(scope));
+      if (id === undefined) throw new Error("Unindexed applicability");
+      return id;
+    },
+  };
+}
+
 function modelDisposition(
   modelRef: string,
   modelsWithOffers: Set<string>,
@@ -121,45 +181,150 @@ function modelDisposition(
   return "unknown";
 }
 
-function exportBook(book: PricingBook): PriceDataProvider["books"][number] {
-  return priceDataBookSchema.parse(
-    replaceObservationsWithEvidence({
-      ...book,
-      offers: book.offers.map(
-        ({ selection: _selection, source_contexts: _contexts, ...offer }) => offer,
-      ),
-    }),
+function toEvidence(
+  observations: readonly Pick<RawPriceObservation, "source_ref" | "locator">[],
+): Evidence[] {
+  return uniqueCanonicalValues(
+    observations.map(({ source_ref, locator }) => ({ source_ref, locator })),
   );
 }
 
-function replaceObservationsWithEvidence(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(replaceObservationsWithEvidence);
-  if (value === null || typeof value !== "object") return value;
-  const projected: Record<string, unknown> = {};
-  for (const [property, child] of Object.entries(value)) {
-    if (child === undefined) continue;
-    if (
-      (property === "observations" || property === "scope_observations") &&
-      Array.isArray(child)
-    ) {
-      projected["evidence"] = uniqueCanonicalValues(child.map(evidenceReference));
-    } else {
-      projected[property] = replaceObservationsWithEvidence(child);
-    }
-  }
-  return projected;
+function exportRawVariant(
+  variant: RawPricingVariant,
+  intern: (scope: PriceApplicability) => number,
+): PriceDataRaw {
+  return {
+    impact: variant.impact,
+    reason: variant.reason,
+    ...(variant.resolution_policy === undefined
+      ? {}
+      : { resolution_policy: variant.resolution_policy }),
+    ...(variant.possible_scope === undefined
+      ? {}
+      : { possible_scope_id: intern(variant.possible_scope) }),
+    ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+    evidence: toEvidence(variant.observations),
+  };
 }
 
-function evidenceReference(observation: unknown) {
-  if (
-    observation === null ||
-    typeof observation !== "object" ||
-    !("source_ref" in observation) ||
-    !("locator" in observation)
-  ) {
-    throw new Error("Invalid canonical evidence");
+function exportTerm(
+  term: PricingTerm,
+  intern: (scope: PriceApplicability) => number,
+): PriceDataTerm {
+  if (term.kind === "raw") {
+    return {
+      id: term.id,
+      term_key: term.term_key,
+      source_refs: term.source_refs,
+      kind: "raw",
+      variants: term.variants.map((variant) => exportRawVariant(variant, intern)),
+    };
   }
-  return { source_ref: observation.source_ref, locator: observation.locator };
+  const raw_variants = term.raw_variants.map((variant) => exportRawVariant(variant, intern));
+  if (term.kind === "rate") {
+    return {
+      id: term.id,
+      term_key: term.term_key,
+      source_refs: term.source_refs,
+      kind: "rate",
+      meter: term.meter,
+      variants: term.variants.map((variant) => ({
+        price: variant.price,
+        applicability_id: intern(variant.applicability),
+        ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+        evidence: toEvidence(variant.observations),
+      })),
+      raw_variants,
+    };
+  }
+  if (term.kind === "allowance") {
+    return {
+      id: term.id,
+      term_key: term.term_key,
+      source_refs: term.source_refs,
+      kind: "allowance",
+      variants: term.variants.map((variant) => ({
+        benefit: variant.benefit,
+        target: variant.target,
+        reset: variant.reset,
+        applicability_id: intern(variant.applicability),
+        ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+        evidence: toEvidence(variant.observations),
+      })),
+      raw_variants,
+    };
+  }
+  return {
+    id: term.id,
+    term_key: term.term_key,
+    source_refs: term.source_refs,
+    kind: "contribution",
+    variants: term.variants.map((variant) => ({
+      target_rate_refs: variant.target_rate_refs,
+      applicability_id: intern(variant.applicability),
+      ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+      evidence: toEvidence(variant.observations),
+    })),
+    raw_variants,
+  };
+}
+
+function exportOffer(
+  offer: PricingOffer,
+  intern: (scope: PriceApplicability) => number,
+): PriceDataOffer {
+  const selection: PriceDataSelection[] | undefined = offer.selection?.map((claim) => ({
+    dimension: claim.dimension,
+    ...(claim.target === undefined ? {} : { target: claim.target }),
+    coverage: claim.coverage,
+    ...(claim.excluded_values === undefined ? {} : { excluded_values: claim.excluded_values }),
+    applicability_id: intern(claim.applicability),
+    ...(claim.validity === undefined ? {} : { validity: claim.validity }),
+    alternatives: claim.alternatives.map((alternative) => ({
+      value: alternative.value,
+      applicability_id: intern(alternative.applicability),
+    })),
+    evidence: toEvidence(claim.observations),
+  }));
+  return {
+    id: offer.id,
+    offer_key: offer.offer_key,
+    ...(offer.name === undefined ? {} : { name: offer.name }),
+    ...(offer.model_refs === undefined ? {} : { model_refs: offer.model_refs }),
+    billing_mode: offer.billing_mode,
+    states: offer.states.map((state) => ({
+      state: state.state,
+      applicability_id: intern(state.applicability),
+      ...(state.validity === undefined ? {} : { validity: state.validity }),
+      evidence: toEvidence(state.observations),
+    })),
+    ...(selection === undefined ? {} : { selection }),
+    terms: offer.terms.map((term) => exportTerm(term, intern)),
+    relations: offer.relations.map((relation) => ({
+      kind: relation.kind,
+      target: relation.target,
+      applicability_id: intern(relation.applicability),
+      ...(relation.validity === undefined ? {} : { validity: relation.validity }),
+      evidence: toEvidence(relation.observations),
+    })),
+    source_refs: offer.source_refs,
+  };
+}
+
+function exportBook(
+  book: PricingBook,
+  intern: (scope: PriceApplicability) => number,
+): PriceDataBook {
+  return {
+    id: book.id,
+    provider_id: book.provider_id,
+    book_key: book.book_key,
+    ...(book.name === undefined ? {} : { name: book.name }),
+    scope: book.scope,
+    evidence: toEvidence(book.scope_observations),
+    offers: book.offers.map((offer) => exportOffer(offer, intern)),
+    source_refs: book.source_refs,
+  };
 }
 
 export function priceDataExportAssets(

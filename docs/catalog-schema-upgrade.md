@@ -77,17 +77,10 @@ and residual condition. The interface and parameter are bounded to 128 character
 condition to 768. The original scope remains required. The website version-selects structured
 detail chunks independently of the private catalog envelope and the legacy public profiles.
 
-Stored data written before that rule carries a cache `supported` flag or effort
-`unsupported_values`. The strict schema rejects both, and `migrateCatalogStorage` removes them on
-read. Because the full core hash covers capability details, a read-time migration alone breaks the
-stored pricing, inference and replay bindings, so accepted data is adopted explicitly with
-`scripts/migrate-capability-statements.ts`. Dry run is the default; `--write` backs up the
-mirrors to `capability-statements.local/` and adopts the pair through normal preparation. It
-recomputes changed provider versions and the core catalog version with the collector's
-derivation, and rebinds the unchanged pricing data, inference mapping and replay input. It asserts
-that only capability statements and those versions change and that group evidence is preserved,
-and it is idempotent. Run it on the latest hydrated snapshot, validate, publish that snapshot,
-and land the resulting pointer with the schema change: main cannot load an older-format snapshot.
+Stored data written before that rule carried a cache `supported` flag or effort
+`unsupported_values`; the strict schema rejects both, and `migrateCatalogStorage` removes them on
+read. Accepted snapshots have already been migrated onto the current schema, so the one-off
+migration script has been retired.
 
 Collection, retention, ownership validation and full snapshot binding use the same claim rules
 as qualified limits. Both detail fields remain optional and independently populated. Bad

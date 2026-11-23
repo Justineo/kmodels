@@ -31,6 +31,7 @@ Use `/pricing/lookup/index.json` or complete `/pricing/lookup/providers/{provide
 with their bound `/pricing/inference.json` mapping. The audit endpoint `/pricing/index.json` uses a
 different schema. Replace price data and mapping together. No transport or caching is built in.
 
-Version `0.4.0` accepts price data schema `2.0` and removes the cost API. See [CONTRACT.md](CONTRACT.md)
+Version `0.5.0` accepts price data schema `3.0` (interned provider `applicabilities`, embedded
+offer `selection`, and no retired accounting/unused wire fields). See [CONTRACT.md](CONTRACT.md)
 and the exported `schema.json` and `query.schema.json`. `validatePriceData` exposes initialization
 validation independently; `createInferencePriceLookup` is the direct model-ID query API.

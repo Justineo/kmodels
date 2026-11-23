@@ -1,4 +1,3 @@
-import { BedrockClient, ListFoundationModelsCommand } from "@aws-sdk/client-bedrock";
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
@@ -3834,20 +3833,4 @@ export function parseBedrockApi(input: ParseInput): ProviderModel[] {
       scope: "regional_catalog",
     };
   });
-}
-
-export async function fetchBedrockInventory(region: string, maxBytes: number): Promise<string> {
-  const client = new BedrockClient({ region, maxAttempts: 3 });
-  try {
-    const result = await client.send(new ListFoundationModelsCommand({}), {
-      abortSignal: AbortSignal.timeout(20_000),
-    });
-    if (result.modelSummaries === undefined || result.modelSummaries.length === 0)
-      throw new Error("Bedrock API returned an empty model list");
-    const body = JSON.stringify({ modelSummaries: result.modelSummaries });
-    if (Buffer.byteLength(body) > maxBytes) throw new Error("Bedrock API exceeded byte limit");
-    return body;
-  } finally {
-    client.destroy();
-  }
 }

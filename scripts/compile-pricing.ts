@@ -13,7 +13,8 @@ if (input === undefined) throw new Error("No pricing compilation input is availa
 const result = await compilePricingSnapshot(pair, input);
 for (const failure of result.replayFailures)
   console.warn(`Preserved ${failure.provider_id} accepted pricing: ${failure.reason}`);
-if (result.replayedProviders.length > 0) await commitCatalogPair(result.candidate);
+const changed = result.replayedProviders.length > 0 || result.candidate.pairId !== pair.pairId;
+if (changed) await commitCatalogPair(result.candidate);
 console.log(
   [
     `${result.replayedProviders.length === 0 ? "Canonical pricing unchanged at" : "Compiled canonical pricing for"} pair ${result.candidate.pairId.slice(0, 12)}`,

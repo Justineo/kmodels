@@ -13,19 +13,23 @@ TTLs within one request. A context token count selects a price band; it is not a
 `validatePriceData`. The package is pure ESM for Node and browsers, with no network, storage,
 frontend dependencies or bundled provider prices. Callers retrieve and replace complete snapshots.
 
-The portable data schema is `2.0`, published by package `0.4.0`. Old calculator schemas and requests
-are rejected; there are no compatibility evaluators or legacy asset aliases.
+The portable data schema is `3.0`, published by package `0.5.0`. Old calculator and v1/v2 schemas
+and requests are rejected; there are no compatibility evaluators or legacy asset aliases. Each
+provider partition interns unique `PriceApplicability` objects into `provider.applicabilities[]`
+referenced by zero-based `applicability_id` / `possible_scope_id` indexes, and each offer embeds
+its reviewed commercial `selection` claims directly. Lookup results hydrate interned
+applicabilities back onto returned candidate offers and terms.
 
 - `/pricing/lookup/index.json` contains all complete provider partitions.
 - `/pricing/lookup/providers/{provider}.json` contains one complete provider partition.
 - `/pricing/lookup/coverage.json` inventories rates, conditions, raw evidence and freshness.
-- `/pricing/inference.json` binds literal model IDs and canonical choices to the same price snapshot.
+- `/pricing/inference.json` binds literal model IDs to the same price snapshot.
 
-The audit envelope `/pricing/index.json` is a different schema. It preserves full observations.
-Portable exports preserve evidence references, exact rates, scopes, validity and relationships.
-Provider-owned price-basis metadata remains descriptive: it explains denominators, minimums and
-source-defined billable categories. No runtime executes its quantity graphs or consumes actual
-usage. Known unit prices remain usable when such metadata is missing.
+The audit envelope `/pricing/index.json` is a different schema. It preserves full observations and
+provider-owned price-basis accounting metadata (`charge_binding`, `selector_sources`). Portable
+exports omit retired accounting/unused fields and preserve evidence references, exact rates,
+commercial selection claims, interned scopes, validity and relationships. Known unit prices remain
+usable independently of accounting metadata.
 
 ## Queries and results
 

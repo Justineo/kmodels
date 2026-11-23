@@ -6,7 +6,7 @@ import {
 } from "./pricing-applicability.ts";
 import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
 import { formatDecimal, formatSentenceCase } from "./presentation.ts";
-import { commercialValueLabel } from "../pricing/commercial-vocabulary.ts";
+import { commercialValueLabel } from "../pricing/commercial-labels.ts";
 import { conditionWording } from "../pricing/condition-presentation.ts";
 import { scaleDecimal } from "./pricing.ts";
 import { applicabilityContainedIn, unionApplicabilities } from "./pricing-canonical.ts";
@@ -21,6 +21,7 @@ import type {
   BillingMode,
   BillingUnit,
   PriceAllowanceBenefit,
+  PriceApplicability,
   PriceCategoricalValue,
   PriceCondition,
   PriceDenomination,
@@ -38,7 +39,8 @@ import type {
   UnitExpression,
   UnitPrice,
 } from "./pricing-schema.ts";
-import { recurringWeekdays, type RecurringTimeSchedule } from "./pricing-temporal.ts";
+import { recurringWeekdays } from "./pricing-vocabulary.ts";
+import type { RecurringTimeSchedule } from "./pricing-temporal.ts";
 import type { ProviderModel } from "./schema.ts";
 
 type PricingModel = Pick<ProviderModel, "provider_id" | "tasks" | "uid">;
@@ -312,14 +314,26 @@ export function projectPricingTableCellFromView(
   const states = offer.states.filter(
     ({ applicability }) => evaluateApplicability(applicability, context).state !== "false",
   );
-  if (
-    states.length !== 1 ||
-    states[0]?.state !== "numeric" ||
-    states[0].validity !== undefined ||
-    evaluateApplicability(states[0].applicability, context).state === "false"
-  )
+  if (states.some(({ state, validity }) => state !== "numeric" || validity !== undefined))
     return undefined;
-  const numericScope = states[0].applicability;
+  const rateTerms = offer.terms.filter(isRateTerm);
+  const activeRateVariants = rateTerms.flatMap((term) =>
+    term.variants.filter(
+      ({ applicability }) => evaluateApplicability(applicability, context).state !== "false",
+    ),
+  );
+  if (activeRateVariants.length === 0) return undefined;
+  const numericScopes = [
+    ...states.filter(({ state }) => state === "numeric").map(({ applicability }) => applicability),
+    ...activeRateVariants.map(({ applicability }) => applicability),
+  ];
+  let numericScope: PriceApplicability;
+  try {
+    numericScope = unionApplicabilities(numericScopes);
+  } catch {
+    return undefined;
+  }
+  if (evaluateApplicability(numericScope, context).state === "false") return undefined;
   if (
     offerRawVariants(offer).some(
       (variant) =>
@@ -330,7 +344,6 @@ export function projectPricingTableCellFromView(
   )
     return undefined;
 
-  const rateTerms = offer.terms.filter(isRateTerm);
   const meters: PriceMeter[] =
     slot === "single"
       ? rateTerms.map(({ meter }) => meter)
@@ -416,11 +429,14 @@ export function fixedOfferStateSelections(
   modelRef: string,
 ): PricingSelection[] {
   const modelContext = withModelSelection([], modelRef);
-  const clauses = offer.states
-    .flatMap(({ applicability }) => applicability.any_of)
-    .filter(
-      (clause) => evaluateApplicability({ any_of: [clause] }, modelContext).state !== "false",
-    );
+  const clauses = [
+    ...offer.states.flatMap(({ applicability }) => applicability.any_of),
+    ...offer.terms.flatMap((term) =>
+      term.kind === "rate"
+        ? term.variants.flatMap(({ applicability }) => applicability.any_of)
+        : [],
+    ),
+  ].filter((clause) => evaluateApplicability({ any_of: [clause] }, modelContext).state !== "false");
   const dimensions = new Map<string, PriceDimension>();
   for (const condition of clauses.flatMap(({ all_of }) => all_of)) {
     if (!isModelDimension(condition.dimension))
@@ -795,13 +811,20 @@ function offerCanApplyToModel(offer: PricingOffer, context: readonly PricingSele
   const statePossible = offer.states.some(
     ({ applicability }) => evaluateApplicability(applicability, context).state !== "false",
   );
+  const ratePossible = offer.terms.some(
+    (term) =>
+      term.kind === "rate" &&
+      term.variants.some(
+        ({ applicability }) => evaluateApplicability(applicability, context).state !== "false",
+      ),
+  );
   const rawPossible = offerRawVariants(offer).some(
     (variant) =>
       variant.impact === "base_price" &&
       (variant.possible_scope === undefined ||
         evaluateApplicability(variant.possible_scope, context).state !== "false"),
   );
-  return statePossible || rawPossible;
+  return statePossible || ratePossible || rawPossible;
 }
 
 export function offerRawVariants(offer: PricingOffer): RawPricingVariant[] {

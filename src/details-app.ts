@@ -1,3 +1,4 @@
+import "./details.css";
 import { createVaporApp } from "vue";
 import DetailsHost from "./DetailsHost.vue";
 

@@ -1,17 +1,10 @@
 import { z } from "zod";
 import { pricingLimits } from "./pricing-constants.ts";
+import { recurringWeekdays } from "./pricing-vocabulary.ts";
+
+export { recurringWeekdays } from "./pricing-vocabulary.ts";
 
 const dailyTime = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
-
-export const recurringWeekdays = [
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-  "sunday",
-] as const;
 
 const recurringWeekdaySchema = z.enum(recurringWeekdays);
 

@@ -3,7 +3,7 @@ import { commercialChoiceSchema, priceMeterSchema } from "../catalog/pricing-sch
 import { prepareInferencePriceLookup, selectedTerm } from "./inference.ts";
 import { inferenceMatchData } from "./inference-matching-data.ts";
 import { matchInferencePrices } from "./inference-matching.ts";
-import { createPricingSnapshot } from "./snapshot.ts";
+import { createPricingSnapshot, resolveOffer } from "./snapshot.ts";
 import { evaluationTimeSchema, selectorSchema } from "./schema.ts";
 import { parseEvaluationTime, parseRequest, validateSelectorVocabulary } from "./request.ts";
 import { PricingError } from "./errors.ts";
@@ -34,11 +34,10 @@ export type CommercialPriceQuery = z.input<typeof commercialPriceQuerySchema>;
 
 /** Resolve unit prices for a model or resource; no usage quantities or cost aggregation. */
 export function createCommercialPriceLookup(priceData: unknown, mappingData: unknown) {
-  const {
-    lookup: inference,
-    snapshot,
-    selections,
-  } = prepareInferencePriceLookup(createPricingSnapshot(priceData), mappingData);
+  const { lookup: inference, snapshot } = prepareInferencePriceLookup(
+    createPricingSnapshot(priceData),
+    mappingData,
+  );
   return (input: CommercialPriceQuery) => {
     const query = parseRequest(commercialPriceQuerySchema, input);
     const { subject, ...selection } = query;
@@ -67,7 +66,6 @@ export function createCommercialPriceLookup(priceData: unknown, mappingData: unk
     const matching = inferenceMatchData(
       snapshot,
       [{ offer_refs: book.offers.map(({ id }) => id), fixed_selectors: [] }],
-      selections,
       query.meter,
     );
     const matched = matchInferencePrices(
@@ -93,21 +91,20 @@ export function createCommercialPriceLookup(priceData: unknown, mappingData: unk
           selectors: selectorSchema.array().parse(candidate.selectors),
           missing_conditions: candidate.missing_conditions,
           gaps: candidate.gaps,
-          evidence: selections.get(candidate.offer_ref)?.flatMap(({ evidence }) => evidence) ?? [],
-          offer: {
-            ...owner.offer,
-            states: owner.offer.states.filter((_, index) => candidate.states.includes(index)),
-            relations: owner.offer.relations.filter((_, index) =>
-              candidate.relations.includes(index),
-            ),
-            terms: owner.offer.terms.flatMap((term) => {
+          evidence: owner.offer.selection?.flatMap(({ evidence }) => evidence) ?? [],
+          offer: resolveOffer(
+            owner.provider,
+            owner.offer,
+            candidate.states,
+            candidate.relations,
+            owner.offer.terms.flatMap((term) => {
               const selected = candidate.terms.find(({ id }) => id === term.id);
-              return selected === undefined ? [] : [selectedTerm(term, selected)];
+              return selected === undefined ? [] : [selectedTerm(owner.provider, term, selected)];
             }),
-          },
+          ),
           referenced_rates: candidate.referenced_rates.flatMap((selected) => {
             const rate = snapshot.rates.get(selected.id);
-            return rate === undefined ? [] : [selectedTerm(rate, selected)];
+            return rate === undefined ? [] : [selectedTerm(rate.provider, rate.term, selected)];
           }),
         };
       }),

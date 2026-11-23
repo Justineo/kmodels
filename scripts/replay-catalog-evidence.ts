@@ -1,6 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gunzipSync } from "node:zlib";
 import { z } from "zod";
 import { parseSource } from "../src/catalog/adapters.ts";
 import { sha256, stableJson } from "../src/catalog/io.ts";
@@ -106,9 +107,15 @@ export function replayCatalogEvidence(sourceId: string, input: unknown, context?
   };
 }
 
+const maxReplayBytes = 128 * 1024 * 1024;
+
 export async function readBoundedJson(path: string): Promise<unknown> {
-  if ((await stat(path)).size > 128 * 1024 * 1024) throw new Error("Replay file exceeds 128 MiB");
-  return JSON.parse(await readFile(path, "utf8"));
+  if ((await stat(path)).size > maxReplayBytes) throw new Error("Replay file exceeds 128 MiB");
+  const raw = await readFile(path);
+  const text = path.endsWith(".gz")
+    ? gunzipSync(raw, { maxOutputLength: maxReplayBytes }).toString("utf8")
+    : raw.toString("utf8");
+  return JSON.parse(text);
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

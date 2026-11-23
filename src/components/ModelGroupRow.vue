@@ -47,7 +47,20 @@ const emit = defineEmits<{
 }>();
 
 function equivalent(left: unknown, right: unknown): boolean {
-  return left === right || JSON.stringify(left) === JSON.stringify(right);
+  if (left === right) return true;
+  if (left === null || right === null || typeof left !== "object" || typeof right !== "object")
+    return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+    return left.every((item, index) => equivalent(item, right[index]));
+  }
+  const leftEntries = Object.entries(left);
+  const rightEntries = Object.entries(right);
+  if (leftEntries.length !== rightEntries.length) return false;
+  const rightMap = new Map(rightEntries);
+  return leftEntries.every(
+    ([key, value]) => rightMap.has(key) && equivalent(value, rightMap.get(key)),
+  );
 }
 
 function sharedBy<T>(project: (model: WebsiteModel) => T): Shared<T> {

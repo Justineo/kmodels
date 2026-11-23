@@ -9,7 +9,6 @@ import {
   type CatalogPairCandidate,
   type CatalogPairData,
 } from "./pricing-publication.ts";
-import { projectCommercialSelections } from "./commercial-selection-compilation.ts";
 import { batchInferenceAssociations } from "./batch-model-offers.ts";
 import { sourceContextSelectors } from "./offer-boundary.ts";
 import { selectorSchema } from "../pricing/schema.ts";
@@ -146,10 +145,7 @@ export function compileInferencePriceMapping(
     sources: [...sources.values()],
     rules: uniqueCanonicalValues(rules),
   };
-  return withInferencePriceMapping(
-    candidate,
-    projectCommercialSelections(candidate.pricing, mapping),
-  );
+  return withInferencePriceMapping(candidate, mapping);
 }
 
 function sameRevision(left: Source, right: Source): boolean {

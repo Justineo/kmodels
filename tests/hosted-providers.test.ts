@@ -557,16 +557,21 @@ describe("Together AI Serverless", () => {
             ),
           ),
         ).toEqual([{ numerator: "1", denominator: "1000000" }]);
-        if (execution_mode === "batch")
+        if (execution_mode === "batch") {
+          const matchedIds = new Set(selected.candidates.map(({ offer }) => offer.id));
           expect(
-            selected.candidates.flatMap(({ offer }) =>
-              offer.terms.flatMap((term) =>
+            candidate.pricing.data.books
+              .flatMap(({ offers }) => offers)
+              .filter(({ id }) => matchedIds.has(id))
+              .flatMap(({ terms }) => terms)
+              .filter((term) => term.kind === "rate" && term.meter.value === "input_text")
+              .flatMap((term) =>
                 term.kind === "rate"
                   ? term.variants.map(({ charge_binding }) => charge_binding)
                   : [],
               ),
-            ),
-          ).toEqual([expect.objectContaining({ aggregation: "result_item" })]);
+          ).toContainEqual(expect.objectContaining({ aggregation: "result_item" }));
+        }
       }
       expect(
         lookup({ provider_id: "together", model_id: "Example/Video", execution_mode: "batch" })

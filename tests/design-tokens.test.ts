@@ -2,7 +2,10 @@ import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 
 const tokenStyles = readFileSync(new URL("../src/tokens.css", import.meta.url), "utf8");
-const globalStyles = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+const globalStyles = [
+  readFileSync(new URL("../src/style.css", import.meta.url), "utf8"),
+  readFileSync(new URL("../src/details.css", import.meta.url), "utf8"),
+].join("\n");
 const componentDirectory = new URL("../src/components/", import.meta.url);
 const componentStyles = readdirSync(componentDirectory)
   .filter((name) => name.endsWith(".vue"))
@@ -127,7 +130,9 @@ describe("design token contract", () => {
     expect(globalStyles.replace(desktop ?? "", "")).not.toMatch(
       /\.fact-grid\s*>\s*div:nth-last-child\(2\)/,
     );
-    const mobile = globalStyles.match(/@media \(width <= 580px\) \{[\s\S]*?\n\}/)?.[0];
+    const mobile = [...globalStyles.matchAll(/@media \(width <= 580px\) \{[\s\S]*?\n\}/g)]
+      .map(([block]) => block)
+      .join("\n");
     expect(mobile).toMatch(
       /\.fact-grid\s*>\s*div:last-child\s*\{[^}]*border-end-start-radius:[^}]*border-end-end-radius:/s,
     );

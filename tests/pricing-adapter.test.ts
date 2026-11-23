@@ -4377,14 +4377,15 @@ describe("parsed-source canonical pricing adapter", () => {
     );
     expect(
       partition?.books[0]?.offers
-        .map(({ billing_mode, states }) => ({
+        .map(({ billing_mode, states, terms }) => ({
           billing_mode: billing_mode.value,
           states: states.map(({ state }) => state),
+          hasRates: terms.some((term) => term.kind === "rate" && term.variants.length > 0),
         }))
         .sort((left, right) => left.billing_mode.localeCompare(right.billing_mode)),
     ).toEqual([
-      { billing_mode: "capacity", states: ["numeric"] },
-      { billing_mode: "usage", states: ["free"] },
+      { billing_mode: "capacity", states: [], hasRates: true },
+      { billing_mode: "usage", states: ["free"], hasRates: false },
     ]);
   });
   it("binds versionless pricing evidence only to one unambiguous model", () => {

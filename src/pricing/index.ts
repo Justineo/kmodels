@@ -11,7 +11,6 @@ export type {
   InferencePriceMapping,
   InferencePriceRule,
   InferencePriceQuery,
-  ExecutionChoice,
 } from "./inference-schema.ts";
 export type { InferencePriceCandidate, InferencePriceResult } from "./inference.ts";
 export { validatePriceData } from "./validation.ts";
@@ -22,9 +21,14 @@ export type {
   PriceDataProvider,
   PriceDataBook,
   PriceDataOffer,
+  PriceDataSelection,
   PriceDataTerm,
   PriceDataRate,
-  PriceDataBinding,
+  ResolvedPriceOffer,
+  ResolvedPriceSelection,
+  ResolvedPriceTerm,
+  ResolvedPriceRate,
+  ResolvedPriceRateTerm,
   Selector,
   Evidence,
 } from "./schema.ts";

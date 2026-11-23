@@ -1,5 +1,5 @@
 import { canonicalJson, uniqueCanonicalValues } from "./canonical-value.ts";
-import { compactBedrockRegionalSelections } from "./bedrock-commercial.ts";
+import { compactCommercialSelections } from "./commercial-selection.ts";
 import {
   applicabilitiesOverlap,
   canonicalizeApplicability,
@@ -40,7 +40,7 @@ const publicProviders = new Set([
   "kimi",
   "meta",
   "mistral",
-  "nvidia-nim",
+  "nvidia",
   "ollama",
   "openai",
   "together",
@@ -427,10 +427,7 @@ export function normalizeOfferRelationships(
               applicability: scopes.get(o.id) ?? unconditionalApplicability,
             })),
           ),
-          selection:
-            book.provider_id === "amazon-bedrock"
-              ? compactBedrockRegionalSelections(selection)
-              : uniqueCanonicalValues(selection),
+          selection: compactCommercialSelections(selection),
           states: book.offers.flatMap((o) =>
             normalized(o.states, scopes.get(o.id) ?? unconditionalApplicability),
           ),

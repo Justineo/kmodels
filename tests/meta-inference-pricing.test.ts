@@ -170,15 +170,21 @@ function prices(model_id: string, meter: string, candidate = baseline) {
 }
 
 function bindings(model_id: string, meter: string, candidate = baseline) {
-  return lookup(candidate)({ provider_id: "meta", model_id }).candidates.flatMap(({ offer }) =>
-    offer.terms.flatMap((term) =>
-      term.kind === "rate" && term.meter.value === meter
-        ? term.variants.flatMap(({ charge_binding }) =>
-            charge_binding === undefined ? [] : [charge_binding],
-          )
-        : [],
-    ),
+  const matchedOfferIds = new Set(
+    lookup(candidate)({ provider_id: "meta", model_id }).candidates.map(({ offer }) => offer.id),
   );
+  return candidate.pricing.data.books
+    .flatMap(({ offers }) => offers)
+    .filter(({ id }) => matchedOfferIds.has(id))
+    .flatMap((offer) =>
+      offer.terms.flatMap((term) =>
+        term.kind === "rate" && term.meter.value === meter
+          ? term.variants.flatMap(({ charge_binding }) =>
+              charge_binding === undefined ? [] : [charge_binding],
+            )
+          : [],
+      ),
+    );
 }
 
 it("collects owned model specifications without copying version-specific effort to older models", () => {
@@ -248,9 +254,12 @@ it("binds cached subsets and complete terminal usage without using usage totals 
     namespace: "kmodels",
     value: "context_tokens",
   });
+  const emberOfferIds = new Set(ember.candidates.map(({ offer }) => offer.id));
   expect(
-    ember.candidates
-      .flatMap(({ offer }) =>
+    baseline.pricing.data.books
+      .flatMap(({ offers }) => offers)
+      .filter(({ id }) => emberOfferIds.has(id))
+      .flatMap((offer) =>
         offer.terms.flatMap((term) =>
           term.kind === "rate"
             ? term.variants.flatMap(({ selector_sources }) => selector_sources ?? [])

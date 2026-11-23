@@ -310,7 +310,8 @@ function assembleOffer(prepared: PreparedOffer, bookModelRefs: readonly string[]
       prepared.id,
     ));
   } else {
-    terms = applyRateContainment(states, terms);
+    // Numeric state is entailed by normalized rate terms; omit redundant materialized numeric rows.
+    states = states.filter(({ state }) => state !== "numeric");
   }
 
   const modelRefs =
@@ -732,28 +733,6 @@ function applyBaseFallback(
   return { states: [], terms: converted };
 }
 
-function applyRateContainment(states: PriceStateVariant[], terms: PricingTerm[]): PricingTerm[] {
-  const numeric: PriceApplicability = {
-    any_of: states
-      .filter(({ state }) => state === "numeric")
-      .flatMap(({ applicability }) => applicability.any_of),
-  };
-  return terms.map((term) => {
-    if (term.kind !== "rate") return term;
-    const retained: PriceRateVariant[] = [];
-    const raw = term.raw_variants.flatMap(expandRaw);
-    for (const variant of term.variants) {
-      if (numeric.any_of.length > 0 && applicabilityContainedIn(variant.applicability, numeric))
-        retained.push(variant);
-      else
-        raw.push(
-          ...expandRaw(normalizedVariantToRaw(variant, "base_price", "unsupported_structure")),
-        );
-    }
-    return { ...term, variants: retained, raw_variants: groupRaw(raw) };
-  });
-}
-
 function conflictIndexes<
   T extends {
     applicability: PriceApplicability;
@@ -975,9 +954,9 @@ function hasBaseConflict(states: PriceStateVariant[], terms: PricingTerm[]): boo
         publishedValiditiesOverlap(states[left]!.validity, states[right]!.validity)
       )
         return true;
-  const free = states.filter(({ state }) => state === "free");
+  const nonNumeric = states.filter(({ state }) => state !== "numeric");
   const rates = terms.flatMap((term) => (term.kind === "rate" ? term.variants : []));
-  return free.some((state) =>
+  return nonNumeric.some((state) =>
     rates.some(
       (rate) =>
         applicabilitiesOverlap(state.applicability, rate.applicability) &&

@@ -1,4 +1,5 @@
 import { uniqueCanonicalValues } from "./canonical-value.ts";
+import { compactCommercialSelections } from "./commercial-selection.ts";
 import {
   normalizeOfferRelationships,
   intersectOfferScope,
@@ -288,7 +289,7 @@ export function canonicalizeOfferBoundaries(
           ...(modelRefs === undefined || modelRefs.length === 0 ? {} : { model_refs: modelRefs }),
           billing_mode: offer.billing_mode,
           source_contexts: narrow(offer.source_contexts ?? [], scope).filter(applicable),
-          selection,
+          selection: compactCommercialSelections(selection),
           states: observations(narrow(offer.states, scope)),
           terms,
           relations: uniqueCanonicalValues(

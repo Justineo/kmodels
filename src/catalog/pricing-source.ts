@@ -120,11 +120,16 @@ const sourcePriceConditionsInputSchema = z.strictObject({
   promotion: z.boolean().optional(),
 });
 
-const sourcePriceConditionsSchema = sourcePriceConditionsInputSchema.transform((conditions) =>
-  sourcePriceConditionsInputSchema.parse(
-    Object.fromEntries(Object.entries(conditions).filter(([, value]) => value !== undefined)),
-  ),
-);
+function stripUndefinedConditions<T extends Record<string, unknown>>(conditions: T): T {
+  const result = { ...conditions };
+  for (const key of Object.keys(result)) {
+    if (result[key] === undefined) delete result[key];
+  }
+  return result;
+}
+
+const sourcePriceConditionsSchema =
+  sourcePriceConditionsInputSchema.transform(stripUndefinedConditions);
 
 export const sourcePriceFactSchema = z
   .strictObject({

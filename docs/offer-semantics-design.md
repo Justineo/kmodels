@@ -77,12 +77,10 @@ relations remap with their target prices. A same-book exclusion relation is remo
 disjoint conditions prove the same exclusion. Aggregation and acquisition do not change merely
 because their enclosing offer changes.
 
-`scripts/migrate-offer-boundaries.ts` applies the same compiler to accepted data. Dry run is the
-default; `--write` adopts the validated pair and rebuilt projections with a local backup. It checks
-monetary/accounting facts, raw evidence, core catalog, source revisions, freshness and mapped
-identities. No live collection is required. Single-relationship IDs and non-colliding term keys stay
-stable; merged or partitioned offer/term IDs change with ownership. Book and source
-identities remain stable. Replace snapshot and mapping together; old references cannot be reused.
+Accepted snapshots have already adopted the unified offer boundaries; the one-off offline
+migration script has been retired. Single-relationship IDs and non-colliding term keys stay
+stable; merged or partitioned offer/term IDs change with ownership. Book and source identities
+remain stable. Replace snapshot and mapping together; old references cannot be reused.
 
 ## Consumer contract
 

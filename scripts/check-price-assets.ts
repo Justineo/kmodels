@@ -39,7 +39,6 @@ const inferenceGaps: Array<{
   reasons: string[];
 }> = [];
 let inferenceIds = 0;
-let sharedSelectionsChecked = false;
 for (const provider of index.providers) {
   const providerId = provider.snapshot.provider_id;
   const partition = await readJson(`providers/${providerId}.json`);
@@ -52,20 +51,11 @@ for (const provider of index.providers) {
   if (inference === undefined) continue;
   const rules = inference.rules.filter(({ provider_id }) => provider_id === providerId);
   if (rules.length === 0) continue;
-  const offerRefs = new Set(provider.books.flatMap(({ offers }) => offers.map(({ id }) => id)));
   const lookup = createInferencePriceLookup(partition, {
     ...inference,
     rules,
     sources: inference.sources.filter(({ provider_id }) => provider_id === providerId),
-    ...(inference.offer_selections === undefined || !sharedSelectionsChecked
-      ? {}
-      : {
-          offer_selections: inference.offer_selections.filter(({ offer_ref }) =>
-            offerRefs.has(offer_ref),
-          ),
-        }),
   });
-  sharedSelectionsChecked = true;
   const counts: Record<string, number> = {};
   for (const modelId of new Set(rules.map(({ model_id }) => model_id))) {
     inferenceIds++;

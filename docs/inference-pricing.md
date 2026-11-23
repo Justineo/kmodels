@@ -26,12 +26,11 @@ InferencePriceRule
   offer_refs         evidenced canonical commercial records
   fixed_selectors    only pricing values established by the ID mapping
   evidence           source references and owned source locations for the association
-  execution_choices  legacy input compatibility only; current producers omit it
 ```
 
-The mapping root also carries `offer_selections`: exact offer references and scoped commercial
-claims with evidence, projected from canonical offer selection. It includes model and resource
-offers and is bound to the same pricing data version. The decoded mapping is bounded to 32 MiB.
+Reviewed commercial selection claims are embedded directly on each portable `PriceDataOffer.selection`
+in the v3.0 price snapshot (rather than duplicated in `inference.json`), keeping `inference.json`
+focused on literal model-ID rules and sources. The decoded mapping is bounded to 32 MiB.
 
 This is the semantic contract, not a second price-book format. Reuse the existing selector and
 evidence representations when implementing it. Do not add surface IDs, case IDs, task enumerations,
@@ -88,7 +87,9 @@ value's native binding is filled in. Context such as region or context length st
 until supplied; it is never guessed from the source row used to normalize a tier.
 Unknown coverage remains visible alongside positive matches. Equal semantics preserve all offer
 identities and may still require `offer_ref`. `execution_mode` and the mode result fields remain
-compatibility conveniences; current storage uses `offer.selection` and root `offer_selections`.
+compatibility conveniences; current schema `3.0` storage embeds commercial selections on each
+canonical `offer.selection` (`data/inference-pricing.json` root keys are `core_catalog_version`,
+`pricing_data_version`, `rules`, and `sources`, without a root `offer_selections` map).
 
 `createCommercialPriceLookup` uses the same matching implementation for either
 `{ kind: "model", provider_id, model_id }` or `{ kind: "resource", provider_id, book_ref }` subjects.
@@ -264,18 +265,20 @@ templates are outside this lookup UI.
 ## Compatibility and implementation limits
 
 Canonical catalog identities and audit payloads remain independent of the portable package.
-The unit-price package uses schema `2.0`; retired calculator inputs are unsupported. The mapping is
-`/pricing/inference.json`, not a second price-book format.
+The unit-price package uses schema `3.0` (`@kmodels/pricing` `0.5.0`); retired calculator inputs and
+schema `2.0` assets are unsupported. The mapping is `/pricing/inference.json`, not a second
+price-book format. Commercial-selection choices (`account_plan` and `execution`) live directly on
+each offer in canonical price books rather than in a separate mapping-root `offer_selections` map.
+Recompiling historical v2 snapshots to v3 follows the current lifecycle pricing rules (for example,
+retired versions do not inherit unretired base-model fallback prices).
 
 When present, its hash participates in the existing accepted-pair identity, recovery journal and
 UI data version. Without a mapping, legacy pair identities and canonical payloads remain unchanged.
 The optional `data/inference-pricing.json` mirror is recovered from the same accepted transaction.
 
 Pair preparation validates the complete mapping's schema, evidence, snapshot identity and
-commercial-selection equality/completeness before checking provider lookups. Each lookup receives
-only selections for offers in its complete price-data partition, including unmapped offers.
-This avoids repeatedly schema-cloning other providers' selections. Global checks still reject
-missing, duplicate, unknown or mismatched selections, including for providers without ID rules.
+offer-level commercial-selection consistency before checking provider lookups. Global checks still
+reject missing, duplicate, unknown or mismatched selections, including for providers without ID rules.
 The published mapping remains complete. Public lookup input isolation and independent price-data
 schema/semantic validation remain unchanged; producer validation does not replace consumer checks.
 
@@ -315,11 +318,6 @@ that require private deployment names do not establish those private request IDs
 specific evidence limits. Stored-data adoption is separate from source extraction or projection
 implementation.
 
-`vp node scripts/canonicalize-commercial-selection.ts` prepares an offline migration of the accepted
-canonical price records; `--write` atomically adopts the validated pair and rebuilt projections.
-It removes the previous scalar execution field and emits selection claims with the same owned
-policies used by collection. It asserts that all IDs, monetary facts, native applicability,
-validity, accounting bindings, relationships, core catalog and source revisions are unchanged.
-It does not fetch sources or rewrite captured inputs. The previously reviewed Vercel/Together
-Batch partitions remain independently priced contracts; this metadata migration does not split
-or merge any further offers.
+Accepted snapshots have already adopted canonical commercial selection claims without the previous
+scalar execution field; the one-off offline migration script has been retired. The previously
+reviewed Vercel/Together Batch partitions remain independently priced contracts.

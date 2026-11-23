@@ -532,7 +532,20 @@ it("publishes single-band models and TTL-specific cache tariffs through the real
       term.kind === "rate" && term.meter.value === "cache_write_text" ? term.variants : [],
     );
     expect(writes.map(({ price }) => price.value)).toEqual([value]);
-    const pointers = writes.flatMap(
+    const matchedOfferIds = new Set(result.candidates.map(({ offer }) => offer.id));
+    const canonicalWrites = candidate.pricing.data.books
+      .flatMap(({ offers }) => offers)
+      .filter(({ id }) => matchedOfferIds.has(id))
+      .flatMap(({ terms }) => terms)
+      .flatMap((term) =>
+        term.kind === "rate" && term.meter.value === "cache_write_text" ? term.variants : [],
+      )
+      .filter(
+        ({ price }) =>
+          price.value.numerator === value.numerator &&
+          price.value.denominator === value.denominator,
+      );
+    const pointers = canonicalWrites.flatMap(
       ({ charge_binding }) =>
         charge_binding?.quantity_methods?.flatMap(
           ({ input_sources }) => input_sources?.map(({ locator }) => locator.value) ?? [],
@@ -564,8 +577,20 @@ it("publishes single-band models and TTL-specific cache tariffs through the real
     .flatMap((term) =>
       term.kind === "rate" && term.meter.value === "cache_write_text" ? term.variants : [],
     );
+  const unboundOfferIds = new Set(retainedPrice.candidates.map(({ offer }) => offer.id));
+  const unboundCanonicalWrites = withoutAccounting.pricing.data.books
+    .flatMap(({ offers }) => offers)
+    .filter(({ id }) => unboundOfferIds.has(id))
+    .flatMap(({ terms }) => terms)
+    .flatMap((term) =>
+      term.kind === "rate" && term.meter.value === "cache_write_text" ? term.variants : [],
+    );
   expect(unboundWrites).toHaveLength(1);
-  expect(unboundWrites[0]?.charge_binding?.quantity_methods).toBeUndefined();
+  expect(
+    unboundCanonicalWrites.every(
+      ({ charge_binding }) => charge_binding?.quantity_methods === undefined,
+    ),
+  ).toBe(true);
 
   const projection = await projectCatalogPair(candidate);
   const detail = projection.ui.manifest.assets

@@ -11,7 +11,6 @@ import {
 } from "./canonical-value.ts";
 import {
   applicabilitiesOverlap,
-  applicabilityContainedIn,
   canonicalizeApplicability,
   contributionVariantValue,
   normalizeUnitExpression,
@@ -851,7 +850,7 @@ function validateOfferSemantics(
       (term.variants.length > 0 ||
         term.raw_variants.some(({ impact }) => impact !== "informational")),
   );
-  if (offer.states.length === 0 && baseRaw.length === 0 && !hasAdjustment)
+  if (offer.states.length === 0 && rates.length === 0 && baseRaw.length === 0 && !hasAdjustment)
     fail(path, "offer has neither a state nor a base-price raw fact");
 
   for (let left = 0; left < offer.states.length; left += 1) {
@@ -868,28 +867,24 @@ function validateOfferSemantics(
   }
   for (const state of offer.states) {
     for (const rate of rates) {
-      if (state.state === "free")
+      if (state.state !== "numeric")
         context.relationPairs.push([state.applicability, rate.applicability]);
       if (
-        state.state === "free" &&
+        state.state !== "numeric" &&
         applicabilitiesOverlap(state.applicability, rate.applicability) &&
         publishedValiditiesOverlap(state.validity, rate.validity)
       )
-        fail(path, "a free state overlaps a normalized rate");
+        fail(
+          path,
+          state.state === "free"
+            ? "a free state overlaps a normalized rate"
+            : "a non-numeric state overlaps a normalized rate",
+        );
     }
     for (const raw of baseRaw) {
       if (raw.possible_scope !== undefined)
         context.relationPairs.push([state.applicability, raw.possible_scope]);
     }
-  }
-  const numeric = {
-    any_of: offer.states
-      .filter(({ state }) => state === "numeric")
-      .flatMap(({ applicability }) => applicability.any_of),
-  };
-  for (const rate of rates) {
-    if (numeric.any_of.length === 0 || !applicabilityContainedIn(rate.applicability, numeric))
-      fail(path, "rate is not contained in a numeric state");
   }
   for (const state of offer.states.filter(({ state }) => state === "numeric")) {
     const covered =

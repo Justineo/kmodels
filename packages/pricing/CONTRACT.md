@@ -1,6 +1,6 @@
 # Unit-price lookup contract
 
-Package version: `0.4.0`. Price data schema: `2.0`.
+Package version: `0.5.0`. Price data schema: `3.0`.
 
 ## Responsibility
 
@@ -12,9 +12,11 @@ total, allowance consumption or request-component composition is exposed.
 ## Inputs
 
 `validatePriceData(unknown)` validates complete provider partitions from one snapshot. Only schema
-`2.0` is accepted. Identifiers, references, provider vocabulary, units, rational values, applicability
-and evidence must be coherent. Snapshot versions identify the canonical source pair, not an
-authenticity signature of the reduced export.
+`3.0` is accepted. Each provider stores a deduplicated `applicabilities` table referenced by
+zero-based `applicability_id` / `possible_scope_id` indexes, and each offer embeds its reviewed
+commercial `selection` claims directly. Identifiers, references, provider vocabulary, units,
+rational values, applicability and evidence must be coherent. Snapshot versions identify the
+canonical source pair, not an authenticity signature of the reduced export.
 
 `createInferencePriceLookup(priceData, mappingData)` returns a function accepting `provider_id`,
 `model_id`, optional `meter`, `selectors`, `choices`, `offer_ref` and `evaluated_at`. Exact literal IDs

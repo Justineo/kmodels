@@ -103,7 +103,7 @@ async function cachePricing(
     ],
   };
   const core = catalogSchema.parse(JSON.parse(JSON.stringify(coreData)));
-  const exported = priceDataExport(
+  priceDataExport(
     core,
     createPricingCatalogEnvelope(
       {
@@ -115,7 +115,7 @@ async function cachePricing(
       core,
     ),
   );
-  const offer = exported.providers[0]?.books[0]?.offers.find(
+  const offer = partition.books[0]?.offers.find(
     ({ offer_key }) => offer_key === "account:paid_tier",
   );
   if (offer === undefined) throw new Error("Missing online offer");

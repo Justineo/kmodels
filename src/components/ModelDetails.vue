@@ -13,6 +13,7 @@ import type {
   WebsiteProvider,
 } from "../catalog/website-schema.ts";
 import { useOverlayScrollbars } from "../composables/useOverlayScrollbars.ts";
+import { useClipboardCopy } from "../composables/useClipboardCopy.ts";
 import ProviderIcon from "./ProviderIcon.vue";
 import PricingDetails from "./PricingDetails.vue";
 import ModelMetadata from "./ModelMetadata.vue";
@@ -43,9 +44,12 @@ const dialog = useTemplateRef<HTMLDialogElement>("dialog");
 const scrollHost = useTemplateRef<HTMLDivElement>("scrollHost");
 const scrollViewport = useTemplateRef<HTMLDivElement>("scrollViewport");
 const closing = ref(false);
-const copiedIdentifier = ref<string>();
-const copyAnnouncement = ref("");
-let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
+const {
+  copiedValue: copiedIdentifier,
+  announcement: copyAnnouncement,
+  copy: copyIdentifier,
+  reset: resetCopyFeedback,
+} = useClipboardCopy();
 const updateScrollbars = useOverlayScrollbars(() => ({
   target: scrollHost.value,
   viewport: scrollViewport.value,
@@ -131,32 +135,15 @@ watch(
 function requestClose(): void {
   if (props.model === undefined || closing.value) return;
   closing.value = true;
+  void nextTick(() => {
+    const panel = dialog.value?.querySelector<HTMLElement>(".details-panel");
+    if (panel === null || panel === undefined || panel.getAnimations().length === 0) finishClose();
+  });
 }
 
 function finishClose(): void {
   if (!closing.value) return;
   emit("close");
-}
-
-function resetCopyFeedback(): void {
-  copiedIdentifier.value = undefined;
-  copyAnnouncement.value = "";
-  if (copyResetTimer !== undefined) clearTimeout(copyResetTimer);
-  copyResetTimer = undefined;
-}
-
-async function copyIdentifier(value: string): Promise<void> {
-  resetCopyFeedback();
-  try {
-    await navigator.clipboard.writeText(value);
-  } catch {
-    copiedIdentifier.value = undefined;
-    copyAnnouncement.value = `Could not copy ${value}`;
-    return;
-  }
-  copiedIdentifier.value = value;
-  copyAnnouncement.value = `Copied ${value}`;
-  copyResetTimer = setTimeout(resetCopyFeedback, 2_000);
 }
 
 function deploymentTypeLabel(value: string): string {
@@ -205,7 +192,8 @@ function handleKeydown(event: KeyboardEvent): void {
     event.isComposing ||
     (target instanceof Element &&
       (target.closest(arrowKeyControlSelector) !== null ||
-        target.closest(":popover-open") !== null))
+        target.closest(":popover-open") !== null ||
+        target.closest(".table-shell") !== null))
   ) {
     return;
   }

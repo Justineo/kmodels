@@ -142,9 +142,15 @@ it("uses exact paid card limits and the current typed reasoning table without ch
   expect(input?.kind === "rate" ? input.variants.map(({ price }) => price.value) : []).toEqual([
     { numerator: "99", denominator: "100000000" },
   ]);
+  const matchedIds = new Set(result.candidates.map(({ offer }) => offer.id));
+  const canonicalInput = candidate.pricing.data.books
+    .flatMap(({ offers }) => offers)
+    .filter(({ id }) => matchedIds.has(id))
+    .flatMap(({ terms }) => terms)
+    .find((term) => term.kind === "rate" && term.meter.value === "input_text");
   expect(
-    input?.kind === "rate"
-      ? input.variants.flatMap(
+    canonicalInput?.kind === "rate"
+      ? canonicalInput.variants.flatMap(
           ({ charge_binding }) =>
             charge_binding?.quantity_methods?.flatMap(
               ({ input_sources }) => input_sources?.map(({ locator }) => locator.value) ?? [],

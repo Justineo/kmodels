@@ -33,13 +33,19 @@ import {
 } from "./pricing-envelope.ts";
 import { pricingLimits } from "./pricing-constants.ts";
 import {
+  commercialSelectionScopeSchema,
   emptyPricingCatalog,
   pricingBookSchema,
   pricingCatalogSchema,
   pricingCatalogEnvelopeSchema,
+  type CommercialSelection,
   type PricingCatalog,
   type PricingCatalogEnvelope,
+  type RawPriceObservation,
 } from "./pricing-schema.ts";
+import { unconditionalApplicability } from "./pricing-canonical.ts";
+import { executionModeSchema } from "../pricing/execution-mode.ts";
+import { evidenceSchema } from "../pricing/schema.ts";
 import {
   validatePricingCatalogInParallel,
   validatePricingCatalogWithLocalPartitions,
@@ -60,6 +66,21 @@ import {
 } from "./inference-pricing.ts";
 
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
+const legacyOfferSelectionsSchema = z.array(
+  z.strictObject({
+    offer_ref: hashSchema,
+    selection: z.array(
+      commercialSelectionScopeSchema.extend({ evidence: z.array(evidenceSchema).min(1) }),
+    ),
+  }),
+);
+const legacyExecutionChoicesSchema = z.array(
+  z.strictObject({
+    mode: executionModeSchema,
+    offer_ref: hashSchema,
+    evidence: z.array(evidenceSchema).min(1),
+  }),
+);
 const utf8 = new TextEncoder();
 const acceptedPairIdentityShape = {
   pair_id: hashSchema,
@@ -227,6 +248,31 @@ function pricingEnvelope(
   return pricing;
 }
 
+function buildPairCandidate(
+  fields: Omit<CatalogPairCandidate, "pricingAssetSource">,
+): CatalogPairCandidate {
+  let joinedPricingAssetSource: string | undefined;
+  const candidate: CatalogPairCandidate = {
+    catalog: fields.catalog,
+    pricing: fields.pricing,
+    catalogStorageSource: fields.catalogStorageSource,
+    catalogAssetSource: fields.catalogAssetSource,
+    get pricingAssetSource() {
+      joinedPricingAssetSource ??= fields.pricingAssetChunks.join("");
+      return joinedPricingAssetSource;
+    },
+    pricingAssetChunks: fields.pricingAssetChunks,
+    pricingStorageChunks: fields.pricingStorageChunks,
+    identity: fields.identity,
+    pairId: fields.pairId,
+    ...(fields.inference === undefined ? {} : { inference: fields.inference }),
+  };
+  Object.defineProperty(candidate, "pricingAssetSource", { enumerable: false });
+  deepFreeze(candidate);
+  preparedCandidates.add(candidate);
+  return candidate;
+}
+
 function catalogPairCandidate(
   parsedCatalog: Catalog,
   envelope: PricingCatalogEnvelope,
@@ -252,12 +298,8 @@ function catalogPairCandidate(
           ),
           canonicalDataChunks,
         );
-  // Keep the full source as a rope; joining the chunks or passing the source to
-  // Buffer.byteLength would flatten a catalog-sized string. Measure and hash chunks.
-  let pricingAssetSource = "";
   let pricingBytes = 0;
   for (const chunk of pricingChunks) {
-    pricingAssetSource += chunk;
     pricingBytes += Buffer.byteLength(chunk);
   }
   if (
@@ -272,21 +314,17 @@ function catalogPairCandidate(
     pricing_asset_sha256: sha256Chunks(pricingChunks),
     ...(inference === undefined ? {} : { inference_asset_sha256: sha256(inference.source) }),
   };
-  const candidate = {
+  return buildPairCandidate({
     catalog: parsedCatalog,
     pricing: envelope,
     catalogStorageSource,
     catalogAssetSource,
-    pricingAssetSource,
     pricingAssetChunks: pricingChunks,
     pricingStorageChunks,
     identity,
     pairId: catalogPairId(identity),
     ...(inference === undefined ? {} : { inference }),
-  };
-  deepFreeze(candidate);
-  preparedCandidates.add(candidate);
-  return candidate;
+  });
 }
 
 export async function recoverCatalogPair(
@@ -307,7 +345,12 @@ export async function recoverCatalogPair(
     throw new Error("Accepted catalog pair manifest identity is invalid");
 
   const snapshot = snapshotDirectory(paths, manifest.pair_id);
-  const candidate = await readSnapshotCandidate(snapshot, manifest);
+  const { candidate, migrated } = await readSnapshotCandidate(snapshot, manifest);
+
+  if (migrated) {
+    await commitCatalogPair(candidate, paths);
+    return candidate;
+  }
 
   const projections = await ensurePairProjections(candidate, snapshotProjectionPaths(snapshot));
   await writePairMirrors(candidate, projections, paths);
@@ -318,7 +361,7 @@ export async function recoverCatalogPair(
 async function readSnapshotCandidate(
   snapshot: string,
   manifest: AcceptedPairManifest,
-): Promise<CatalogPairCandidate> {
+): Promise<{ candidate: CatalogPairCandidate; migrated: boolean }> {
   const pricingFile = await open(join(snapshot, "pricing.json"), "r");
   try {
     const [catalog, catalogAssetBytes, pricing] = await Promise.all([
@@ -326,34 +369,77 @@ async function readSnapshotCandidate(
       readFile(join(snapshot, "catalog-asset.json")),
       readPricingSnapshot(pricingFile),
     ]);
-    const inference =
+    const inferenceBytes =
       manifest.inference_asset_sha256 === undefined
         ? undefined
-        : assertCanonicalJson(
-            await readFile(join(snapshot, "inference-pricing.json")),
-            inferencePricingMaxBytes,
-          );
+        : await readFile(join(snapshot, "inference-pricing.json"));
+    if (
+      manifest.inference_asset_sha256 !== undefined &&
+      (inferenceBytes === undefined || sha256(inferenceBytes) !== manifest.inference_asset_sha256)
+    )
+      throw new Error("Accepted catalog pair snapshot does not match its manifest");
+    const rawInference =
+      inferenceBytes === undefined
+        ? undefined
+        : assertCanonicalJson(inferenceBytes, inferencePricingMaxBytes);
+    const migration =
+      rawInference === undefined
+        ? { pricing, inference: undefined, migrated: false, pricingMigrated: false }
+        : migrateLegacyInferenceMapping(pricing, rawInference, catalog);
+    if (migration.pricingMigrated) {
+      const originalDataChunks = canonicalJsonChunksFromValidated(pricing.data);
+      const originalStorageChunks = pricingCatalogJsonChunks(pricing, originalDataChunks);
+      const publicCatalog = legacyCatalog(catalog);
+      const originalPublicChunks =
+        publicCatalog === catalog
+          ? originalStorageChunks
+          : pricingCatalogJsonChunks(
+              createPricingCatalogEnvelopeFromValidatedData(
+                pricing.data,
+                publicCatalog,
+                pricing.pricing_data_version,
+              ),
+              originalDataChunks,
+            );
+      if (manifest.version === 1 && originalStorageChunks !== originalPublicChunks)
+        throw new Error("Legacy accepted manifest cannot bind private catalog details");
+      if (manifest.version === 2 && manifest.core_data_sha256 !== pricing.core_data_sha256)
+        throw new Error("Accepted catalog pair complete core does not match its manifest");
+      if (sha256Chunks(originalPublicChunks) !== manifest.pricing_asset_sha256)
+        throw new Error("Accepted catalog pair snapshot does not match its manifest");
+      if (!(await fileHandleMatchesCanonicalChunks(pricingFile, originalStorageChunks)))
+        throw new Error(
+          "Accepted canonical pricing asset bytes do not match the snapshot envelope",
+        );
+    }
     const candidate = await prepareStructurallyValidatedPair(
       catalog,
-      pricing,
-      inference,
+      migration.pricing,
+      migration.inference,
       "recovery",
     );
-    if (manifest.version === 1 && candidate.pricingStorageChunks !== candidate.pricingAssetChunks)
-      throw new Error("Legacy accepted manifest cannot bind private catalog details");
-    if (manifest.version === 2 && manifest.core_data_sha256 !== candidate.pricing.core_data_sha256)
-      throw new Error("Accepted catalog pair complete core does not match its manifest");
-    if (
-      candidate.pairId !== manifest.pair_id ||
-      candidate.identity.catalog_asset_sha256 !== manifest.catalog_asset_sha256 ||
-      candidate.identity.pricing_asset_sha256 !== manifest.pricing_asset_sha256
-    )
+    if (!migration.pricingMigrated) {
+      if (manifest.version === 1 && candidate.pricingStorageChunks !== candidate.pricingAssetChunks)
+        throw new Error("Legacy accepted manifest cannot bind private catalog details");
+      if (
+        manifest.version === 2 &&
+        manifest.core_data_sha256 !== candidate.pricing.core_data_sha256
+      )
+        throw new Error("Accepted catalog pair complete core does not match its manifest");
+      if (candidate.identity.pricing_asset_sha256 !== manifest.pricing_asset_sha256)
+        throw new Error("Accepted catalog pair snapshot does not match its manifest");
+      if (!(await fileHandleMatchesCanonicalChunks(pricingFile, candidate.pricingStorageChunks)))
+        throw new Error(
+          "Accepted canonical pricing asset bytes do not match the snapshot envelope",
+        );
+    }
+    if (candidate.identity.catalog_asset_sha256 !== manifest.catalog_asset_sha256)
+      throw new Error("Accepted catalog pair snapshot does not match its manifest");
+    if (!migration.migrated && candidate.pairId !== manifest.pair_id)
       throw new Error("Accepted catalog pair snapshot does not match its manifest");
     if (!bytesEqual(catalogAssetBytes, utf8.encode(candidate.catalogAssetSource)))
       throw new Error("Accepted catalog asset bytes do not match the snapshot catalog");
-    if (!(await fileHandleMatchesCanonicalChunks(pricingFile, candidate.pricingStorageChunks)))
-      throw new Error("Accepted canonical pricing asset bytes do not match the snapshot envelope");
-    return candidate;
+    return { candidate, migrated: migration.migrated };
   } finally {
     await pricingFile.close();
   }
@@ -377,10 +463,17 @@ export function withInferencePriceMapping(
     throw new Error("Catalog pair candidate was not prepared");
   const inference = inferencePricingPublication(candidate.catalog, candidate.pricing, input);
   const identity = { ...candidate.identity, inference_asset_sha256: sha256(inference.source) };
-  const mapped = { ...candidate, inference, identity, pairId: catalogPairId(identity) };
-  deepFreeze(mapped);
-  preparedCandidates.add(mapped);
-  return mapped;
+  return buildPairCandidate({
+    catalog: candidate.catalog,
+    pricing: candidate.pricing,
+    catalogStorageSource: candidate.catalogStorageSource,
+    catalogAssetSource: candidate.catalogAssetSource,
+    pricingAssetChunks: candidate.pricingAssetChunks,
+    pricingStorageChunks: candidate.pricingStorageChunks,
+    identity,
+    pairId: catalogPairId(identity),
+    inference,
+  });
 }
 
 export async function commitCatalogPair(
@@ -453,14 +546,183 @@ export async function readCatalogPairMirrors(
       : await readPricingMirror(pricingBytes);
   const inferenceBytes =
     paths.inferenceMirror === undefined ? undefined : await optionalRead(paths.inferenceMirror);
-  return prepareStructurallyValidatedPair(
-    catalog,
-    pricing,
+  const rawInference =
     inferenceBytes === undefined
       ? undefined
-      : assertCanonicalJson(inferenceBytes, inferencePricingMaxBytes),
+      : assertCanonicalJson(inferenceBytes, inferencePricingMaxBytes);
+  const migration =
+    rawInference === undefined
+      ? { pricing, inference: undefined }
+      : migrateLegacyInferenceMapping(pricing, rawInference, catalog);
+  return prepareStructurallyValidatedPair(
+    catalog,
+    migration.pricing,
+    migration.inference,
     "mirror",
   );
+}
+
+function legacyObservations(
+  evidence: ReadonlyArray<{ source_ref: string; locator: RawPriceObservation["locator"] }>,
+  fallbackSourceRef: string,
+  label: string,
+): RawPriceObservation[] {
+  return evidence.map((entry) => ({
+    source_ref: entry.source_ref || fallbackSourceRef,
+    locator: entry.locator,
+    raw: { label },
+  }));
+}
+
+/**
+ * Migrate pre-v3.0 inference mappings (`offer_selections` and `rules[].execution_choices`) into
+ * canonical `offer.selection` when not already present, then strip the retired mapping fields.
+ */
+function migrateLegacyInferenceMapping(
+  pricing: PricingCatalogEnvelope,
+  input: unknown,
+  catalog: Catalog,
+): {
+  pricing: PricingCatalogEnvelope;
+  inference: unknown;
+  migrated: boolean;
+  pricingMigrated: boolean;
+} {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return { pricing, inference: input, migrated: false, pricingMigrated: false };
+  }
+  const record = Object.fromEntries(Object.entries(input));
+  const hasOfferSelections = "offer_selections" in record;
+  const rules = Array.isArray(record.rules) ? record.rules : undefined;
+  const hasExecutionChoices =
+    rules?.some(
+      (rule) =>
+        typeof rule === "object" &&
+        rule !== null &&
+        !Array.isArray(rule) &&
+        "execution_choices" in rule,
+    ) ?? false;
+
+  if (!hasOfferSelections && !hasExecutionChoices) {
+    return { pricing, inference: input, migrated: false, pricingMigrated: false };
+  }
+
+  const extraSelectionsByOffer = new Map<string, CommercialSelection[]>();
+  const existingByOffer = new Map<
+    string,
+    { fallbackSourceRef: string; selectionKeys: Set<string>; executionModes: Set<string> }
+  >();
+  for (const book of pricing.data.books) {
+    const fallbackSourceRef = book.source_refs[0] ?? "";
+    for (const offer of book.offers) {
+      const selectionKeys = new Set(
+        (offer.selection ?? []).map((claim) => {
+          const { observations: _obs, ...scope } = claim;
+          return canonicalJson(scope);
+        }),
+      );
+      const executionModes = new Set(
+        (offer.selection ?? [])
+          .filter((claim) => claim.dimension === "execution")
+          .flatMap((claim) => claim.alternatives.map((alt) => alt.value.value)),
+      );
+      existingByOffer.set(offer.id, {
+        fallbackSourceRef: offer.source_refs[0] ?? fallbackSourceRef,
+        selectionKeys,
+        executionModes,
+      });
+    }
+  }
+
+  if (hasOfferSelections && record.offer_selections !== undefined) {
+    const parsedOfferSelections = legacyOfferSelectionsSchema.parse(record.offer_selections);
+    for (const entry of parsedOfferSelections) {
+      const target = existingByOffer.get(entry.offer_ref);
+      if (target === undefined) continue;
+      for (const claim of entry.selection) {
+        const { evidence, ...scope } = claim;
+        const key = canonicalJson(scope);
+        if (target.selectionKeys.has(key)) continue;
+        target.selectionKeys.add(key);
+        const list = extraSelectionsByOffer.get(entry.offer_ref) ?? [];
+        list.push({
+          ...scope,
+          observations: legacyObservations(
+            evidence,
+            target.fallbackSourceRef,
+            `legacy_offer_selections:${scope.dimension}`,
+          ),
+        });
+        extraSelectionsByOffer.set(entry.offer_ref, list);
+      }
+    }
+  }
+
+  const migratedRules = rules?.map((rule) => {
+    if (typeof rule !== "object" || rule === null || Array.isArray(rule)) return rule;
+    const ruleRecord = Object.fromEntries(Object.entries(rule));
+    if ("execution_choices" in ruleRecord && ruleRecord.execution_choices !== undefined) {
+      const parsedChoices = legacyExecutionChoicesSchema.parse(ruleRecord.execution_choices);
+      for (const choice of parsedChoices) {
+        const target = existingByOffer.get(choice.offer_ref);
+        if (target === undefined || target.executionModes.has(choice.mode)) continue;
+        target.executionModes.add(choice.mode);
+        const list = extraSelectionsByOffer.get(choice.offer_ref) ?? [];
+        list.push({
+          dimension: "execution",
+          coverage: "complete",
+          applicability: unconditionalApplicability,
+          alternatives: [
+            {
+              value: { namespace: "kmodels", value: choice.mode },
+              applicability: unconditionalApplicability,
+            },
+          ],
+          observations: legacyObservations(
+            choice.evidence,
+            target.fallbackSourceRef,
+            `legacy_execution_choices:${choice.mode}`,
+          ),
+        });
+        extraSelectionsByOffer.set(choice.offer_ref, list);
+      }
+    }
+    delete ruleRecord.execution_choices;
+    return ruleRecord;
+  });
+
+  delete record.offer_selections;
+  if (migratedRules !== undefined) record.rules = migratedRules;
+
+  if (extraSelectionsByOffer.size === 0) {
+    return { pricing, inference: record, migrated: true, pricingMigrated: false };
+  }
+
+  const updatedData: PricingCatalog = {
+    ...pricing.data,
+    books: pricing.data.books.map((book) => {
+      if (!book.offers.some((offer) => extraSelectionsByOffer.has(offer.id))) return book;
+      return {
+        ...book,
+        offers: book.offers.map((offer) => {
+          const extras = extraSelectionsByOffer.get(offer.id);
+          if (extras === undefined) return offer;
+          return {
+            ...offer,
+            selection: [...(offer.selection ?? []), ...extras],
+          };
+        }),
+      };
+    }),
+  };
+  const updatedEnvelope = createPricingCatalogEnvelope(updatedData, catalog);
+  record.pricing_data_version = updatedEnvelope.pricing_data_version;
+  return {
+    pricing: updatedEnvelope,
+    inference: record,
+    migrated: true,
+    pricingMigrated: true,
+  };
 }
 
 function decodeCatalogStorage(input: Uint8Array): Catalog {
@@ -688,5 +950,8 @@ function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
 function deepFreeze(value: unknown): void {
   if (value === null || typeof value !== "object" || Object.isFrozen(value)) return;
   Object.freeze(value);
-  for (const item of Object.values(value)) deepFreeze(item);
+  for (const key of Object.keys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor !== undefined && "value" in descriptor) deepFreeze(descriptor.value);
+  }
 }

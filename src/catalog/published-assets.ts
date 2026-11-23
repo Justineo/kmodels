@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { createReadStream, createWriteStream } from "node:fs";
+import { createWriteStream } from "node:fs";
 import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { Transform } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
 import {
@@ -11,6 +11,7 @@ import {
   type AssetPackEntry,
   type AssetPackManifest,
 } from "./asset-pack.ts";
+import { mapConcurrent } from "./concurrency.ts";
 import { catalogPairId } from "./pair-identity.ts";
 import { inferencePricingPath } from "./inference-pricing.ts";
 import { defaultProjectionPaths, type ProjectionPaths } from "./projection-paths.ts";
@@ -62,10 +63,16 @@ export async function materializePublishedAssets(
   published: PublishedAssets,
   outputDirectory: string,
 ): Promise<void> {
-  for (const source of [published.ui, published.exports])
-    for (const entry of source.manifest.assets) {
-      await materializeEntry(source.packPath, entry, outputDirectory);
-    }
+  const tasks = [published.ui, published.exports].flatMap((source) =>
+    source.manifest.assets.map((entry) => ({ pack: source.pack, entry })),
+  );
+  const directories = new Set(
+    tasks.map(({ entry }) => dirname(join(outputDirectory, entry.file_name))),
+  );
+  await Promise.all([...directories].map((directory) => mkdir(directory, { recursive: true })));
+  await mapConcurrent(tasks, 4, ({ pack, entry }) =>
+    materializeEntry(pack, entry, outputDirectory),
+  );
 }
 
 function requiredEntry(manifest: AssetPackManifest, fileName: string): AssetPackEntry {
@@ -90,7 +97,7 @@ function validateExportIdentity(manifest: AssetPackManifest): void {
 }
 
 async function materializeEntry(
-  packPath: string,
+  pack: Uint8Array,
   entry: AssetPackEntry,
   outputDirectory: string,
 ): Promise<void> {
@@ -105,13 +112,9 @@ async function materializeEntry(
       callback(undefined, chunk);
     },
   });
-  await mkdir(dirname(outputPath), { recursive: true });
   try {
     await pipeline(
-      createReadStream(packPath, {
-        start: entry.offset,
-        end: entry.offset + entry.length - 1,
-      }),
+      Readable.from([compressedAsset(pack, entry)]),
       createGunzip(),
       verifySource,
       createWriteStream(temporaryPath),

@@ -1,11 +1,7 @@
 <script setup lang="ts" vapor>
 import { computed } from "vue";
-import {
-  limitScopeKey,
-  limitStatementsConflict,
-  type LimitStatement,
-  type WebsiteLimitDetailGroup,
-} from "../catalog/model-limit-details.ts";
+import { limitScopeKey, limitStatementsConflict } from "../catalog/model-claim-helpers.ts";
+import type { LimitStatement, WebsiteLimitDetailGroup } from "../catalog/model-limit-details.ts";
 import { formatTokenCount } from "../catalog/presentation.ts";
 
 const props = defineProps<{

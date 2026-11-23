@@ -113,28 +113,9 @@ function serviceKind(term: AtomicPricingTerm): NativeOffer["kind"] | undefined {
 
 function statesForTerms(
   source: AtomicPricingOffer,
-  terms: readonly AtomicPricingTerm[],
+  _terms: readonly AtomicPricingTerm[],
 ): AtomicPricingOffer["states"] {
-  return [
-    ...source.states.filter(({ state }) => state !== "numeric"),
-    ...terms.flatMap((term) =>
-      term.kind === "raw"
-        ? []
-        : term.variants.map((variant) => {
-            const { formula: _, ...raw } = variant.observation.raw;
-            return {
-              state: "numeric" as const,
-              applicability: variant.applicability,
-              ...(variant.validity === undefined ? {} : { validity: variant.validity }),
-              observation: {
-                ...variant.observation,
-                raw,
-                establishes_applicability: variant.applicability,
-              },
-            };
-          }),
-    ),
-  ];
+  return source.states.filter(({ state }) => state !== "numeric");
 }
 
 function bindModelTerm(

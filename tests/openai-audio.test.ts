@@ -108,7 +108,7 @@ async function compiled(
       }),
     ),
   );
-  const exported = priceDataExport(
+  priceDataExport(
     core,
     createPricingCatalogEnvelope(
       {
@@ -120,10 +120,9 @@ async function compiled(
       core,
     ),
   );
+  const books = partition.books;
   function offer(id: string) {
-    const book = exported.providers[0]?.books.find((book) =>
-      book.scope.model_refs.includes(`openai/${id}`),
-    );
+    const book = books.find((book) => book.scope.model_refs.includes(`openai/${id}`));
     const result = book?.offers.find(
       (offer) => offer.offer_key === (controls.batch ? "batch" : "sync"),
     );

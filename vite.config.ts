@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { gunzipSync } from "node:zlib";
 import vue from "@vitejs/plugin-vue";
 import { defineConfig, type Plugin } from "vite-plus";
 import {
@@ -8,6 +9,7 @@ import {
   readPublishedAssets,
   type PublishedAssetProfile,
 } from "./src/catalog/published-assets.ts";
+import { acceptsGzipEncoding } from "./src/catalog/http-encoding.ts";
 import { defaultProjectionPaths } from "./src/catalog/projection-paths.ts";
 import { catalogUpdateUrl, type CatalogRevision } from "./src/catalog/update-link.ts";
 import { generatedDataTests } from "./tests/generated-data-tests.ts";
@@ -100,11 +102,16 @@ function serveCatalog(): Plugin {
               next();
               return;
             }
+            const acceptsGzip = acceptsGzipEncoding(request.headers["accept-encoding"]);
             response.statusCode = 200;
             response.setHeader("Content-Type", "application/json; charset=utf-8");
-            response.setHeader("Content-Encoding", "gzip");
             response.setHeader("Vary", "Accept-Encoding");
-            response.end(source);
+            if (acceptsGzip) {
+              response.setHeader("Content-Encoding", "gzip");
+              response.end(source);
+            } else {
+              response.end(gunzipSync(source));
+            }
           })
           .catch(next);
       });
@@ -184,7 +191,6 @@ export default defineConfig({
             id.includes("/node_modules/.pnpm/@vue+")
           )
             return "vue";
-          if (id.includes("/node_modules/zod/")) return "validation";
           if (id.includes("/node_modules/overlayscrollbars/")) return "scrollbars";
           return undefined;
         },

@@ -1,7 +1,4 @@
-import { execFile } from "node:child_process";
-import { createSign } from "node:crypto";
 import { setTimeout as wait } from "node:timers/promises";
-import { promisify } from "node:util";
 import { load } from "cheerio";
 import { fireworksConsoleTargets, fireworksModelPaths } from "./fireworks.ts";
 import { nvidiaNimCandidateSlugs, nvidiaNimCardUrls } from "./nvidia-nim.ts";
@@ -9,7 +6,6 @@ import { nvidiaBuildPage, nvidiaBuildUrl, nvidiaEndpointBase } from "./nvidia-bu
 import { togetherCatalogIds, togetherMissingCacheIds } from "./together.ts";
 import { togetherLibraryPage, togetherNextLibraryPage } from "./together-metadata.ts";
 import { z } from "zod";
-import { fetchBedrockInventory } from "./bedrock.ts";
 import { bedrockFoundationMapUrls } from "./bedrock-geo-pricing.ts";
 import { fetchSagemakerPricing, fetchSagemakerSdk } from "./sagemaker-fetch.ts";
 import { fetchSagemakerInventory } from "./sagemaker-api.ts";
@@ -23,7 +19,6 @@ import {
   sagemakerRows,
 } from "./sagemaker.ts";
 import { sagemakerOpenSpecs } from "./sagemaker-sdk.ts";
-import { azureModelLocations } from "./azure-locations.ts";
 import { mapConcurrent } from "./concurrency.ts";
 import { modelIdSchema } from "./identity.ts";
 import { geminiStudioMarkdown } from "./gemini.ts";
@@ -34,17 +29,32 @@ import {
   assertSourceConstraint,
   parseSourceJson,
   recognizeValue,
-  SourceContractError,
-  invalidJsonContractEvidence,
 } from "./source-contract.ts";
 import {
   SourceFetchError,
-  SourceRetryError,
   sourceFailure,
   sourceErrorMessage,
   type DependencyFailure,
-  type SourceRetryFailure,
 } from "./source-failure.ts";
+import {
+  checkedUrl,
+  cloudJson,
+  curlResponse,
+  curlTransportFailure,
+  readLimited,
+  retryDelay,
+  retryTransient,
+  runCurl,
+  sourceRetryBudgetMs,
+  TransientFetchError,
+} from "./transport/http.ts";
+import {
+  databricksSource,
+  fetchAzureModels,
+  fetchBedrockInventory,
+  fetchGoogleModelGarden,
+  runAuthenticatedCurl,
+} from "./transport/auth-fetch.ts";
 import { cohereModelDocumentUrls } from "./cohere-documents.ts";
 import { ollamaPricedModelPageIds, ollamaPricingUrl } from "./ollama-pricing.ts";
 import { vercelPageSearchPrices, vercelPricingContracts } from "./vercel-pricing-contracts.ts";
@@ -57,12 +67,8 @@ import {
 import { linkedBundleSchema } from "./bundle.ts";
 import { xaiLanguageCardPaths } from "./xai.ts";
 
-const execute = promisify(execFile);
+export { curlResponse };
 
-type AzureModelsTransport = Extract<
-  NonNullable<SourceManifest["transport"]>,
-  { kind: "azure-models" }
->;
 type AzurePortalModelsTransport = Extract<
   NonNullable<SourceManifest["transport"]>,
   { kind: "azure-portal-models" }
@@ -79,16 +85,7 @@ type DashscopeDeployableModelsTransport = Extract<
   NonNullable<SourceManifest["transport"]>,
   { kind: "dashscope-deployable-models" }
 >;
-type GoogleModelGardenTransport = Extract<
-  NonNullable<SourceManifest["transport"]>,
-  { kind: "google-model-garden" }
->;
 
-const azureTokenSchema = z.object({ access_token: z.string().min(1) });
-const azureArmPageSchema = z.object({
-  value: z.array(z.unknown()),
-  nextLink: z.string().nullable().optional(),
-});
 const azurePricesPageSchema = z.object({
   Count: z.number().int().min(1).max(1_000),
   Items: z.array(z.unknown()).min(1).max(1_000),
@@ -110,19 +107,6 @@ const azurePortalPageSchema = z.object({
   resourceSkipReasons: emptyAzurePortalErrorMapSchema,
   shardErrors: emptyAzurePortalErrorMapSchema,
   numberOfResourcesNotIncludedInSearch: z.literal(0),
-});
-const googleServiceAccountSchema = z.object({
-  type: z.literal("service_account"),
-  project_id: z.string().min(1),
-  private_key_id: z.string().min(1).optional(),
-  private_key: z.string().min(1),
-  client_email: z.email(),
-  token_uri: z.literal("https://oauth2.googleapis.com/token"),
-});
-const googleTokenSchema = z.object({ access_token: z.string().min(1) });
-const googleModelsPageSchema = z.object({
-  publisherModels: z.array(z.unknown()).default([]),
-  nextPageToken: z.string().min(1).optional(),
 });
 const geminiModelsPageSchema = z.object({
   models: z.array(z.unknown()).default([]),
@@ -220,140 +204,8 @@ export interface FetchResult extends FetchPayload {
   dependencyFailures?: DependencyFailure[];
 }
 
-class TransientFetchError extends SourceFetchError {
-  retryAfter: number;
-
-  constructor(message: string, retryAfter = 0, status?: number) {
-    super(message, status);
-    this.retryAfter = retryAfter;
-  }
-}
-
-const sourceRetryBudgetMs = 5 * 60_000;
-
-async function retryTransient<T>(
-  operation: (attempt: number) => Promise<T>,
-  request?: string,
-): Promise<T> {
-  const deadline = Date.now() + sourceRetryBudgetMs;
-  for (let attempts = 1; ; attempts += 1) {
-    try {
-      return await operation(attempts);
-    } catch (error) {
-      if (!(error instanceof TransientFetchError))
-        throw error instanceof Error ? error : new Error("Unknown source fetch failure");
-      let detail: Omit<SourceRetryFailure, "request" | "attempts"> = { reason: "attempt_limit" };
-      if (attempts < 3) {
-        const delay = error.retryAfter || Math.floor(Math.random() * (500 * 2 ** (attempts - 1)));
-        const remaining = deadline - Date.now();
-        if (delay <= remaining) {
-          await wait(delay);
-          continue;
-        }
-        detail = {
-          reason: error.retryAfter > 0 ? "retry_after_exceeds_budget" : "backoff_exceeds_budget",
-          ...(Number.isSafeInteger(delay) ? { delay_ms: delay } : {}),
-          remaining_budget_ms: Math.max(remaining, 0),
-        };
-      }
-      if (request === undefined) throw error;
-      throw new SourceRetryError(error, { ...detail, request, attempts });
-    }
-  }
-}
-
-function retryDelay(response: Response): number {
-  let delay = 0;
-  for (const header of ["retry-after", "x-ms-ratelimit-retailprices-retry-after"]) {
-    const raw = response.headers.get(header)?.trim();
-    if (raw === undefined) continue;
-    if (/^\d+(?:\s*,\s*\d+)*$/.test(raw)) {
-      for (const seconds of raw.split(",")) delay = Math.max(delay, Number(seconds) * 1000);
-    } else if (header === "retry-after" && /^[A-Za-z]/.test(raw)) {
-      const date = Date.parse(raw);
-      if (Number.isFinite(date)) delay = Math.max(delay, date - Date.now());
-    }
-  }
-  return delay;
-}
-
-function checkedUrl(raw: string, source: SourceManifest): URL {
-  const url = new URL(raw);
-  if (url.protocol !== "https:") throw new Error("Only HTTPS sources are allowed");
-  if (!source.allowedHosts.includes(url.hostname))
-    throw new Error(
-      source.access === "public" && source.auth === undefined
-        ? `Redirect left the reviewed host allowlist: ${url.hostname}`
-        : "Redirect left the reviewed host allowlist",
-    );
-  return url;
-}
-
-function databricksSource(source: SourceManifest, hostEnv: string): SourceManifest {
-  const raw = process.env[hostEnv];
-  if (raw === undefined || raw.trim() === "") throw new Error(`Missing credential ${hostEnv}`);
-  const origin = new URL(raw);
-  const hostname = origin.hostname.toLowerCase();
-  if (
-    origin.protocol !== "https:" ||
-    origin.port !== "" ||
-    origin.username !== "" ||
-    origin.password !== "" ||
-    (origin.pathname !== "" && origin.pathname !== "/") ||
-    origin.search !== "" ||
-    origin.hash !== "" ||
-    ![".cloud.databricks.com", ".azuredatabricks.net", ".gcp.databricks.com"].some((suffix) =>
-      hostname.endsWith(suffix),
-    )
-  )
-    throw new Error("DATABRICKS_HOST is not a reviewed Databricks workspace origin");
-  const url = new URL("/api/2.0/serving-endpoints", origin);
-  return { ...source, url: url.href, allowedHosts: [hostname] };
-}
-
-export function curlResponse(value: string): Response {
-  let cursor = 0;
-  let status = 0;
-  let headers = new Headers();
-  while (value.startsWith("HTTP/", cursor)) {
-    const windowsEnd = value.indexOf("\r\n\r\n", cursor);
-    const unixEnd = value.indexOf("\n\n", cursor);
-    const end = windowsEnd >= 0 ? windowsEnd : unixEnd;
-    if (end < 0) throw new Error("curl returned malformed response headers");
-    const separatorLength = windowsEnd >= 0 ? 4 : 2;
-    const lines = value.slice(cursor, end).split(/\r?\n/);
-    const statusMatch = lines[0]?.match(/^HTTP\/\S+\s+(\d{3})/);
-    if (statusMatch?.[1] === undefined) throw new Error("curl returned a malformed status line");
-    status = Number(statusMatch[1]);
-    headers = new Headers();
-    for (const line of lines.slice(1)) {
-      const colon = line.indexOf(":");
-      if (colon > 0) headers.append(line.slice(0, colon).trim(), line.slice(colon + 1).trim());
-    }
-    cursor = end + separatorLength;
-  }
-  if (status === 0) throw new Error("curl returned no HTTP response");
-  const body = value.slice(cursor);
-  return new Response(status === 204 || status === 304 ? null : body, { status, headers });
-}
-
 async function curlRequest(url: URL, source: SourceManifest, json?: string): Promise<Response> {
-  const args = [
-    "--silent",
-    "--show-error",
-    "--include",
-    "--compressed",
-    "--max-time",
-    url.href === sagemakerPricesUrl ? "150" : "60",
-    "--connect-timeout",
-    "30",
-    "--max-redirs",
-    "0",
-    "--proto",
-    "=https",
-    "--user-agent",
-    "kmodels/0.1 (+https://github.com/Justineo/kmodels)",
-    "--header",
+  const headers: string[] = [
     source.format === "json"
       ? "Accept: application/json"
       : source.format === "markdown"
@@ -362,215 +214,22 @@ async function curlRequest(url: URL, source: SourceManifest, json?: string): Pro
           ? "Accept: text/html"
           : "Accept: */*",
   ];
-  if (source.auth !== undefined) {
-    if (
-      source.auth.scheme === "aws" ||
-      source.auth.scheme === "azure" ||
-      source.auth.scheme === "google-service-account"
-    )
-      throw new Error("Cloud sources require their reviewed authenticated transport");
-    const credential = process.env[source.auth.env];
-    if (credential === undefined || credential.trim() === "")
-      throw new Error(`Missing credential ${source.auth.env}`);
-    args.push(
-      "--header",
-      source.auth.scheme === "bearer"
-        ? `Authorization: Bearer ${credential}`
-        : `${source.auth.header}: ${credential}`,
-    );
-  }
-  for (const header of source.headers ?? [])
-    args.push("--header", `${header.name}: ${header.value}`);
-  if (json !== undefined)
-    args.push(
-      "--request",
-      "POST",
-      "--header",
-      "Content-Type: application/json",
-      "--data-binary",
-      json,
-    );
-  args.push(url.href);
+  for (const header of source.headers ?? []) headers.push(`${header.name}: ${header.value}`);
+  const requestOptions = {
+    headers,
+    maxResponseBytes: source.maxResponseBytes,
+    maxTimeSeconds: url.href === sagemakerPricesUrl ? 150 : 60,
+    connectTimeoutSeconds: 30,
+    ...(json === undefined ? {} : { json }),
+    retryHttp11: true,
+  };
   try {
-    const run = (requestArgs: string[]) =>
-      execute("curl", requestArgs, {
-        encoding: "utf8",
-        maxBuffer: source.maxResponseBytes + 64 * 1024,
-      });
-    let result;
-    try {
-      result = await run(args);
-    } catch (error) {
-      const code = error instanceof Error && "code" in error ? String(error.code) : "unknown";
-      if (!["56", "92"].includes(code)) throw error;
-      result = await run([...args.slice(0, -1), "--http1.1", url.href]);
-    }
-    return curlResponse(result.stdout);
+    return source.auth !== undefined
+      ? await runAuthenticatedCurl(url, source.auth, requestOptions)
+      : await runCurl(url, requestOptions);
   } catch (error) {
     throw new TransientFetchError(`Transient ${curlTransportFailure(error)}`);
   }
-}
-
-function curlTransportFailure(error: unknown): string {
-  const rawCode = error instanceof Error && "code" in error ? String(error.code) : "";
-  const code = /^(?:[1-9]\d{0,2}|ERR_CHILD_PROCESS_STDIO_MAXBUFFER)$/.test(rawCode)
-    ? rawCode
-    : "unknown";
-  const stderr =
-    error instanceof Error && "stderr" in error && typeof error.stderr === "string"
-      ? error.stderr
-      : "";
-  const reasons = new Map([
-    ["5", "proxy DNS resolution failed"],
-    ["6", "DNS resolution failed"],
-    ["7", "connection failed"],
-    [
-      "28",
-      /SSL connection timeout/i.test(stderr)
-        ? "TLS handshake timed out"
-        : /Resolving timed out/i.test(stderr)
-          ? "DNS resolution timed out"
-          : "request timed out",
-    ],
-    ["35", "TLS handshake failed"],
-    ["56", "response receive failed"],
-    ["60", "TLS certificate validation failed"],
-    ["92", "HTTP/2 stream failed"],
-    ["ERR_CHILD_PROCESS_STDIO_MAXBUFFER", "response exceeded byte limit"],
-  ]);
-  const reason = reasons.get(code);
-  return `transport failure (curl ${code}${reason === undefined ? "" : `: ${reason}`})`;
-}
-
-function environment(name: string): string {
-  const value = process.env[name];
-  if (value === undefined || value.trim() === "") throw new Error(`Missing credential ${name}`);
-  return value;
-}
-
-async function cloudJson(
-  label: string,
-  url: URL,
-  maxResponseBytes: number,
-  headers: string[],
-  options: {
-    form?: { name: string; value: string }[];
-    authentication?: true;
-    onSuccess?: (response: Response) => void;
-  } = {},
-): Promise<unknown> {
-  const args = [
-    "--silent",
-    "--show-error",
-    "--include",
-    "--compressed",
-    "--max-time",
-    "60",
-    "--connect-timeout",
-    "10",
-    "--max-redirs",
-    "0",
-    "--proto",
-    "=https",
-    "--user-agent",
-    "kmodels/0.1 (+https://github.com/Justineo/kmodels)",
-  ];
-  for (const header of headers) args.push("--header", header);
-  for (const field of options.form ?? [])
-    args.push("--data-urlencode", `${field.name}=${field.value}`);
-  args.push(url.href);
-  return retryTransient(async () => {
-    let response: Response;
-    try {
-      const result = await execute("curl", args, {
-        encoding: "utf8",
-        maxBuffer: maxResponseBytes + 64 * 1024,
-      });
-      response = curlResponse(result.stdout);
-    } catch (error) {
-      throw new TransientFetchError(`${label} ${curlTransportFailure(error)}`);
-    }
-    const body = await response.text();
-    if (Buffer.byteLength(body) > maxResponseBytes)
-      throw new Error("Cloud response exceeded byte limit");
-    if (response.status === 429 || response.status >= 500)
-      throw new TransientFetchError(
-        `${label} HTTP ${response.status}`,
-        retryDelay(response),
-        response.status,
-      );
-    if (!response.ok) {
-      let code: string | undefined;
-      try {
-        const parsed: unknown = JSON.parse(body);
-        if (parsed !== null && typeof parsed === "object") {
-          const error = Reflect.get(parsed, "error");
-          if (typeof error === "string" && /^[a-z][a-z0-9_]+$/.test(error)) code = error;
-        }
-      } catch {
-        // The status remains sufficient when the error body is not JSON.
-      }
-      throw new SourceFetchError(
-        `${label} HTTP ${response.status}${code === undefined ? "" : ` (${code})`}`,
-        response.status,
-      );
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(body);
-    } catch {
-      if (/^Too many requests\b/i.test(body.trim()))
-        throw new TransientFetchError(`${label} was throttled`, retryDelay(response));
-      if (options.authentication === true)
-        throw new Error("Authentication service returned invalid JSON");
-      throw new SourceContractError(label, invalidJsonContractEvidence());
-    }
-    options.onSuccess?.(response);
-    return parsed;
-  });
-}
-
-function azurePageUrl(raw: string, pathPrefix: string): URL {
-  const url = new URL(raw);
-  if (
-    url.protocol !== "https:" ||
-    url.hostname !== "management.azure.com" ||
-    url.port !== "" ||
-    url.username !== "" ||
-    url.password !== "" ||
-    !url.pathname.toLowerCase().startsWith(pathPrefix.toLowerCase())
-  )
-    throw new Error("Azure pagination left the reviewed ARM endpoint");
-  return url;
-}
-
-async function fetchAzureArmItems(
-  source: SourceManifest,
-  label: string,
-  first: URL,
-  path: string,
-  headers: string[],
-  limits: { items: number; pages: number },
-): Promise<unknown[]> {
-  const items: unknown[] = [];
-  let next: URL | undefined = first;
-  let pages = 0;
-  while (next !== undefined) {
-    if (pages === limits.pages) throw new Error(`${label} exceeded page limit`);
-    const page: z.infer<typeof azureArmPageSchema> = recognizeValue(
-      label,
-      azureArmPageSchema,
-      await cloudJson(label, next, source.maxResponseBytes, headers),
-    );
-    items.push(...page.value);
-    if (items.length > limits.items) throw new Error(`${label} exceeded item limit`);
-    next =
-      page.nextLink === undefined || page.nextLink === null
-        ? undefined
-        : azurePageUrl(page.nextLink, path);
-    pages += 1;
-  }
-  return items;
 }
 
 async function fetchAzureRetailPrices(source: SourceManifest): Promise<string> {
@@ -646,87 +305,6 @@ async function fetchAzureRetailPrices(source: SourceManifest): Promise<string> {
   const body = JSON.stringify({ prices });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Azure Retail Prices bundle exceeded byte limit");
-  return body;
-}
-
-async function fetchAzureModels(
-  source: SourceManifest,
-  transport: AzureModelsTransport,
-): Promise<string> {
-  const auth = source.auth;
-  if (auth?.scheme !== "azure") throw new Error("Azure transport requires Azure credentials");
-  const [tenantEnv, clientEnv, secretEnv] = auth.envs;
-  const tenant = environment(tenantEnv);
-  const client = environment(clientEnv);
-  const secret = environment(secretEnv);
-  const subscription = environment(transport.subscriptionEnv);
-  if (!/^[0-9a-f-]{36}$/i.test(tenant) || !/^[0-9a-f-]{36}$/i.test(client))
-    throw new Error("Azure tenant and client IDs must be GUIDs");
-  if (!/^[0-9a-f-]{36}$/i.test(subscription)) throw new Error("Azure subscription is invalid");
-
-  const tokenUrl = new URL(`/${tenant}/oauth2/v2.0/token`, "https://login.microsoftonline.com");
-  const token = azureTokenSchema.parse(
-    await cloudJson("Azure", tokenUrl, 1024 * 1024, ["Accept: application/json"], {
-      form: [
-        { name: "client_id", value: client },
-        { name: "client_secret", value: secret },
-        { name: "grant_type", value: "client_credentials" },
-        { name: "scope", value: "https://management.azure.com/.default" },
-      ],
-    }),
-  );
-  const authorizationHeaders = [
-    "Accept: application/json",
-    `Authorization: Bearer ${token.access_token}`,
-  ];
-  const resourceTypesUrl = new URL(
-    `/subscriptions/${subscription}/providers/Microsoft.CognitiveServices/resourceTypes?api-version=2021-04-01`,
-    "https://management.azure.com",
-  );
-  const subscriptionLocationsPath = `/subscriptions/${subscription}/locations`;
-  const subscriptionLocationsUrl = new URL(
-    `${subscriptionLocationsPath}?api-version=2022-12-01`,
-    "https://management.azure.com",
-  );
-  const subscriptionLocations = await fetchAzureArmItems(
-    source,
-    "Azure subscription locations",
-    subscriptionLocationsUrl,
-    subscriptionLocationsPath,
-    authorizationHeaders,
-    { items: 1_000, pages: 10 },
-  );
-  const resourceTypes = await cloudJson(
-    "Azure Cognitive Services resource types",
-    resourceTypesUrl,
-    source.maxResponseBytes,
-    authorizationHeaders,
-  );
-  const locations = azureModelLocations(resourceTypes, subscriptionLocations);
-  if (locations.length > transport.maxLocations)
-    throw new Error("Azure Models API exceeded location limit");
-
-  const regions = await mapConcurrent(locations, transport.concurrency, async (location) => {
-    const path = `/subscriptions/${subscription}/providers/Microsoft.CognitiveServices/locations/${location}/models`;
-    const first = new URL(`${path}?api-version=2025-06-01`, "https://management.azure.com");
-    const models = await fetchAzureArmItems(
-      source,
-      `Azure Models (${location})`,
-      first,
-      path,
-      authorizationHeaders,
-      { items: transport.maxModelsPerLocation, pages: 20 },
-    );
-    return { location, models };
-  });
-  const modelCount = regions.reduce((sum, { models }) => sum + models.length, 0);
-  assertItemCount("Azure Models API", modelCount, 1);
-  if (modelCount > transport.maxModels)
-    throw new Error("Azure Models API exceeded total item limit");
-
-  const body = JSON.stringify({ regions });
-  if (Buffer.byteLength(body) > source.maxResponseBytes)
-    throw new Error("Azure inventory bundle exceeded byte limit");
   return body;
 }
 
@@ -870,135 +448,6 @@ async function fetchAzurePortalModels(
   throw new Error("Azure portal model search exceeded page limit");
 }
 
-function base64url(value: string): string {
-  return Buffer.from(value).toString("base64url");
-}
-
-async function googleAccessToken(
-  source: SourceManifest,
-): Promise<{ token: string; project: string }> {
-  const auth = source.auth;
-  if (auth?.scheme !== "google-service-account")
-    throw new Error("Google transport requires service-account credentials");
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(environment(auth.env));
-  } catch {
-    throw new Error("Google service-account JSON is invalid");
-  }
-  const account = googleServiceAccountSchema.parse(parsed);
-  const now = Math.floor(Date.now() / 1000);
-  const header = base64url(
-    JSON.stringify({
-      alg: "RS256",
-      typ: "JWT",
-      ...(account.private_key_id === undefined ? {} : { kid: account.private_key_id }),
-    }),
-  );
-  const claim = base64url(
-    JSON.stringify({
-      iss: account.client_email,
-      scope: "https://www.googleapis.com/auth/cloud-platform",
-      aud: account.token_uri,
-      iat: now,
-      exp: now + 3600,
-    }),
-  );
-  const unsigned = `${header}.${claim}`;
-  const signature = createSign("RSA-SHA256").update(unsigned).end().sign(account.private_key);
-  const assertion = `${unsigned}.${signature.toString("base64url")}`;
-  const token = googleTokenSchema.parse(
-    await cloudJson(
-      "Google OAuth",
-      new URL(account.token_uri),
-      1024 * 1024,
-      ["Accept: application/json"],
-      {
-        authentication: true,
-        form: [
-          { name: "grant_type", value: "urn:ietf:params:oauth:grant-type:jwt-bearer" },
-          { name: "assertion", value: assertion },
-        ],
-      },
-    ),
-  );
-  return { token: token.access_token, project: account.project_id };
-}
-
-async function fetchGoogleModelGarden(
-  source: SourceManifest,
-  transport: GoogleModelGardenTransport,
-): Promise<string> {
-  if (
-    !Number.isInteger(transport.pageSize) ||
-    transport.pageSize <= 0 ||
-    !Number.isInteger(transport.maxPages) ||
-    transport.maxPages <= 0 ||
-    !Number.isInteger(transport.maxModelsPerPublisher) ||
-    transport.maxModelsPerPublisher <= 0 ||
-    !Number.isInteger(transport.concurrency) ||
-    transport.concurrency <= 0
-  )
-    throw new Error("Invalid Model Garden transport bounds");
-  const credential = await googleAccessToken(source);
-  const results = await mapConcurrent(
-    transport.publishers,
-    transport.concurrency,
-    async (publisher) => {
-      if (!/^[a-z0-9-]+$/.test(publisher)) throw new Error("Invalid Model Garden publisher");
-      const models: unknown[] = [];
-      let pageToken: string | undefined;
-      const requestedPageTokens = new Set<string>();
-      for (let pageCount = 0; pageCount < transport.maxPages; pageCount += 1) {
-        if (pageToken !== undefined) {
-          assertSourceConstraint(
-            "Model Garden publisher repeated a page token",
-            !requestedPageTokens.has(pageToken),
-            pageToken,
-            ["nextPageToken"],
-          );
-          requestedPageTokens.add(pageToken);
-        }
-        const url = new URL(
-          `/v1beta1/publishers/${publisher}/models`,
-          "https://aiplatform.googleapis.com",
-        );
-        url.searchParams.set("pageSize", String(transport.pageSize));
-        url.searchParams.set("view", "PUBLISHER_MODEL_VIEW_BASIC");
-        url.searchParams.set("languageCode", "en");
-        url.searchParams.set("listAllVersions", "false");
-        if (pageToken !== undefined) url.searchParams.set("pageToken", pageToken);
-        const page = recognizeValue(
-          "Google Model Garden",
-          googleModelsPageSchema,
-          await cloudJson("Google Model Garden", url, source.maxResponseBytes, [
-            "Accept: application/json",
-            `Authorization: Bearer ${credential.token}`,
-            `x-goog-user-project: ${credential.project}`,
-          ]),
-        );
-        models.push(...page.publisherModels);
-        if (models.length > transport.maxModelsPerPublisher)
-          throw new Error("Model Garden publisher exceeded item limit");
-        pageToken = page.nextPageToken;
-        if (pageToken === undefined) break;
-        if (pageCount === transport.maxPages - 1)
-          throw new Error("Model Garden publisher exceeded page limit");
-      }
-      return { publisher, models };
-    },
-  );
-  assertItemCount(
-    "Agent Platform Model Garden API",
-    results.reduce((count, result) => count + result.models.length, 0),
-    1,
-  );
-  const body = JSON.stringify({ publishers: results });
-  if (Buffer.byteLength(body) > source.maxResponseBytes)
-    throw new Error("Agent Platform Model Garden inventory exceeded byte limit");
-  return body;
-}
-
 async function request(source: SourceManifest, json?: string, usePool = true): Promise<Response> {
   let url = checkedUrl(source.url, source);
   for (let redirect = 0; redirect <= 4; redirect += 1) {
@@ -1031,35 +480,6 @@ async function request(source: SourceManifest, json?: string, usePool = true): P
     return response;
   }
   throw new Error("Too many redirects");
-}
-
-async function readLimited(response: Response, limit: number): Promise<string> {
-  const declared = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > limit) {
-    await response.body?.cancel();
-    throw new Error("Response exceeded byte limit");
-  }
-  if (response.body === null) return "";
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const result = await reader.read().catch(() => {
-        throw new TransientFetchError("Source response body transfer failed or timed out");
-      });
-      if (result.done) break;
-      total += result.value.byteLength;
-      if (total > limit) {
-        await reader.cancel("Response exceeded byte limit");
-        throw new Error("Response exceeded byte limit");
-      }
-      chunks.push(result.value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  return Buffer.concat(chunks, total).toString("utf8");
 }
 
 async function attemptFetch(

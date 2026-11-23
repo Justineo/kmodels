@@ -174,13 +174,36 @@ function checkInferenceLookup(moduleExports: unknown, suite: LookupFixtures): vo
     !("calculationRequestSchema" in moduleExports),
     "Cost request schema must not be exported",
   );
-  const data = suite.datasets.base;
+  const data = structuredClone(suite.datasets.base);
   const provider = data?.providers[0];
   const book = provider?.books[0];
   const offer = book?.offers[0];
   const modelRef = book?.scope.model_refs[0];
   if (!data || !provider || !book || !offer || !modelRef)
     throw new Error("Missing inference smoke fixture");
+  const unconditionalIndex = provider.applicabilities.findIndex(
+    ({ any_of }) => any_of.length === 1 && any_of[0]?.all_of.length === 0,
+  );
+  if (unconditionalIndex === -1) throw new Error("Missing unconditional applicability");
+  offer.selection = [
+    {
+      dimension: "execution",
+      coverage: "complete",
+      applicability_id: unconditionalIndex,
+      alternatives: ["request", "realtime"].map((value) => ({
+        value: { namespace: "kmodels", value },
+        applicability_id: unconditionalIndex,
+      })),
+      evidence: book.evidence,
+    },
+    {
+      dimension: "billing_mode",
+      coverage: "complete",
+      applicability_id: unconditionalIndex,
+      alternatives: [{ value: offer.billing_mode, applicability_id: unconditionalIndex }],
+      evidence: book.evidence,
+    },
+  ];
   const mapping = {
     core_catalog_version: data.snapshot.coreCatalogVersion,
     pricing_data_version: data.snapshot.pricingDataVersion,
@@ -193,32 +216,6 @@ function checkInferenceLookup(moduleExports: unknown, suite: LookupFixtures): vo
         offer_refs: [offer.id],
         fixed_selectors: [],
         evidence: book.evidence,
-      },
-    ],
-    offer_selections: [
-      {
-        offer_ref: offer.id,
-        selection: [
-          {
-            dimension: "execution",
-            coverage: "complete",
-            applicability: { any_of: [{ all_of: [] }] },
-            alternatives: ["request", "realtime"].map((value) => ({
-              value: { namespace: "kmodels", value },
-              applicability: { any_of: [{ all_of: [] }] },
-            })),
-            evidence: book.evidence,
-          },
-          {
-            dimension: "billing_mode",
-            coverage: "complete",
-            applicability: { any_of: [{ all_of: [] }] },
-            alternatives: [
-              { value: offer.billing_mode, applicability: { any_of: [{ all_of: [] }] } },
-            ],
-            evidence: book.evidence,
-          },
-        ],
       },
     ],
   };

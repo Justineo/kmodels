@@ -29,7 +29,7 @@ export type ModelTableRow<T extends GroupableModel> =
     };
 
 export function modelGroupKey(providerId: string, modelId: string): string {
-  return JSON.stringify([providerId, modelId]);
+  return `${providerId}\0${modelId}`;
 }
 
 export function preferredModelGroupName<T extends NamedGroupableModel>(

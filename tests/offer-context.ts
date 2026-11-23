@@ -7,7 +7,7 @@ import type {
   PricingTerm,
   PriceApplicability,
 } from "../src/catalog/pricing-schema.ts";
-import type { PriceDataOffer, Selector } from "../src/pricing/schema.ts";
+import type { ResolvedPriceOffer, Selector } from "../src/pricing/schema.ts";
 
 export function executionSelector(value: "request" | "batch" | "realtime"): Selector {
   return {
@@ -34,7 +34,7 @@ export function executionScope(value: "request" | "batch" | "realtime"): PriceAp
 }
 
 /** Inspect a source tariff branch while retaining its published relationship ID and predicates. */
-export function priceContexts(offer: PriceDataOffer) {
+export function priceContexts<T extends PricingOffer | ResolvedPriceOffer>(offer: T) {
   const scopes = offer.terms.flatMap((term) =>
     term.kind === "raw"
       ? term.variants.map((v) => v.possible_scope ?? unconditionalApplicability)

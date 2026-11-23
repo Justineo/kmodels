@@ -1,5 +1,3 @@
-import { SageMakerClient } from "@aws-sdk/client-sagemaker";
-import { DefaultRateLimiter } from "@smithy/core/retry";
 import { mapConcurrent } from "./concurrency.ts";
 import type { FetchPayload, FetchResult, FetchObservation, StatusPayload } from "./fetch.ts";
 import { sha256 } from "./io.ts";
@@ -13,8 +11,12 @@ import {
   sagemakerCacheUrl,
   sagemakerSpecSchema,
 } from "./sagemaker.ts";
+import {
+  createSagemakerMarketplaceTransport,
+  sagemakerMarketplaceEndpoint,
+} from "./transport/sagemaker-fetch.ts";
 
-const endpoint = "https://discovery.marketplace.us-east-1.amazonaws.com/GetListingView";
+const endpoint = sagemakerMarketplaceEndpoint;
 
 export async function fetchSagemakerMarketplaceApi(
   source: SourceManifest,
@@ -72,11 +74,8 @@ export async function fetchSagemakerMarketplaceApi(
     return spec;
   });
   const ids = [...new Set(specs.map(({ listing_id }) => listing_id))].sort();
-  const client = new SageMakerClient({ region: "us-east-1" });
-  const rateLimiter = new DefaultRateLimiter();
+  const transport = await createSagemakerMarketplaceTransport();
   try {
-    const signer = await client.config.signer();
-    const host = new URL(endpoint).hostname;
     const listings = await mapConcurrent(ids, 4, async (id) => {
       const body = JSON.stringify({
         ViewQuery: { Name: "listingPricingSummaryByListingId", Version: 1 },
@@ -85,32 +84,9 @@ export async function fetchSagemakerMarketplaceApi(
         ExecutionSemantics: "ALL_OR_NOTHING",
       });
       const listing = id.length <= 96 ? id : `${id.slice(0, 93)}...`;
-      const response = await post(`GetListingView/${listing}`, body, async () => {
-        // The SDK supplies signing only; raw Fetch requests need their own shared limiter.
-        await rateLimiter.getSendToken();
-        const signed = await signer.sign(
-          {
-            protocol: "https:",
-            hostname: host,
-            method: "POST",
-            path: "/GetListingView",
-            headers: { host, "content-type": "application/json" },
-            body,
-          },
-          { signingRegion: "us-east-1", signingService: "aws-marketplace" },
-        );
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: signed.headers,
-          body,
-          redirect: "error",
-          signal: AbortSignal.timeout(30_000),
-        });
-        rateLimiter.updateClientSendingRate(
-          response.status === 429 ? { errorType: "THROTTLING" } : {},
-        );
-        return response;
-      });
+      const response = await post(`GetListingView/${listing}`, body, () =>
+        transport.postListingView(body),
+      );
       const normalized =
         response.status === 200
           ? normalizeSagemakerMarketplaceApi(JSON.parse(response.body), id)
@@ -135,6 +111,6 @@ export async function fetchSagemakerMarketplaceApi(
       dependencies: dependencies.sort((a, b) => a.key.localeCompare(b.key)),
     };
   } finally {
-    client.destroy();
+    transport.destroy();
   }
 }

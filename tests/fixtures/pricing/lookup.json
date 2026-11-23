@@ -1,7 +1,7 @@
 {
   "datasets": {
     "base": {
-      "schemaVersion": "2.0",
+      "schemaVersion": "3.0",
       "snapshot": {
         "pricingDataVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "coreCatalogVersion": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -14,8 +14,16 @@
             "publication": "fresh",
             "observed_at": "2026-09-05T00:00:00.000Z"
           },
-          "vocabulary": { "provider_id": "example", "atoms": [] },
-          "models": [{ "model_ref": "example/model", "disposition": "offers" }],
+          "vocabulary": {
+            "provider_id": "example",
+            "atoms": []
+          },
+          "models": [
+            {
+              "model_ref": "example/model",
+              "disposition": "offers"
+            }
+          ],
           "sources": [
             {
               "id": "example/source",
@@ -30,87 +38,71 @@
               "id": "0000000000000000000000000000000000000000000000000000000000000001",
               "provider_id": "example",
               "book_key": "model",
-              "scope": { "kind": "models", "model_refs": ["example/model"] },
+              "scope": {
+                "kind": "models",
+                "model_refs": ["example/model"]
+              },
               "evidence": [
                 {
                   "source_ref": "example/source",
-                  "locator": { "kind": "table", "value": "synthetic" }
+                  "locator": {
+                    "kind": "table",
+                    "value": "synthetic"
+                  }
                 }
               ],
-              "resource_edges": [],
               "offers": [
                 {
                   "id": "0000000000000000000000000000000000000000000000000000000000000002",
                   "offer_key": "inference",
-                  "billing_mode": { "namespace": "kmodels", "value": "usage" },
-                  "states": [
-                    {
-                      "state": "numeric",
-                      "applicability": { "any_of": [{ "all_of": [] }] },
-                      "evidence": [
-                        {
-                          "source_ref": "example/source",
-                          "locator": { "kind": "table", "value": "synthetic" }
-                        }
-                      ]
-                    }
-                  ],
+                  "billing_mode": {
+                    "namespace": "kmodels",
+                    "value": "usage"
+                  },
+                  "states": [],
                   "terms": [
                     {
                       "id": "0000000000000000000000000000000000000000000000000000000000000003",
                       "term_key": "input",
                       "kind": "rate",
-                      "meter": { "namespace": "kmodels", "value": "input_text" },
+                      "meter": {
+                        "namespace": "kmodels",
+                        "value": "input_text"
+                      },
                       "source_refs": ["example/source"],
                       "variants": [
                         {
                           "price": {
-                            "value": { "numerator": "1", "denominator": "1000" },
-                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "value": {
+                              "numerator": "1",
+                              "denominator": "1000"
+                            },
+                            "denomination": {
+                              "kind": "fiat",
+                              "currency": "USD"
+                            },
                             "per": {
                               "factors": [
-                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                                {
+                                  "unit": {
+                                    "namespace": "kmodels",
+                                    "value": "token"
+                                  },
+                                  "power": 1
+                                }
                               ]
                             }
                           },
-                          "applicability": { "any_of": [{ "all_of": [] }] },
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
                           ],
-                          "charge_binding": {
-                            "signal": { "namespace": "kmodels", "value": "uncached_input_tokens" },
-                            "aggregation": "request",
-                            "evidence": [
-                              {
-                                "source_ref": "example/source",
-                                "locator": { "kind": "table", "value": "synthetic" }
-                              }
-                            ],
-                            "quantity_methods": [
-                              {
-                                "calculation": {
-                                  "nodes": [
-                                    {
-                                      "op": "signal",
-                                      "signal": { "namespace": "kmodels", "value": "input_tokens" }
-                                    },
-                                    {
-                                      "op": "signal",
-                                      "signal": {
-                                        "namespace": "kmodels",
-                                        "value": "cached_input_tokens"
-                                      }
-                                    },
-                                    { "op": "subtract_floor_zero", "minuend": 0, "subtrahend": 1 }
-                                  ],
-                                  "result": 2
-                                }
-                              }
-                            ]
-                          }
+                          "applicability_id": 0
                         }
                       ],
                       "raw_variants": []
@@ -119,36 +111,44 @@
                       "id": "0000000000000000000000000000000000000000000000000000000000000004",
                       "term_key": "cached",
                       "kind": "rate",
-                      "meter": { "namespace": "kmodels", "value": "cache_read_text" },
+                      "meter": {
+                        "namespace": "kmodels",
+                        "value": "cache_read_text"
+                      },
                       "source_refs": ["example/source"],
                       "variants": [
                         {
                           "price": {
-                            "value": { "numerator": "1", "denominator": "10000" },
-                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "value": {
+                              "numerator": "1",
+                              "denominator": "10000"
+                            },
+                            "denomination": {
+                              "kind": "fiat",
+                              "currency": "USD"
+                            },
                             "per": {
                               "factors": [
-                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                                {
+                                  "unit": {
+                                    "namespace": "kmodels",
+                                    "value": "token"
+                                  },
+                                  "power": 1
+                                }
                               ]
                             }
                           },
-                          "applicability": { "any_of": [{ "all_of": [] }] },
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
                           ],
-                          "charge_binding": {
-                            "signal": { "namespace": "kmodels", "value": "cached_input_tokens" },
-                            "aggregation": "request",
-                            "evidence": [
-                              {
-                                "source_ref": "example/source",
-                                "locator": { "kind": "table", "value": "synthetic" }
-                              }
-                            ]
-                          }
+                          "applicability_id": 0
                         }
                       ],
                       "raw_variants": []
@@ -157,55 +157,70 @@
                       "id": "0000000000000000000000000000000000000000000000000000000000000005",
                       "term_key": "output",
                       "kind": "rate",
-                      "meter": { "namespace": "kmodels", "value": "output_text" },
+                      "meter": {
+                        "namespace": "kmodels",
+                        "value": "output_text"
+                      },
                       "source_refs": ["example/source"],
                       "variants": [
                         {
                           "price": {
-                            "value": { "numerator": "1", "denominator": "500" },
-                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "value": {
+                              "numerator": "1",
+                              "denominator": "500"
+                            },
+                            "denomination": {
+                              "kind": "fiat",
+                              "currency": "USD"
+                            },
                             "per": {
                               "factors": [
-                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                                {
+                                  "unit": {
+                                    "namespace": "kmodels",
+                                    "value": "token"
+                                  },
+                                  "power": 1
+                                }
                               ]
                             }
                           },
-                          "applicability": { "any_of": [{ "all_of": [] }] },
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
                           ],
-                          "charge_binding": {
-                            "signal": { "namespace": "kmodels", "value": "output_tokens" },
-                            "aggregation": "request",
-                            "evidence": [
-                              {
-                                "source_ref": "example/source",
-                                "locator": { "kind": "table", "value": "synthetic" }
-                              }
-                            ]
-                          }
+                          "applicability_id": 0
                         }
                       ],
                       "raw_variants": []
                     }
                   ],
                   "relations": [],
-                  "source_refs": ["example/source"],
-                  "enrollment": [],
-                  "settlement": []
+                  "source_refs": ["example/source"]
                 }
               ],
               "source_refs": ["example/source"]
+            }
+          ],
+          "applicabilities": [
+            {
+              "any_of": [
+                {
+                  "all_of": []
+                }
+              ]
             }
           ]
         }
       ]
     },
     "tier": {
-      "schemaVersion": "2.0",
+      "schemaVersion": "3.0",
       "snapshot": {
         "pricingDataVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "coreCatalogVersion": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -224,18 +239,29 @@
               {
                 "kind": "categorical_value",
                 "key": "standard",
-                "dimension": { "namespace": "kmodels", "value": "served_service_tier" },
+                "dimension": {
+                  "namespace": "kmodels",
+                  "value": "served_service_tier"
+                },
                 "definition": "Synthetic served tier."
               },
               {
                 "kind": "categorical_value",
                 "key": "priority",
-                "dimension": { "namespace": "kmodels", "value": "served_service_tier" },
+                "dimension": {
+                  "namespace": "kmodels",
+                  "value": "served_service_tier"
+                },
                 "definition": "Synthetic served tier."
               }
             ]
           },
-          "models": [{ "model_ref": "example/model", "disposition": "offers" }],
+          "models": [
+            {
+              "model_ref": "example/model",
+              "disposition": "offers"
+            }
+          ],
           "sources": [
             {
               "id": "example/source",
@@ -250,178 +276,104 @@
               "id": "0000000000000000000000000000000000000000000000000000000000000001",
               "provider_id": "example",
               "book_key": "model",
-              "scope": { "kind": "models", "model_refs": ["example/model"] },
+              "scope": {
+                "kind": "models",
+                "model_refs": ["example/model"]
+              },
               "evidence": [
                 {
                   "source_ref": "example/source",
-                  "locator": { "kind": "table", "value": "synthetic" }
+                  "locator": {
+                    "kind": "table",
+                    "value": "synthetic"
+                  }
                 }
               ],
-              "resource_edges": [],
               "offers": [
                 {
                   "id": "0000000000000000000000000000000000000000000000000000000000000002",
                   "offer_key": "inference",
-                  "billing_mode": { "namespace": "kmodels", "value": "usage" },
-                  "states": [
-                    {
-                      "state": "numeric",
-                      "applicability": { "any_of": [{ "all_of": [] }] },
-                      "evidence": [
-                        {
-                          "source_ref": "example/source",
-                          "locator": { "kind": "table", "value": "synthetic" }
-                        }
-                      ]
-                    }
-                  ],
+                  "billing_mode": {
+                    "namespace": "kmodels",
+                    "value": "usage"
+                  },
+                  "states": [],
                   "terms": [
                     {
                       "id": "0000000000000000000000000000000000000000000000000000000000000003",
                       "term_key": "input",
                       "kind": "rate",
-                      "meter": { "namespace": "kmodels", "value": "input_text" },
+                      "meter": {
+                        "namespace": "kmodels",
+                        "value": "input_text"
+                      },
                       "source_refs": ["example/source"],
                       "variants": [
                         {
                           "price": {
-                            "value": { "numerator": "1", "denominator": "1000" },
-                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "value": {
+                              "numerator": "1",
+                              "denominator": "1000"
+                            },
+                            "denomination": {
+                              "kind": "fiat",
+                              "currency": "USD"
+                            },
                             "per": {
                               "factors": [
-                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                                {
+                                  "unit": {
+                                    "namespace": "kmodels",
+                                    "value": "token"
+                                  },
+                                  "power": 1
+                                }
                               ]
                             }
-                          },
-                          "applicability": {
-                            "any_of": [
-                              {
-                                "all_of": [
-                                  {
-                                    "kind": "categorical",
-                                    "dimension": {
-                                      "namespace": "kmodels",
-                                      "value": "served_service_tier"
-                                    },
-                                    "values": [
-                                      {
-                                        "namespace": "provider",
-                                        "provider_id": "example",
-                                        "value": "standard"
-                                      }
-                                    ]
-                                  }
-                                ]
-                              }
-                            ]
                           },
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
                           ],
-                          "charge_binding": {
-                            "signal": { "namespace": "kmodels", "value": "uncached_input_tokens" },
-                            "aggregation": "request",
-                            "evidence": [
-                              {
-                                "source_ref": "example/source",
-                                "locator": { "kind": "table", "value": "synthetic" }
-                              }
-                            ],
-                            "quantity_methods": [
-                              {
-                                "calculation": {
-                                  "nodes": [
-                                    {
-                                      "op": "signal",
-                                      "signal": { "namespace": "kmodels", "value": "input_tokens" }
-                                    },
-                                    {
-                                      "op": "signal",
-                                      "signal": {
-                                        "namespace": "kmodels",
-                                        "value": "cached_input_tokens"
-                                      }
-                                    },
-                                    { "op": "subtract_floor_zero", "minuend": 0, "subtrahend": 1 }
-                                  ],
-                                  "result": 2
-                                }
-                              }
-                            ]
-                          }
+                          "applicability_id": 2
                         },
                         {
                           "price": {
-                            "value": { "numerator": "1", "denominator": "500" },
-                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "value": {
+                              "numerator": "1",
+                              "denominator": "500"
+                            },
+                            "denomination": {
+                              "kind": "fiat",
+                              "currency": "USD"
+                            },
                             "per": {
                               "factors": [
-                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                                {
+                                  "unit": {
+                                    "namespace": "kmodels",
+                                    "value": "token"
+                                  },
+                                  "power": 1
+                                }
                               ]
                             }
-                          },
-                          "applicability": {
-                            "any_of": [
-                              {
-                                "all_of": [
-                                  {
-                                    "kind": "categorical",
-                                    "dimension": {
-                                      "namespace": "kmodels",
-                                      "value": "served_service_tier"
-                                    },
-                                    "values": [
-                                      {
-                                        "namespace": "provider",
-                                        "provider_id": "example",
-                                        "value": "priority"
-                                      }
-                                    ]
-                                  }
-                                ]
-                              }
-                            ]
                           },
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
                           ],
-                          "charge_binding": {
-                            "signal": { "namespace": "kmodels", "value": "uncached_input_tokens" },
-                            "aggregation": "request",
-                            "evidence": [
-                              {
-                                "source_ref": "example/source",
-                                "locator": { "kind": "table", "value": "synthetic" }
-                              }
-                            ],
-                            "quantity_methods": [
-                              {
-                                "calculation": {
-                                  "nodes": [
-                                    {
-                                      "op": "signal",
-                                      "signal": { "namespace": "kmodels", "value": "input_tokens" }
-                                    },
-                                    {
-                                      "op": "signal",
-                                      "signal": {
-                                        "namespace": "kmodels",
-                                        "value": "cached_input_tokens"
-                                      }
-                                    },
-                                    { "op": "subtract_floor_zero", "minuend": 0, "subtrahend": 1 }
-                                  ],
-                                  "result": 2
-                                }
-                              }
-                            ]
-                          }
+                          "applicability_id": 1
                         }
                       ],
                       "raw_variants": []
@@ -430,36 +382,44 @@
                       "id": "0000000000000000000000000000000000000000000000000000000000000004",
                       "term_key": "cached",
                       "kind": "rate",
-                      "meter": { "namespace": "kmodels", "value": "cache_read_text" },
+                      "meter": {
+                        "namespace": "kmodels",
+                        "value": "cache_read_text"
+                      },
                       "source_refs": ["example/source"],
                       "variants": [
                         {
                           "price": {
-                            "value": { "numerator": "1", "denominator": "10000" },
-                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "value": {
+                              "numerator": "1",
+                              "denominator": "10000"
+                            },
+                            "denomination": {
+                              "kind": "fiat",
+                              "currency": "USD"
+                            },
                             "per": {
                               "factors": [
-                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                                {
+                                  "unit": {
+                                    "namespace": "kmodels",
+                                    "value": "token"
+                                  },
+                                  "power": 1
+                                }
                               ]
                             }
                           },
-                          "applicability": { "any_of": [{ "all_of": [] }] },
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
                           ],
-                          "charge_binding": {
-                            "signal": { "namespace": "kmodels", "value": "cached_input_tokens" },
-                            "aggregation": "request",
-                            "evidence": [
-                              {
-                                "source_ref": "example/source",
-                                "locator": { "kind": "table", "value": "synthetic" }
-                              }
-                            ]
-                          }
+                          "applicability_id": 0
                         }
                       ],
                       "raw_variants": []
@@ -468,55 +428,114 @@
                       "id": "0000000000000000000000000000000000000000000000000000000000000005",
                       "term_key": "output",
                       "kind": "rate",
-                      "meter": { "namespace": "kmodels", "value": "output_text" },
+                      "meter": {
+                        "namespace": "kmodels",
+                        "value": "output_text"
+                      },
                       "source_refs": ["example/source"],
                       "variants": [
                         {
                           "price": {
-                            "value": { "numerator": "1", "denominator": "500" },
-                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "value": {
+                              "numerator": "1",
+                              "denominator": "500"
+                            },
+                            "denomination": {
+                              "kind": "fiat",
+                              "currency": "USD"
+                            },
                             "per": {
                               "factors": [
-                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                                {
+                                  "unit": {
+                                    "namespace": "kmodels",
+                                    "value": "token"
+                                  },
+                                  "power": 1
+                                }
                               ]
                             }
                           },
-                          "applicability": { "any_of": [{ "all_of": [] }] },
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
                           ],
-                          "charge_binding": {
-                            "signal": { "namespace": "kmodels", "value": "output_tokens" },
-                            "aggregation": "request",
-                            "evidence": [
-                              {
-                                "source_ref": "example/source",
-                                "locator": { "kind": "table", "value": "synthetic" }
-                              }
-                            ]
-                          }
+                          "applicability_id": 0
                         }
                       ],
                       "raw_variants": []
                     }
                   ],
                   "relations": [],
-                  "source_refs": ["example/source"],
-                  "enrollment": [],
-                  "settlement": []
+                  "source_refs": ["example/source"]
                 }
               ],
               "source_refs": ["example/source"]
+            }
+          ],
+          "applicabilities": [
+            {
+              "any_of": [
+                {
+                  "all_of": []
+                }
+              ]
+            },
+            {
+              "any_of": [
+                {
+                  "all_of": [
+                    {
+                      "kind": "categorical",
+                      "dimension": {
+                        "namespace": "kmodels",
+                        "value": "served_service_tier"
+                      },
+                      "values": [
+                        {
+                          "namespace": "provider",
+                          "provider_id": "example",
+                          "value": "priority"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "any_of": [
+                {
+                  "all_of": [
+                    {
+                      "kind": "categorical",
+                      "dimension": {
+                        "namespace": "kmodels",
+                        "value": "served_service_tier"
+                      },
+                      "values": [
+                        {
+                          "namespace": "provider",
+                          "provider_id": "example",
+                          "value": "standard"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
       ]
     },
     "contribution": {
-      "schemaVersion": "2.0",
+      "schemaVersion": "3.0",
       "snapshot": {
         "pricingDataVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "coreCatalogVersion": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -529,8 +548,16 @@
             "publication": "fresh",
             "observed_at": "2026-09-05T00:00:00.000Z"
           },
-          "vocabulary": { "provider_id": "example", "atoms": [] },
-          "models": [{ "model_ref": "example/model", "disposition": "offers" }],
+          "vocabulary": {
+            "provider_id": "example",
+            "atoms": []
+          },
+          "models": [
+            {
+              "model_ref": "example/model",
+              "disposition": "offers"
+            }
+          ],
           "sources": [
             {
               "id": "example/source",
@@ -545,87 +572,71 @@
               "id": "0000000000000000000000000000000000000000000000000000000000000001",
               "provider_id": "example",
               "book_key": "model",
-              "scope": { "kind": "models", "model_refs": ["example/model"] },
+              "scope": {
+                "kind": "models",
+                "model_refs": ["example/model"]
+              },
               "evidence": [
                 {
                   "source_ref": "example/source",
-                  "locator": { "kind": "table", "value": "synthetic" }
+                  "locator": {
+                    "kind": "table",
+                    "value": "synthetic"
+                  }
                 }
               ],
-              "resource_edges": [],
               "offers": [
                 {
                   "id": "0000000000000000000000000000000000000000000000000000000000000002",
                   "offer_key": "inference",
-                  "billing_mode": { "namespace": "kmodels", "value": "usage" },
-                  "states": [
-                    {
-                      "state": "numeric",
-                      "applicability": { "any_of": [{ "all_of": [] }] },
-                      "evidence": [
-                        {
-                          "source_ref": "example/source",
-                          "locator": { "kind": "table", "value": "synthetic" }
-                        }
-                      ]
-                    }
-                  ],
+                  "billing_mode": {
+                    "namespace": "kmodels",
+                    "value": "usage"
+                  },
+                  "states": [],
                   "terms": [
                     {
                       "id": "0000000000000000000000000000000000000000000000000000000000000003",
                       "term_key": "input",
                       "kind": "rate",
-                      "meter": { "namespace": "kmodels", "value": "input_text" },
+                      "meter": {
+                        "namespace": "kmodels",
+                        "value": "input_text"
+                      },
                       "source_refs": ["example/source"],
                       "variants": [
                         {
                           "price": {
-                            "value": { "numerator": "1", "denominator": "1000" },
-                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "value": {
+                              "numerator": "1",
+                              "denominator": "1000"
+                            },
+                            "denomination": {
+                              "kind": "fiat",
+                              "currency": "USD"
+                            },
                             "per": {
                               "factors": [
-                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                                {
+                                  "unit": {
+                                    "namespace": "kmodels",
+                                    "value": "token"
+                                  },
+                                  "power": 1
+                                }
                               ]
                             }
                           },
-                          "applicability": { "any_of": [{ "all_of": [] }] },
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
                           ],
-                          "charge_binding": {
-                            "signal": { "namespace": "kmodels", "value": "uncached_input_tokens" },
-                            "aggregation": "request",
-                            "evidence": [
-                              {
-                                "source_ref": "example/source",
-                                "locator": { "kind": "table", "value": "synthetic" }
-                              }
-                            ],
-                            "quantity_methods": [
-                              {
-                                "calculation": {
-                                  "nodes": [
-                                    {
-                                      "op": "signal",
-                                      "signal": { "namespace": "kmodels", "value": "input_tokens" }
-                                    },
-                                    {
-                                      "op": "signal",
-                                      "signal": {
-                                        "namespace": "kmodels",
-                                        "value": "cached_input_tokens"
-                                      }
-                                    },
-                                    { "op": "subtract_floor_zero", "minuend": 0, "subtrahend": 1 }
-                                  ],
-                                  "result": 2
-                                }
-                              }
-                            ]
-                          }
+                          "applicability_id": 0
                         }
                       ],
                       "raw_variants": []
@@ -634,36 +645,44 @@
                       "id": "0000000000000000000000000000000000000000000000000000000000000004",
                       "term_key": "cached",
                       "kind": "rate",
-                      "meter": { "namespace": "kmodels", "value": "cache_read_text" },
+                      "meter": {
+                        "namespace": "kmodels",
+                        "value": "cache_read_text"
+                      },
                       "source_refs": ["example/source"],
                       "variants": [
                         {
                           "price": {
-                            "value": { "numerator": "1", "denominator": "10000" },
-                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "value": {
+                              "numerator": "1",
+                              "denominator": "10000"
+                            },
+                            "denomination": {
+                              "kind": "fiat",
+                              "currency": "USD"
+                            },
                             "per": {
                               "factors": [
-                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                                {
+                                  "unit": {
+                                    "namespace": "kmodels",
+                                    "value": "token"
+                                  },
+                                  "power": 1
+                                }
                               ]
                             }
                           },
-                          "applicability": { "any_of": [{ "all_of": [] }] },
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
                           ],
-                          "charge_binding": {
-                            "signal": { "namespace": "kmodels", "value": "cached_input_tokens" },
-                            "aggregation": "request",
-                            "evidence": [
-                              {
-                                "source_ref": "example/source",
-                                "locator": { "kind": "table", "value": "synthetic" }
-                              }
-                            ]
-                          }
+                          "applicability_id": 0
                         }
                       ],
                       "raw_variants": []
@@ -678,105 +697,101 @@
                           "target_rate_refs": [
                             "000000000000000000000000000000000000000000000000000000000000006f"
                           ],
-                          "applicability": { "any_of": [{ "all_of": [] }] },
-                          "charge_bindings": [
-                            {
-                              "signal": { "namespace": "kmodels", "value": "output_tokens" },
-                              "aggregation": "request",
-                              "evidence": [
-                                {
-                                  "source_ref": "example/source",
-                                  "locator": { "kind": "table", "value": "synthetic" }
-                                }
-                              ]
-                            }
-                          ],
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
-                          ]
+                          ],
+                          "applicability_id": 0
                         }
                       ],
                       "raw_variants": []
                     }
                   ],
                   "relations": [],
-                  "source_refs": ["example/source"],
-                  "enrollment": [],
-                  "settlement": []
+                  "source_refs": ["example/source"]
                 },
                 {
                   "id": "000000000000000000000000000000000000000000000000000000000000006e",
                   "offer_key": "advisor",
-                  "billing_mode": { "namespace": "kmodels", "value": "usage" },
-                  "states": [
-                    {
-                      "state": "numeric",
-                      "applicability": { "any_of": [{ "all_of": [] }] },
-                      "evidence": [
-                        {
-                          "source_ref": "example/source",
-                          "locator": { "kind": "table", "value": "synthetic" }
-                        }
-                      ]
-                    }
-                  ],
+                  "billing_mode": {
+                    "namespace": "kmodels",
+                    "value": "usage"
+                  },
+                  "states": [],
                   "terms": [
                     {
                       "id": "000000000000000000000000000000000000000000000000000000000000006f",
                       "term_key": "output",
                       "kind": "rate",
-                      "meter": { "namespace": "kmodels", "value": "output_text" },
+                      "meter": {
+                        "namespace": "kmodels",
+                        "value": "output_text"
+                      },
                       "source_refs": ["example/source"],
                       "variants": [
                         {
                           "price": {
-                            "value": { "numerator": "1", "denominator": "500" },
-                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "value": {
+                              "numerator": "1",
+                              "denominator": "500"
+                            },
+                            "denomination": {
+                              "kind": "fiat",
+                              "currency": "USD"
+                            },
                             "per": {
                               "factors": [
-                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                                {
+                                  "unit": {
+                                    "namespace": "kmodels",
+                                    "value": "token"
+                                  },
+                                  "power": 1
+                                }
                               ]
                             }
                           },
-                          "applicability": { "any_of": [{ "all_of": [] }] },
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
                           ],
-                          "charge_binding": {
-                            "signal": { "namespace": "kmodels", "value": "output_tokens" },
-                            "aggregation": "request",
-                            "evidence": [
-                              {
-                                "source_ref": "example/source",
-                                "locator": { "kind": "table", "value": "synthetic" }
-                              }
-                            ]
-                          }
+                          "applicability_id": 0
                         }
                       ],
                       "raw_variants": []
                     }
                   ],
                   "relations": [],
-                  "source_refs": ["example/source"],
-                  "enrollment": [],
-                  "settlement": []
+                  "source_refs": ["example/source"]
                 }
               ],
               "source_refs": ["example/source"]
+            }
+          ],
+          "applicabilities": [
+            {
+              "any_of": [
+                {
+                  "all_of": []
+                }
+              ]
             }
           ]
         }
       ]
     },
     "contribution-raw-target": {
-      "schemaVersion": "2.0",
+      "schemaVersion": "3.0",
       "snapshot": {
         "pricingDataVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "coreCatalogVersion": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -789,8 +804,16 @@
             "publication": "fresh",
             "observed_at": "2026-09-05T00:00:00.000Z"
           },
-          "vocabulary": { "provider_id": "example", "atoms": [] },
-          "models": [{ "model_ref": "example/model", "disposition": "offers" }],
+          "vocabulary": {
+            "provider_id": "example",
+            "atoms": []
+          },
+          "models": [
+            {
+              "model_ref": "example/model",
+              "disposition": "offers"
+            }
+          ],
           "sources": [
             {
               "id": "example/source",
@@ -805,87 +828,71 @@
               "id": "0000000000000000000000000000000000000000000000000000000000000001",
               "provider_id": "example",
               "book_key": "model",
-              "scope": { "kind": "models", "model_refs": ["example/model"] },
+              "scope": {
+                "kind": "models",
+                "model_refs": ["example/model"]
+              },
               "evidence": [
                 {
                   "source_ref": "example/source",
-                  "locator": { "kind": "table", "value": "synthetic" }
+                  "locator": {
+                    "kind": "table",
+                    "value": "synthetic"
+                  }
                 }
               ],
-              "resource_edges": [],
               "offers": [
                 {
                   "id": "0000000000000000000000000000000000000000000000000000000000000002",
                   "offer_key": "inference",
-                  "billing_mode": { "namespace": "kmodels", "value": "usage" },
-                  "states": [
-                    {
-                      "state": "numeric",
-                      "applicability": { "any_of": [{ "all_of": [] }] },
-                      "evidence": [
-                        {
-                          "source_ref": "example/source",
-                          "locator": { "kind": "table", "value": "synthetic" }
-                        }
-                      ]
-                    }
-                  ],
+                  "billing_mode": {
+                    "namespace": "kmodels",
+                    "value": "usage"
+                  },
+                  "states": [],
                   "terms": [
                     {
                       "id": "0000000000000000000000000000000000000000000000000000000000000003",
                       "term_key": "input",
                       "kind": "rate",
-                      "meter": { "namespace": "kmodels", "value": "input_text" },
+                      "meter": {
+                        "namespace": "kmodels",
+                        "value": "input_text"
+                      },
                       "source_refs": ["example/source"],
                       "variants": [
                         {
                           "price": {
-                            "value": { "numerator": "1", "denominator": "1000" },
-                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "value": {
+                              "numerator": "1",
+                              "denominator": "1000"
+                            },
+                            "denomination": {
+                              "kind": "fiat",
+                              "currency": "USD"
+                            },
                             "per": {
                               "factors": [
-                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                                {
+                                  "unit": {
+                                    "namespace": "kmodels",
+                                    "value": "token"
+                                  },
+                                  "power": 1
+                                }
                               ]
                             }
                           },
-                          "applicability": { "any_of": [{ "all_of": [] }] },
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
                           ],
-                          "charge_binding": {
-                            "signal": { "namespace": "kmodels", "value": "uncached_input_tokens" },
-                            "aggregation": "request",
-                            "evidence": [
-                              {
-                                "source_ref": "example/source",
-                                "locator": { "kind": "table", "value": "synthetic" }
-                              }
-                            ],
-                            "quantity_methods": [
-                              {
-                                "calculation": {
-                                  "nodes": [
-                                    {
-                                      "op": "signal",
-                                      "signal": { "namespace": "kmodels", "value": "input_tokens" }
-                                    },
-                                    {
-                                      "op": "signal",
-                                      "signal": {
-                                        "namespace": "kmodels",
-                                        "value": "cached_input_tokens"
-                                      }
-                                    },
-                                    { "op": "subtract_floor_zero", "minuend": 0, "subtrahend": 1 }
-                                  ],
-                                  "result": 2
-                                }
-                              }
-                            ]
-                          }
+                          "applicability_id": 0
                         }
                       ],
                       "raw_variants": []
@@ -894,36 +901,44 @@
                       "id": "0000000000000000000000000000000000000000000000000000000000000004",
                       "term_key": "cached",
                       "kind": "rate",
-                      "meter": { "namespace": "kmodels", "value": "cache_read_text" },
+                      "meter": {
+                        "namespace": "kmodels",
+                        "value": "cache_read_text"
+                      },
                       "source_refs": ["example/source"],
                       "variants": [
                         {
                           "price": {
-                            "value": { "numerator": "1", "denominator": "10000" },
-                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "value": {
+                              "numerator": "1",
+                              "denominator": "10000"
+                            },
+                            "denomination": {
+                              "kind": "fiat",
+                              "currency": "USD"
+                            },
                             "per": {
                               "factors": [
-                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                                {
+                                  "unit": {
+                                    "namespace": "kmodels",
+                                    "value": "token"
+                                  },
+                                  "power": 1
+                                }
                               ]
                             }
                           },
-                          "applicability": { "any_of": [{ "all_of": [] }] },
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
                           ],
-                          "charge_binding": {
-                            "signal": { "namespace": "kmodels", "value": "cached_input_tokens" },
-                            "aggregation": "request",
-                            "evidence": [
-                              {
-                                "source_ref": "example/source",
-                                "locator": { "kind": "table", "value": "synthetic" }
-                              }
-                            ]
-                          }
+                          "applicability_id": 0
                         }
                       ],
                       "raw_variants": []
@@ -938,86 +953,75 @@
                           "target_rate_refs": [
                             "000000000000000000000000000000000000000000000000000000000000006f"
                           ],
-                          "applicability": { "any_of": [{ "all_of": [] }] },
-                          "charge_bindings": [
-                            {
-                              "signal": { "namespace": "kmodels", "value": "output_tokens" },
-                              "aggregation": "request",
-                              "evidence": [
-                                {
-                                  "source_ref": "example/source",
-                                  "locator": { "kind": "table", "value": "synthetic" }
-                                }
-                              ]
-                            }
-                          ],
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
-                          ]
+                          ],
+                          "applicability_id": 0
                         }
                       ],
                       "raw_variants": []
                     }
                   ],
                   "relations": [],
-                  "source_refs": ["example/source"],
-                  "enrollment": [],
-                  "settlement": []
+                  "source_refs": ["example/source"]
                 },
                 {
                   "id": "000000000000000000000000000000000000000000000000000000000000006e",
                   "offer_key": "advisor",
-                  "billing_mode": { "namespace": "kmodels", "value": "usage" },
-                  "states": [
-                    {
-                      "state": "numeric",
-                      "applicability": { "any_of": [{ "all_of": [] }] },
-                      "evidence": [
-                        {
-                          "source_ref": "example/source",
-                          "locator": { "kind": "table", "value": "synthetic" }
-                        }
-                      ]
-                    }
-                  ],
+                  "billing_mode": {
+                    "namespace": "kmodels",
+                    "value": "usage"
+                  },
+                  "states": [],
                   "terms": [
                     {
                       "id": "000000000000000000000000000000000000000000000000000000000000006f",
                       "term_key": "output",
                       "kind": "rate",
-                      "meter": { "namespace": "kmodels", "value": "output_text" },
+                      "meter": {
+                        "namespace": "kmodels",
+                        "value": "output_text"
+                      },
                       "source_refs": ["example/source"],
                       "variants": [
                         {
                           "price": {
-                            "value": { "numerator": "1", "denominator": "500" },
-                            "denomination": { "kind": "fiat", "currency": "USD" },
+                            "value": {
+                              "numerator": "1",
+                              "denominator": "500"
+                            },
+                            "denomination": {
+                              "kind": "fiat",
+                              "currency": "USD"
+                            },
                             "per": {
                               "factors": [
-                                { "unit": { "namespace": "kmodels", "value": "token" }, "power": 1 }
+                                {
+                                  "unit": {
+                                    "namespace": "kmodels",
+                                    "value": "token"
+                                  },
+                                  "power": 1
+                                }
                               ]
                             }
                           },
-                          "applicability": { "any_of": [{ "all_of": [] }] },
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
                           ],
-                          "charge_binding": {
-                            "signal": { "namespace": "kmodels", "value": "output_tokens" },
-                            "aggregation": "request",
-                            "evidence": [
-                              {
-                                "source_ref": "example/source",
-                                "locator": { "kind": "table", "value": "synthetic" }
-                              }
-                            ]
-                          }
+                          "applicability_id": 0
                         }
                       ],
                       "raw_variants": [
@@ -1027,7 +1031,10 @@
                           "evidence": [
                             {
                               "source_ref": "example/source",
-                              "locator": { "kind": "table", "value": "synthetic" }
+                              "locator": {
+                                "kind": "table",
+                                "value": "synthetic"
+                              }
                             }
                           ]
                         }
@@ -1035,12 +1042,19 @@
                     }
                   ],
                   "relations": [],
-                  "source_refs": ["example/source"],
-                  "enrollment": [],
-                  "settlement": []
+                  "source_refs": ["example/source"]
                 }
               ],
               "source_refs": ["example/source"]
+            }
+          ],
+          "applicabilities": [
+            {
+              "any_of": [
+                {
+                  "all_of": []
+                }
+              ]
             }
           ]
         }

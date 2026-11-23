@@ -142,12 +142,35 @@ it.each(["owned", "agree-list", "foreign", "duplicate", "conflicting-list"])(
         .flatMap(({ offer }) => offer.terms)
         .find((term) => term.kind === "rate" && term.meter.value === "output_text");
       if (output?.kind !== "rate") throw Error("Missing Batch output price");
-      const locators = output.variants.flatMap(
-        ({ charge_binding }) =>
-          charge_binding?.quantity_methods?.flatMap(
-            ({ input_sources }) => input_sources?.map(({ locator }) => locator.value) ?? [],
-          ) ?? [],
+      const matchedOfferIds = new Set(result.candidates.map(({ offer }) => offer.id));
+      const matchedPrices = new Set(
+        output.variants.map(({ price }) => `${price.value.numerator}/${price.value.denominator}`),
       );
+      const canonicalOutput = candidate.pricing.data.books
+        .flatMap(({ offers }) => offers)
+        .filter(({ id }) => matchedOfferIds.has(id))
+        .flatMap(({ terms }) => terms)
+        .find((term) => term.kind === "rate" && term.meter.value === "output_text");
+      if (canonicalOutput?.kind !== "rate") throw Error("Missing canonical Batch output price");
+      const locators = canonicalOutput.variants
+        .filter(
+          ({ applicability, price }) =>
+            matchedPrices.has(`${price.value.numerator}/${price.value.denominator}`) &&
+            applicability.any_of.some(({ all_of }) =>
+              all_of.some(
+                (c) =>
+                  c.kind === "categorical" &&
+                  c.dimension.value === "region" &&
+                  c.values.some((v) => v.value === region),
+              ),
+            ),
+        )
+        .flatMap(
+          ({ charge_binding }) =>
+            charge_binding?.quantity_methods?.flatMap(
+              ({ input_sources }) => input_sources?.map(({ locator }) => locator.value) ?? [],
+            ) ?? [],
+        );
       expect(locators).toEqual(
         region === "International" || witness === "owned" || witness === "agree-list"
           ? ["/response/body/usage/completion_tokens"]

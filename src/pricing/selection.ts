@@ -9,7 +9,15 @@ import type {
 } from "../catalog/pricing-schema.ts";
 import { PricingError } from "./errors.ts";
 
-const nonPricingFields = new Set(["evidence", "applicability", "validity", "selector_sources"]);
+const nonPricingFields = new Set([
+  "evidence",
+  "applicability",
+  "applicability_id",
+  "possible_scope",
+  "possible_scope_id",
+  "validity",
+  "selector_sources",
+]);
 
 export interface Qualified {
   applicability: PriceApplicability;

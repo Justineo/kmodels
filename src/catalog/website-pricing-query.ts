@@ -45,6 +45,15 @@ export function projectWebsiteRateQuery(
   const states = offer.states.filter(
     ({ applicability }) => evaluate(applicability, modelRef, selections).state !== "false",
   );
+  const possibleRates = offer.rates.filter(
+    ({ applicability }) => evaluate(applicability, modelRef, selections).state !== "false",
+  );
+  const possibleBasePriceNotes = offer.unnormalized.filter(
+    ({ impact, possible_scope }) =>
+      impact === "base_price" &&
+      (possible_scope === undefined ||
+        evaluate(possible_scope, modelRef, selections).state !== "false"),
+  );
   for (const group of groupsByTerm(offer.rates).values()) {
     const possible = group.filter(
       ({ applicability }) => evaluate(applicability, modelRef, selections).state !== "false",
@@ -58,15 +67,24 @@ export function projectWebsiteRateQuery(
       continue;
     }
     const missing = missingDimensions(possible, modelRef, selections);
-    if (isInvariantRate(states, possible, modelRef, selections)) {
+    if (
+      isInvariantRate(states, possibleRates, possibleBasePriceNotes, possible, modelRef, selections)
+    ) {
       rates.push({ row: possible[0]!, invariant_dimensions: missing });
       continue;
     }
     for (const dimension of missing) unresolved.set(canonicalJson(dimension), dimension);
   }
-  if (new Set(states.map(({ state }) => state)).size > 1)
-    for (const dimension of missingDimensions(states, modelRef, selections))
+  const effectiveStateKinds = new Set<string>(states.map(({ state }) => state));
+  if (possibleRates.length > 0) effectiveStateKinds.add("numeric");
+  if (effectiveStateKinds.size > 1) {
+    const stateRows =
+      states.some(({ state }) => state === "numeric") || possibleRates.length === 0
+        ? states
+        : [...states, ...possibleRates];
+    for (const dimension of missingDimensions(stateRows, modelRef, selections))
       unresolved.set(canonicalJson(dimension), dimension);
+  }
   return {
     rates,
     unresolved_dimensions: [...unresolved.entries()]
@@ -94,9 +112,15 @@ export function projectWebsitePricingNotes(
       const scope = unionApplicabilities(
         rows.flatMap(({ possible_scope }) => possible_scope ?? []),
       );
+      const offerScopes = offer.states.some(({ state }) => state === "numeric")
+        ? offer.states.map(({ applicability }) => applicability)
+        : [
+            ...offer.states.map(({ applicability }) => applicability),
+            ...offer.rates.map(({ applicability }) => applicability),
+          ];
       const coversOffer =
-        offer.states.length > 0 &&
-        offer.states.every(({ applicability }) => applicabilityContainedIn(applicability, scope));
+        offerScopes.length > 0 &&
+        offerScopes.every((applicability) => applicabilityContainedIn(applicability, scope));
       return [{ ...first, possible_scope: coversOffer ? unconditionalApplicability : scope }];
     } catch {
       return rows;
@@ -183,15 +207,13 @@ function uniqueRateValues(rows: WebsiteRateRow[]): WebsiteRateRow[] {
 
 function isInvariantRate(
   states: WebsitePricingOffer["states"],
+  possibleRates: WebsiteRateRow[],
+  possibleBasePriceNotes: WebsitePricingOffer["unnormalized"],
   rows: WebsiteRateRow[],
   modelRef: string | undefined,
   selections: readonly PricingSelection[],
 ): boolean {
-  if (
-    !states.length ||
-    states.some(({ state }) => state !== "numeric") ||
-    new Set(rows.map(rateValue)).size !== 1
-  )
+  if (states.some(({ state }) => state !== "numeric") || new Set(rows.map(rateValue)).size !== 1)
     return false;
   // Both sets contain only possible rows. Keep the surviving clauses of each row.
   const remainingScope = ({ applicability }: Pick<WebsiteRateRow, "applicability">) => ({
@@ -199,7 +221,21 @@ function isInvariantRate(
       (clause) => evaluate({ any_of: [clause] }, modelRef, selections).state !== "false",
     ),
   });
-  const numericScopes = states.map(remainingScope);
+  let numericScopes: WebsitePriceApplicability[];
+  if (states.length > 0) {
+    numericScopes = states.map(remainingScope);
+  } else {
+    const termLabel = rows[0]?.label;
+    const sameTermNotes = possibleBasePriceNotes.filter(({ label }) => label === termLabel);
+    if (sameTermNotes.some(({ possible_scope }) => possible_scope === undefined)) return false;
+    numericScopes = [
+      ...possibleRates.map(remainingScope),
+      ...sameTermNotes.flatMap(({ possible_scope }) =>
+        possible_scope === undefined ? [] : [remainingScope({ applicability: possible_scope })],
+      ),
+    ];
+  }
+  if (numericScopes.length === 0) return false;
   const rateScopes = rows.map(remainingScope);
   try {
     const covered = unionApplicabilities(rateScopes);

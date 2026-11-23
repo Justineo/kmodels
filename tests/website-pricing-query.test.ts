@@ -361,4 +361,63 @@ describe("website pricing query", () => {
     const timeline = projectWebsitePricingTimeline(incomplete, "2026-08-15T00:00:00.000Z");
     expect(timeline.current.state_summary).toBe("Incomplete");
   });
+
+  it("shows invariant rates for rate-only offers without explicit numeric states (F05)", () => {
+    const data = offer([{ amount: "$0.01", scope: region("us", "eu") }]);
+    data.states = [];
+    const result = projectWebsiteRateQuery(data, modelRef, []);
+    expect(result.rates).toHaveLength(1);
+    expect(result.rates[0]?.row.amount).toBe("$0.01");
+    expect(result.unresolved_dimensions).toEqual([]);
+  });
+
+  it("does not mark a rate invariant when the same term has an unnormalized base_price in another scope", () => {
+    const data = offer([{ amount: "$0.3", scope: region("us") }]);
+    data.states = [];
+    data.unnormalized = [
+      {
+        key: "raw-eu",
+        label: "Input text",
+        impact: "base_price",
+        reason: "Unsupported structure",
+        possible_scope: region("eu"),
+      },
+    ];
+    const result = projectWebsiteRateQuery(data, modelRef, []);
+    expect(result.rates).toEqual([]);
+    expect(result.unresolved_dimensions).toEqual([{ namespace: "kmodels", value: "region" }]);
+  });
+
+  it("keeps another term's unnormalized raw note from hiding an invariant rate", () => {
+    const data = offer([{ amount: "$2", scope: region("us") }]);
+    data.states = [];
+    data.unnormalized = [
+      {
+        key: "raw-other",
+        label: "Unresolved geo:input text",
+        impact: "base_price",
+        reason: "Unsupported structure",
+        possible_scope: region("eu"),
+      },
+    ];
+    const result = projectWebsiteRateQuery(data, modelRef, []);
+    expect(result.rates).toHaveLength(1);
+    expect(result.rates[0]?.row.amount).toBe("$2");
+  });
+
+  it("surfaces missing context when an implicit-numeric offer also has a non-numeric state", () => {
+    const data = offer([{ amount: "$2", scope: region("us") }]);
+    data.states = [
+      {
+        key: "state:free",
+        state: "free",
+        label: "Free",
+        applicability: region("eu"),
+        applicability_label: "EU",
+      },
+    ];
+    const result = projectWebsiteRateQuery(data, undefined, []);
+    expect(result.rates).toEqual([]);
+    expect(result.unresolved_dimensions).toEqual([{ namespace: "kmodels", value: "region" }]);
+  });
 });

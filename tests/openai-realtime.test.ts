@@ -177,7 +177,7 @@ async function compiled(
       }),
     ),
   );
-  const exported = priceDataExport(
+  priceDataExport(
     core,
     createPricingCatalogEnvelope(
       {
@@ -189,7 +189,7 @@ async function compiled(
       core,
     ),
   );
-  const offer = exported.providers[0]?.books[0]?.offers
+  const offer = partition.books[0]?.offers
     .flatMap(priceContexts)
     .find((value) => value.context_key === (controls.batch ? "batch" : "sync"));
   if (offer === undefined) throw new Error("Missing native offer");

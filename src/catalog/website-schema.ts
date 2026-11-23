@@ -22,7 +22,7 @@ import {
 } from "./pricing-schema.ts";
 import { pricingLimits } from "./pricing-constants.ts";
 
-export const WEBSITE_DETAIL_CHUNK_MAX_BYTES = 2 * 1024 * 1024;
+export { WEBSITE_DETAIL_CHUNK_MAX_BYTES } from "./website-core.ts";
 import { modelCardSchema, deploymentSpecSchema, accessConditionSchema } from "./model-metadata.ts";
 import {
   deliveryModes,
