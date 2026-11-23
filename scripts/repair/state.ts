@@ -8,6 +8,16 @@ const hash = z.string().regex(/^[a-f0-9]{64}$/);
 export const candidateKey = (candidate: CatalogRepairCandidate) =>
   `${candidate.provider_id}/${candidate.subject_id}`;
 export const digest = (value: string) => createHash("sha256").update(value).digest("hex");
+export const reviewCoverageSchema = z
+  .array(
+    z.object({
+      area: z.string(),
+      status: z.string(),
+      reason: z.string().max(8000),
+      next_action: z.string().max(8000).optional(),
+    }),
+  )
+  .max(8);
 export const taskSchema = z.object({
   id: z.string().max(300),
   provider: z.string().max(100),
@@ -35,17 +45,7 @@ export const taskSchema = z.object({
   adopted_snapshot: hash.optional(),
   deployed_run: z.string().regex(/^\d+$/).optional(),
   source_versions: z.record(z.string(), z.string()).default({}),
-  coverage: z
-    .array(
-      z.object({
-        area: z.string(),
-        status: z.string(),
-        reason: z.string().max(8000),
-        next_action: z.string().max(8000).optional(),
-      }),
-    )
-    .max(8)
-    .default([]),
+  coverage: reviewCoverageSchema.default([]),
 });
 export type MaintenanceTask = z.infer<typeof taskSchema>;
 

@@ -26,9 +26,9 @@ import {
   prepareBudgetLease,
   priorTakeovers,
   reserveRunBudget,
+  reviewCoverageSchema,
   settleBudget,
   stateSchema,
-  taskSchema,
   type MaintenanceState,
 } from "./state.ts";
 
@@ -386,7 +386,7 @@ async function main(): Promise<void> {
               reason: z.string().max(8000),
               next_action: z.string().optional(),
               blocker: z.object({ next_action: z.string() }).optional(),
-              coverage: taskSchema.shape.coverage.unwrap().optional(),
+              coverage: reviewCoverageSchema.optional(),
             }),
           ),
         })

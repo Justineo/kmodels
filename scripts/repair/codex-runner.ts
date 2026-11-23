@@ -344,6 +344,9 @@ async function main(): Promise<void> {
     })
     .passthrough()
     .parse(JSON.parse(admissionText));
+  const periodicCandidateIds = admission.candidates
+    .filter(({ trigger }) => isPeriodicReview(trigger))
+    .map(({ id }) => id);
   const originalEvidence = join(archive, "tmp/gh-aw/agent");
   await checkEvidenceTree(originalEvidence);
   let reviewText = await readSharedFile(
@@ -566,13 +569,10 @@ async function main(): Promise<void> {
         });
       }
       const expected = closedCandidates(review);
-      const periodicRepairs = admission.candidates
-        .filter(
-          ({ id, trigger }) =>
-            isPeriodicReview(trigger) &&
-            review.candidates.some((row) => row.id === id && row.status === "repaired"),
-        )
-        .map(({ id }) => id);
+      const repairedIds = new Set(
+        review.candidates.filter(({ status }) => status === "repaired").map(({ id }) => id),
+      );
+      const periodicRepairs = periodicCandidateIds.filter((id) => repairedIds.has(id));
       const baseline = await freshWork(`${label}-baseline`, "");
       gateway.startPhase();
       const work = patch ? await freshWork(`${label}-proposal`, patch) : baseline;
@@ -649,7 +649,6 @@ async function main(): Promise<void> {
     try {
       let report: Verification;
       if (stage === "initial") {
-        gateway.startPhase();
         report = await verify("initial");
       } else {
         const prior = join(input, "initial");
@@ -817,7 +816,6 @@ async function main(): Promise<void> {
             patchHash: digest(patch),
           },
         );
-        gateway.startPhase();
         report = await verify("revised");
         if (reviewRoute(report, stage, true) === "pending") {
           await pending(report, "The revised proposal still has unresolved independent findings.");

@@ -185,15 +185,16 @@ export async function validateRepairReview(
         areas.add(name);
         text(area.reason);
         const evidence = records(area.evidence);
-        if (area.status === "pending") {
+        const pending = area.status === "pending";
+        if (pending) {
           text(area.next_action);
           if (row.status === "not_a_defect")
             throw new Error(`Pending periodic area cannot establish a healthy review: ${name}`);
-          for (const ref of evidence) await proof(ref);
-          continue;
+        } else if (evidence.length === 0) {
+          throw new Error(`Periodic review area needs evidence: ${name}`);
         }
-        if (evidence.length === 0) throw new Error(`Periodic review area needs evidence: ${name}`);
         for (const ref of evidence) await proof(ref);
+        if (pending) continue;
         if (area.status === "blocked") {
           text(area.next_action);
           if (!has("alternative") || row.status === "not_a_defect")
@@ -308,28 +309,33 @@ export function repairScopeSummary(admissionText: string, reviewText: string): s
       .map((candidate) => text(candidate.id)),
   );
   const summary = {
-    candidates: rows.map((row) => ({
-      id: text(row.id),
-      status: text(row.status),
-      ...(row.status === "blocked"
-        ? { next_action: text(record(row.blocker).next_action) }
-        : row.status === "pending"
-          ? { reason: text(row.reason), next_action: text(row.next_action) }
-          : {}),
-      ...(!periodic.has(text(row.id))
-        ? {}
-        : row.status === "pending"
-          ? { review_complete: false }
-          : {
-              review_complete: row.status === "not_a_defect",
-              blocked_areas: records(row.coverage)
-                .filter((area) => area.status === "blocked")
-                .map((area) => ({ area: text(area.area), next_action: text(area.next_action) })),
-              pending_areas: records(row.coverage)
-                .filter((area) => area.status === "pending")
-                .map((area) => ({ area: text(area.area), next_action: text(area.next_action) })),
-            }),
-    })),
+    candidates: rows.map((row) => {
+      const id = text(row.id);
+      const status = text(row.status);
+      const candidate = {
+        id,
+        status,
+        ...(status === "blocked"
+          ? { next_action: text(record(row.blocker).next_action) }
+          : status === "pending"
+            ? { reason: text(row.reason), next_action: text(row.next_action) }
+            : {}),
+      };
+      if (!periodic.has(id)) return candidate;
+      if (status === "pending") return { ...candidate, review_complete: false };
+
+      const coverage = records(row.coverage);
+      const openAreas = (status: "blocked" | "pending") =>
+        coverage
+          .filter((area) => area.status === status)
+          .map((area) => ({ area: text(area.area), next_action: text(area.next_action) }));
+      return {
+        ...candidate,
+        review_complete: status === "not_a_defect",
+        blocked_areas: openAreas("blocked"),
+        pending_areas: openAreas("pending"),
+      };
+    }),
     deferred: records(admission.deferred_candidates ?? []).map((candidate) => text(candidate.id)),
   };
   return `\n## Checked repair scope\n\nPending and blocked candidates and review areas, and deferred candidates remain unresolved.\n\n\`\`\`json\n${JSON.stringify(summary, null, 2).replaceAll("`", "\\u0060")}\n\`\`\`\n`;
