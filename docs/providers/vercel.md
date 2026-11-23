@@ -200,7 +200,9 @@ Fast and regional Fast objects retain their published input/output/cache context
 top-level scalar is not a flat rate over longer contexts when explicit tiers are present.
 
 The model-list and endpoint default language-token price fields own `service_tier=standard` at
-extraction. Fast, route and regional variants retain that scope; named service-tier fields own
+extraction. Evaluation and extraction rows publish those same default token fields and therefore
+own it too; their catalogs publish no named tier, so every one of their token rates is Standard.
+Fast, route and regional variants retain that scope; named service-tier fields own
 their explicitly published tier. A missing Flex/Priority peer cannot change a default quote's
 meaning. Non-language media components and independent service prices do not acquire that selector.
 

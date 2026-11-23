@@ -446,3 +446,37 @@ it("publishes service tariffs and scoped Live accounting through actual portable
     ]),
   );
 }, 15000);
+
+it("resolves evaluation and extraction token prices only in the Standard served tier", async () => {
+  const fixture = z
+    .object({ index: z.object({ body: z.string() }) })
+    .parse(
+      JSON.parse(
+        await readFile(new URL("./fixtures/vercel/token-tier-types.json", import.meta.url), "utf8"),
+      ),
+    );
+  const listSchema = z.object({ object: z.literal("list"), data: z.array(z.unknown()) });
+  const { candidate } = await collect((bundle) => {
+    const list = listSchema.parse(JSON.parse(bundle.index.body));
+    list.data.push(...listSchema.parse(JSON.parse(fixture.index.body)).data);
+    bundle.index.body = JSON.stringify(list);
+  });
+  const query = lookup(candidate);
+  const tierQuery = (model_id: string, tier: string, extra: readonly Selector[] = []) =>
+    query({
+      provider_id: "vercel",
+      model_id,
+      selectors: [...extra, condition("served_service_tier", tier)],
+    });
+  for (const [model_id, extra] of [
+    ["baseten/elephant-1", [condition("region", "us")]],
+    ["scaledown/extract-1", []],
+  ] as const) {
+    const standard = tierQuery(model_id, "standard", extra);
+    expect(standard.status, model_id).toBe("matched");
+    expect(amounts(standard)).not.toEqual([]);
+    expect(tierQuery(model_id, "flex", extra).status, model_id).toBe("unknown");
+  }
+  for (const tier of ["standard", "flex"])
+    expect(tierQuery("bfl/flux-2-pro", tier).status, tier).toBe("unknown");
+}, 15000);

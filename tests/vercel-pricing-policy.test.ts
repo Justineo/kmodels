@@ -727,3 +727,22 @@ describe("Vercel price authority", () => {
     expect(() => parse({}, [route])).toThrow("route identity disagreed");
   });
 });
+
+it("scopes default token prices to Standard for language, evaluation and extraction rows only", () => {
+  const tokenFacts = (type: string) => {
+    const { result } = parse({ input: "0.000002", output: "0.000006" }, [], model.id, { type });
+    return (result.models?.[0]?.price_facts ?? []).filter(
+      ({ meter }) => meter === "input_text" || meter === "output_text",
+    );
+  };
+  for (const type of ["language", "evaluation", "extraction"]) {
+    const facts = tokenFacts(type);
+    expect(facts.length, type).toBeGreaterThan(0);
+    for (const fact of facts) expect(fact.conditions.service_tier, type).toBe("standard");
+  }
+  for (const type of ["image", "speech", "reranking"]) {
+    const facts = tokenFacts(type);
+    expect(facts.length, type).toBeGreaterThan(0);
+    for (const fact of facts) expect(fact.conditions.service_tier, type).toBeUndefined();
+  }
+});

@@ -648,6 +648,12 @@ function videoConditions(variants: z.infer<typeof videoPriceSchema>[]) {
   };
 }
 
+const defaultServiceTierTypes = new Set(["language", "evaluation", "extraction"]);
+
+function ownsDefaultServiceTier(item: Item): boolean {
+  return defaultServiceTierTypes.has(item.type);
+}
+
 function endpointRates(
   item: Item,
   endpoint: Endpoint,
@@ -665,7 +671,7 @@ function endpointRates(
     Object.values(item.pricing.regional ?? {}).some(({ fast }) => fast !== undefined);
   const baseConditions: SourcePriceFact["conditions"] = {
     route_provider: endpoint.provider_name,
-    service_tier: item.type === "language" ? "standard" : undefined,
+    service_tier: ownsDefaultServiceTier(item) ? "standard" : undefined,
     region: hasRegionalPricing ? "default" : undefined,
     speed: hasFast ? "standard" : undefined,
   };
@@ -1222,7 +1228,7 @@ function pricing(item: Item, sourceId: string, fastSlug = false): SourcePriceFac
   const hasFast =
     value.fast !== undefined || regional.some(([, prices]) => prices.fast !== undefined);
   const baseConditions: SourcePriceFact["conditions"] = {
-    service_tier: item.type === "language" ? "standard" : undefined,
+    service_tier: ownsDefaultServiceTier(item) ? "standard" : undefined,
     region: regional.length === 0 ? undefined : "default",
     speed: fastSlug ? "fast" : hasFast ? "standard" : undefined,
   };
