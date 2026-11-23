@@ -22,18 +22,14 @@ Status: implemented
   materialized. It is not a substitute for unit or adapter behavior tests.
 - Maintenance tests verify reservation/settlement failure boundaries, task invalidation and
   shared USD 10 run reservations, concrete-error checkpoint binding and monthly exhaustion,
-  scheduling, model routing with mocked Responses HTTP, public-only captures, mailbox path
-  isolation, full-source evidence, complete independent verdict coverage and adoption prerequisites.
-  Workflow checks preserve private accounting, unprivileged Codex isolation, final-patch threat
-  detection and trusted publication gates. The repair-toolchain CI job builds the pinned Codex
-  image and runs `vp node scripts/repair/codex-smoke.ts` against a local mock Responses gateway,
-  without an API key or paid inference. `--local` checks the same protocol with an installed CLI
-  when Docker is unavailable; it does not validate Linux container startup.
-  These are deterministic software regressions, not a model evaluation or live spend process.
-- Semantic audit tests use reviewed source fixtures and mock HTTP to verify independent source
-  judgments, deterministic gap routing without inference, parser replay, cache reuse, evidence
-  integrity, exact dismissals and failure isolation. The separate opt-in live evaluation measures
-  marker-preserving semantic drift; see [Source semantic audit](semantic-audit.md).
+- Self-heal & architecture boundary tests (`tests/self-heal.test.ts`,
+  `tests/architecture-boundaries.test.ts`, `tests/public-evidence.test.ts`,
+  `tests/repair-provider-replay.test.ts`) verify deterministic triage, path allowlists,
+  anti-weakening diff rules, official-source replay, zero-secret self-heal workflow boundaries,
+  zero runtime import cycles, and browser zero-Zod invariants.
+- End-to-end smoke check (`vp run test:e2e`): real Playwright browser verification against built
+  `dist/` confirming initial rows, search, zero-results recovery, model details drawer, zero
+  runtime errors, and zero client Zod chunks.
 
 The generated-data file list is defined once in `tests/generated-data-tests.ts` and consumed by Vite+
 configuration and the test-boundary guard. Adding a test that reads durable generated state
@@ -355,7 +351,8 @@ superseded CI run.
   scope. Focused tests remain preferable during editing when the actual readers are known.
 - Shared configuration, runtime, lockfile and test-setup changes select the complete test suite,
   the production build and package gates. An unavailable/initial comparison also selects this
-  complete gate. `collect:fixtures` is a convenience subset, never a second gate after full tests.
+  complete gate. `vp run test:e2e` runs a Playwright browser smoke check against the built `dist/`
+  site (`App.vue`, search `replaceState`, zero-results recovery, and model detail drawer).
 - Package generation must preserve the prepared package source tree. Compare content and modes
   before and after generation, including intentional uncommitted edits and new source artifacts;
   ignore generated runtime output. An intentional schema/entry restoration is not a build mutation.

@@ -125,6 +125,7 @@ import {
   isContractDrift,
 } from "./source-contract.ts";
 import {
+  sourceErrorFingerprint,
   sourceErrorMessage as message,
   sourceFailure,
   summarizeDependencyFailures,
@@ -1147,17 +1148,58 @@ export async function collectProvider(
         throw error;
       }
       const { result } = fetch;
+      const replayCatalogModels =
+        role === "catalog" ? undefined : applyPublicGroups(groups, supplements, overlays);
+      const replayPreviousRetailMeters =
+        source.extractor.kind === "azure-retail-prices"
+          ? acceptedAzureRetailMeters(acceptedRetail, oldSourceById.get(source.id))
+          : undefined;
+      const replayPreviousCatalogModels =
+        source.extractor.kind === "azure-retail-prices"
+          ? comparableOldModels.filter(({ source_refs }) =>
+              source_refs.some((id) => {
+                const owner = currentSources.get(id);
+                return (
+                  owner !== undefined &&
+                  (owner.role === "catalog" || owner.role === "supplement") &&
+                  owner.scope === "global" &&
+                  owner.exhaustive !== true &&
+                  oldSourceById.get(id)?.extractor_version === owner.extractorVersion
+                );
+              }),
+            )
+          : undefined;
+      const replayCaptureContext =
+        replayCatalogModels === undefined &&
+        replayPreviousCatalogModels === undefined &&
+        replayPreviousRetailMeters === undefined
+          ? undefined
+          : source.extractor.kind === "azure-retail-prices"
+            ? {
+                ...(replayCatalogModels === undefined
+                  ? {}
+                  : { catalog_models: replayCatalogModels }),
+                ...(replayPreviousCatalogModels === undefined
+                  ? {}
+                  : { previous_catalog_models: replayPreviousCatalogModels }),
+                ...(replayPreviousRetailMeters === undefined
+                  ? {}
+                  : { previous_retail_meters: [...replayPreviousRetailMeters].sort() }),
+              }
+            : replayCatalogModels;
       const captureEvidence = () =>
-        captureRepairSource(source, result.body, observedAt).catch((error: unknown) => {
-          warnings.push(
-            sourceWarning(
-              "repair_evidence_unavailable",
-              manifest.provider.id,
-              source.id,
-              error instanceof Error ? error.message : "Repair evidence could not be saved",
-            ),
-          );
-        });
+        captureRepairSource(source, result.body, observedAt, replayCaptureContext).catch(
+          (error: unknown) => {
+            warnings.push(
+              sourceWarning(
+                "repair_evidence_unavailable",
+                manifest.provider.id,
+                source.id,
+                error instanceof Error ? error.message : "Repair evidence could not be saved",
+              ),
+            );
+          },
+        );
 
       const dependencyFailures = (result.dependencyFailures ?? []).map((failure) => ({
         ...failure,
@@ -1188,10 +1230,10 @@ export async function collectProvider(
           source,
           body: result.body,
           observedAt,
-          ...(role === "catalog"
+          ...(replayCatalogModels === undefined
             ? {}
             : {
-                catalogModels: applyPublicGroups(groups, supplements, overlays),
+                catalogModels: replayCatalogModels,
                 inventoryModels: [
                   ...inventories.flatMap(({ models }) => models),
                   ...unavailableInventories.flatMap((inventory) =>
@@ -1210,26 +1252,12 @@ export async function collectProvider(
                 ],
               }),
           onContractFinding: contractFindings.add,
-          ...(source.extractor.kind === "azure-retail-prices"
-            ? {
-                previousRetailMeters: acceptedAzureRetailMeters(
-                  acceptedRetail,
-                  oldSourceById.get(source.id),
-                ),
-                previousCatalogModels: comparableOldModels.filter(({ source_refs }) =>
-                  source_refs.some((id) => {
-                    const owner = currentSources.get(id);
-                    return (
-                      owner !== undefined &&
-                      (owner.role === "catalog" || owner.role === "supplement") &&
-                      owner.scope === "global" &&
-                      owner.exhaustive !== true &&
-                      oldSourceById.get(id)?.extractor_version === owner.extractorVersion
-                    );
-                  }),
-                ),
-              }
-            : {}),
+          ...(replayPreviousRetailMeters === undefined
+            ? {}
+            : { previousRetailMeters: replayPreviousRetailMeters }),
+          ...(replayPreviousCatalogModels === undefined
+            ? {}
+            : { previousCatalogModels: replayPreviousCatalogModels }),
           onPricingReconciliation: (item) => {
             pricingReconciliationItems.push(item);
           },
@@ -1254,6 +1282,8 @@ export async function collectProvider(
           source_id: source.id,
           outcome: "parse_failed",
           message: message(error),
+          error_fingerprint: sourceErrorFingerprint(error),
+          content_hash: result.contentHash,
           ...failureState,
           ...dependencySummary,
           ...contractFindings.summary(),

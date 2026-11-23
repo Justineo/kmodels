@@ -9,7 +9,11 @@ import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import { sourcePriceFactSchema, parsedPricingStateSchema } from "../src/catalog/pricing-source.ts";
 import { isPricingDependencySource } from "../src/catalog/pricing-adapter.ts";
 import { providerModelSchema } from "../src/catalog/schema.ts";
-import { createContractFindingCollector } from "../src/catalog/source-contract.ts";
+import {
+  contractEvidence,
+  createContractFindingCollector,
+} from "../src/catalog/source-contract.ts";
+import { sourceErrorFingerprint, sourceErrorMessage } from "../src/catalog/source-failure.ts";
 import {
   sourcePricingReconciliation,
   type PricingReconciliationItem,
@@ -23,7 +27,7 @@ const evidenceSchema = z.object({
   source_hash: z.string().regex(/^[a-f0-9]{64}$/),
   body: z.string(),
 });
-const contextSchema = z.array(
+export const replayContextModelsSchema = z.array(
   providerModelSchema
     .extend({
       pricing_state: parsedPricingStateSchema.optional(),
@@ -35,6 +39,59 @@ const contextSchema = z.array(
       ...(pricing_state === undefined ? {} : { pricing_state }),
     })),
 );
+export const replayStructuredContextSchema = z.strictObject({
+  catalog_models: replayContextModelsSchema.optional(),
+  previous_catalog_models: replayContextModelsSchema.optional(),
+  previous_retail_meters: z.array(z.string().min(1)).optional(),
+});
+export const replayContextSchema = z.union([
+  replayContextModelsSchema,
+  replayStructuredContextSchema,
+]);
+
+export interface ParsedReplayContext {
+  kind: "catalog_models" | "azure_retail";
+  catalogModels?: z.infer<typeof replayContextModelsSchema>;
+  previousCatalogModels?: z.infer<typeof replayContextModelsSchema>;
+  previousRetailMeters?: Set<string>;
+}
+
+/**
+ * Single authoritative parser for offline replay context files, shared by both
+ * `triage.ts` evidence discovery and `replay-catalog-evidence.ts` execution.
+ */
+export function parseReplayContext(
+  context: unknown,
+  expectedProviderId?: string,
+): ParsedReplayContext {
+  const parsedContext = replayContextSchema.parse(context);
+  const catalogModels = Array.isArray(parsedContext) ? parsedContext : parsedContext.catalog_models;
+  const previousCatalogModels = Array.isArray(parsedContext)
+    ? undefined
+    : parsedContext.previous_catalog_models;
+  const previousRetailMeters =
+    Array.isArray(parsedContext) || parsedContext.previous_retail_meters === undefined
+      ? undefined
+      : new Set(parsedContext.previous_retail_meters);
+  if (
+    expectedProviderId !== undefined &&
+    (catalogModels?.some(({ provider_id }) => provider_id !== expectedProviderId) ||
+      previousCatalogModels?.some(({ provider_id }) => provider_id !== expectedProviderId))
+  ) {
+    throw new Error("Replay catalog context has another provider's models");
+  }
+  const isAzureRetail =
+    !Array.isArray(parsedContext) &&
+    parsedContext.catalog_models !== undefined &&
+    parsedContext.previous_catalog_models !== undefined &&
+    parsedContext.previous_retail_meters !== undefined;
+  return {
+    kind: isAzureRetail ? "azure_retail" : "catalog_models",
+    ...(catalogModels === undefined ? {} : { catalogModels }),
+    ...(previousCatalogModels === undefined ? {} : { previousCatalogModels }),
+    ...(previousRetailMeters === undefined ? {} : { previousRetailMeters }),
+  };
+}
 
 export function verifiedCatalogEvidence(sourceId: string, input: unknown) {
   const evidence = evidenceSchema.parse(input);
@@ -49,12 +106,24 @@ export function verifiedCatalogEvidence(sourceId: string, input: unknown) {
   return { manifest, source, evidence };
 }
 
-export function parseEvidence(sourceId: string, input: unknown, context?: unknown) {
+export type ReplayFailureStage = "input_error" | "evidence_error" | "context_error" | "parse_error";
+
+export function parseEvidence(
+  sourceId: string,
+  input: unknown,
+  context?: unknown,
+  onStage?: (stage: ReplayFailureStage) => void,
+  findings = createContractFindingCollector(),
+) {
+  onStage?.("evidence_error");
   const { manifest, source, evidence } = verifiedCatalogEvidence(sourceId, input);
-  const catalogModels = context === undefined ? undefined : contextSchema.parse(context);
-  if (catalogModels?.some(({ provider_id }) => provider_id !== manifest.provider.id))
-    throw new Error("Replay catalog context has another provider's models");
-  const findings = createContractFindingCollector();
+  onStage?.("context_error");
+  const parsedContext =
+    context === undefined ? undefined : parseReplayContext(context, manifest.provider.id);
+  const catalogModels = parsedContext?.catalogModels;
+  const previousCatalogModels = parsedContext?.previousCatalogModels;
+  const previousRetailMeters = parsedContext?.previousRetailMeters;
+  onStage?.("parse_error");
   const reconciliation: PricingReconciliationItem[] = [];
   const result = parseSource({
     provider: { ...manifest.provider, source_ids: manifest.sources.map(({ id }) => id) },
@@ -62,18 +131,48 @@ export function parseEvidence(sourceId: string, input: unknown, context?: unknow
     body: evidence.body,
     observedAt: evidence.observed_at,
     ...(catalogModels === undefined ? {} : { catalogModels }),
+    ...(previousCatalogModels === undefined ? {} : { previousCatalogModels }),
+    ...(previousRetailMeters === undefined ? {} : { previousRetailMeters }),
     onContractFinding: findings.add,
     onPricingReconciliation: (item) => reconciliation.push(item),
   });
-  return { result, evidence, source, catalogModels, findings, reconciliation };
+  return {
+    result,
+    evidence,
+    source,
+    catalogModels,
+    previousCatalogModels,
+    previousRetailMeters,
+    findings,
+    reconciliation,
+  };
 }
 
-export function replayCatalogEvidence(sourceId: string, input: unknown, context?: unknown) {
-  const { result, evidence, source, catalogModels, findings, reconciliation } = parseEvidence(
-    sourceId,
-    input,
-    context,
-  );
+export function replayCatalogEvidence(
+  sourceId: string,
+  input: unknown,
+  context?: unknown,
+  onStage?: (stage: ReplayFailureStage) => void,
+  findings = createContractFindingCollector(),
+) {
+  const {
+    result,
+    evidence,
+    source,
+    catalogModels,
+    previousCatalogModels,
+    previousRetailMeters,
+    reconciliation,
+  } = parseEvidence(sourceId, input, context, onStage, findings);
+  const hasStructuredContext =
+    previousCatalogModels !== undefined || previousRetailMeters !== undefined;
+  const contextHashPayload = hasStructuredContext
+    ? {
+        catalog_models: catalogModels ?? [],
+        previous_catalog_models: previousCatalogModels ?? [],
+        previous_retail_meters: [...(previousRetailMeters ?? [])].sort(),
+      }
+    : catalogModels;
   return {
     schema_version: 1,
     stage: "parse",
@@ -83,11 +182,17 @@ export function replayCatalogEvidence(sourceId: string, input: unknown, context?
     extractor_version: source.extractorVersion,
     observed_at: evidence.observed_at,
     context:
-      catalogModels === undefined
+      contextHashPayload === undefined
         ? null
         : {
-            model_count: catalogModels.length,
-            sha256: sha256(stableJson(catalogModels)),
+            model_count: catalogModels?.length ?? 0,
+            ...(previousCatalogModels === undefined
+              ? {}
+              : { previous_model_count: previousCatalogModels.length }),
+            ...(previousRetailMeters === undefined
+              ? {}
+              : { previous_retail_meter_count: previousRetailMeters.size }),
+            sha256: sha256(stableJson(contextHashPayload)),
           },
     models: result.models.map(
       ({ uid, release_date, updated_date, price_facts, raw_price_facts }) => ({
@@ -101,6 +206,14 @@ export function replayCatalogEvidence(sourceId: string, input: unknown, context?
     pricing_inputs: result.pricing_inputs?.length ?? 0,
     commercial_facts: result.commercial_facts?.length ?? 0,
     ...findings.summary(),
+    ...(findings.replayCounts().total_findings === 0
+      ? {}
+      : {
+          contract_findings_total: findings.replayCounts().total_findings,
+          contract_reject_findings: findings.replayCounts().reject_findings,
+          contract_diagnostic_counts: findings.replayCounts().diagnostic_counts,
+          contract_reject_diagnostic_counts: findings.replayCounts().reject_diagnostic_counts,
+        }),
     reconciliation: isPricingDependencySource(source)
       ? sourcePricingReconciliation(result.models, reconciliation, true)
       : null,
@@ -122,11 +235,56 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(
   const [sourceId, path, context, extra] = process.argv.slice(2);
   if (sourceId === undefined || path === undefined || extra !== undefined)
     throw new Error("Expected SOURCE_ID EVIDENCE_JSON [PARSED_CATALOG_MODELS_JSON]");
-  // Let parse failures terminate with a nonzero status; a printed error is not a successful replay.
-  const summary = replayCatalogEvidence(
-    sourceId,
-    await readBoundedJson(path),
-    context === undefined ? undefined : await readBoundedJson(context),
-  );
-  console.log(JSON.stringify(summary, null, 2));
+  // Let parse failures terminate with a nonzero status while emitting exact stage, fingerprint,
+  // and BOTH pre-throw accumulated diagnostics and final exception diagnostics on stderr.
+  let failureStage: ReplayFailureStage = "input_error";
+  let verifiedSourceHash: string | undefined;
+  const findings = createContractFindingCollector();
+  try {
+    const rawEvidence = await readBoundedJson(path);
+    const rawContext = context === undefined ? undefined : await readBoundedJson(context);
+    if (
+      typeof rawEvidence === "object" &&
+      rawEvidence !== null &&
+      "source_hash" in rawEvidence &&
+      typeof rawEvidence.source_hash === "string" &&
+      /^[a-f0-9]{64}$/.test(rawEvidence.source_hash)
+    ) {
+      verifiedSourceHash = rawEvidence.source_hash;
+    }
+    const summary = replayCatalogEvidence(
+      sourceId,
+      rawEvidence,
+      rawContext,
+      (stage) => {
+        failureStage = stage;
+      },
+      findings,
+    );
+    console.log(JSON.stringify(summary, null, 2));
+  } catch (error) {
+    const contract = contractEvidence(error);
+    if (contract !== undefined) findings.add(contract);
+    const replayCounts = findings.replayCounts();
+    console.error(
+      JSON.stringify({
+        schema_version: 1,
+        stage: failureStage,
+        source_id: sourceId,
+        ...(verifiedSourceHash === undefined ? {} : { source_hash: verifiedSourceHash }),
+        error_name: error instanceof Error ? error.name : "Error",
+        error_fingerprint: sourceErrorFingerprint(error),
+        message: sourceErrorMessage(error),
+        ...(contract === undefined ? {} : { contract_finding: contract }),
+        ...findings.summary(),
+        ...(replayCounts.total_findings === 0
+          ? {}
+          : {
+              contract_findings_total: replayCounts.total_findings,
+              contract_diagnostic_counts: replayCounts.diagnostic_counts,
+            }),
+      }),
+    );
+    process.exitCode = 1;
+  }
 }

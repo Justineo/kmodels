@@ -375,11 +375,6 @@ is null when no region is pinned. Request omission alone does not establish resp
 Losing that default statement removes only the default, while a still-documented resolved-region
 field remains available.
 
-The optional maintenance [semantic contract audit](../semantic-audit.md) independently checks the
-meaning of emitted search counts, speed, tier and region mappings against complete original public
-documents. Known missing mappings go directly to repair without a model call. Jev may request
-review when source meaning contradicts an emitted contract; it never supplies a published fact.
-
 Base text input remains semantically bound but has no source-derived quantity method when a separate
 cache partition is priced, because Vercel does not explicitly establish whether the native prompt
 counter includes every priced cache partition. Aggregate native prompt/completion counters also do

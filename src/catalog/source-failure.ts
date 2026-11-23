@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { compareUtf8 } from "./canonical-value.ts";
+import { sha256 } from "./io.ts";
 import {
   contractEvidence,
   maxContractFindings,
@@ -76,6 +77,16 @@ export class SourceRetryError extends SourceFetchError {
     super(error.message, error.status);
     this.retryFailure = retryFailure;
   }
+}
+
+/**
+ * Privacy-preserving deterministic failure fingerprint computed BEFORE URL/ARN/credential redaction
+ * and 1024-char truncation, so two different failing pages with identical redacted messages
+ * (`Unexpected page: [source]`) remain distinguishable without leaking raw URLs or secrets.
+ */
+export function sourceErrorFingerprint(error: unknown): string {
+  const raw = error instanceof Error ? `${error.name}:${error.message}` : String(error);
+  return sha256(raw).slice(0, 16);
 }
 
 export function sourceErrorMessage(error: unknown): string {

@@ -183,8 +183,7 @@ Status: implemented
   The shard CLI likewise does not retain its full batch while awaiting publication. This prevents
   obsolete price graphs and replay inputs from overlapping the website/export projection peak;
   caller-owned collection inputs remain unchanged. Worker, cache and admission limits are unchanged.
-- Maintenance has a narrowly scoped exception: the opt-in [semantic audit](semantic-audit.md) may
-  save its four reviewed public Vercel documents, and `fetch-catalog-evidence.ts` may save a reviewed
+- Maintenance has a narrowly scoped exception: `fetch-catalog-evidence.ts` may save a reviewed
   public repair source, fixed companion, or bounded raw discovery index (`--index`), to temporary
   external artifacts for replay. Index-only evidence does not satisfy bundle completeness and is
   compared only with its own dependency hash. This is not

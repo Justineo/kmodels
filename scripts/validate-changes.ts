@@ -35,12 +35,14 @@ export function validationPlan(paths: readonly string[], inputs: ValidationInput
   const build =
     full ||
     changed(
-      /^(?:data\/(?:catalog(?:-snapshot)?\.json|pricing\.json\.gz|(?:website|export)-assets\.)|public\/|src\/.*\.css$)/,
+      /^(?:index\.html$|scripts\/check-website-e2e\.ts$|data\/(?:catalog(?:-snapshot)?\.json|pricing\.json\.gz|(?:website|export)-assets\.)|public\/|src\/.*\.css$)/,
     ) ||
     affects(inputs.build);
   const portable = full || changed(/^packages\/pricing\//) || affects(inputs.package);
   const performance =
     full || changed(/^(?:data\/|tests\/performance\/)/) || affects(inputs.performance);
+  const e2e =
+    build && (full || changed(/^(?:index\.html$|src\/|data\/|scripts\/check-website-e2e\.ts$)/));
   const code = paths.filter((path) => /\.(?:[cm]?[jt]sx?|vue)$/.test(path));
   const workflow = changed(/^\.github\//);
   const unit = full || changed(/^tests\/fixtures\//);
@@ -66,12 +68,13 @@ export function validationPlan(paths: readonly string[], inputs: ValidationInput
         ...new Set([
           ...code,
           "tests/test-architecture.test.ts",
-          ...(workflow ? ["tests/catalog-repair-workflow.test.ts"] : []),
+          ...(workflow ? ["tests/self-heal.test.ts"] : []),
         ]),
       ]);
     if (generated) commands.push(["test", "--run", "--project", "generated"]);
   }
   if (build) commands.push(["run", "build"]);
+  if (e2e) commands.push(["run", "test:e2e"]);
   if (portable) commands.push(["run", "package:build"], ["run", "package:check"]);
   if (performance) commands.push(["run", "test:pricing-performance"]);
   return commands;
@@ -156,7 +159,8 @@ export function ciValidationGroups(commands: readonly string[][]): Map<string, s
 
 export function ciPrerequisites(commands: readonly string[][]): string[][] {
   const browser = commands.some(
-    ([task, script]) => task === "run" && script === "test:pricing-performance",
+    ([task, script]) =>
+      task === "run" && (script === "test:pricing-performance" || script === "test:e2e"),
   );
   const snapshot =
     browser ||
@@ -234,11 +238,6 @@ export async function validateChanges(
   else
     console.log(
       `Selected ${commands.length} checks for ${full ? "the complete validation gate" : `${paths.length} changed paths`}.`,
-    );
-  if (process.env.GITHUB_OUTPUT !== undefined)
-    await appendFile(
-      process.env.GITHUB_OUTPUT,
-      `repair_toolchain=${full || paths.some((path) => /^(?:\.github\/|scripts\/(?:repair\/|catalog-repair|catalog-snapshot|validate-changes|validate-tests|test-timeout-reporter|module-dependencies)|package\.json$|pnpm-lock\.yaml$|\.node-version$)/.test(path))}\n`,
     );
   if (planOnly) return;
   for (const args of commands) {

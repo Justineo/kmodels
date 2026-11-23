@@ -76,7 +76,7 @@ and its relevant sibling/negative controls. At handoff, use `vp node scripts/val
 for uncommitted changes, or pass the reviewed base commit for committed work. `--plan` explains the
 selected checks without running them. See [Testing](docs/testing.md#required-validation) for scope.
 
-Do not repeat `collect:fixtures` after a full test run: those tests are already included. Build the
+Build the
 site or portable package only when their inputs change. A configuration/toolchain change can justify
 the complete gate; a parser-only or harness-only change does not automatically justify it. Revalidate
 changed upstream inputs and preserve the exact validated publication tree. Reuse unchanged passing

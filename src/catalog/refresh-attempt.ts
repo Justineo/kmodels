@@ -23,8 +23,16 @@ export const sourceRefreshAttemptSchema = z.object({
   ]),
   parsed_models: z.number().int().nonnegative().optional(),
   content_changed: z.boolean().optional(),
+  content_hash: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/u)
+    .optional(),
   extractor_changed: z.boolean().optional(),
   message: z.string().optional(),
+  error_fingerprint: z
+    .string()
+    .regex(/^[0-9a-f]{16}$/u)
+    .optional(),
   http_status: z.number().int().min(100).max(599).optional(),
   retry_failure: sourceRetryFailureSchema.optional(),
   dependency_failures: z.array(dependencyFailureSchema).max(maxDependencyFailures).optional(),
@@ -38,6 +46,7 @@ export const sourceRefreshAttemptSchema = z.object({
     .max(maxContractFindings)
     .optional(),
   contract_findings_omitted: z.number().int().positive().optional(),
+  contract_findings_extensions_only: z.boolean().optional(),
   pricing_extraction: sourcePricingExtractionSchema.optional(),
   pricing_reconciliation: sourcePricingReconciliationSchema.optional(),
 });

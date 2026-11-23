@@ -26,6 +26,7 @@ it("partitions the complete CI gate and keeps package generation with its consum
     "generated-3": [["test", "--run", "--project", "generated", "--shard=3/3"]],
     build: [
       ["run", "build"],
+      ["run", "test:e2e"],
       ["run", "package:build"],
       ["run", "package:check"],
     ],
@@ -60,6 +61,25 @@ it("limits documentation and collector changes to their affected checks", () => 
   expect(validationPlan(["docs/providers/xai.md"], inputs)).toEqual([
     ["fmt", "--check", "--no-error-on-unmatched-pattern", "docs/providers/xai.md"],
   ]);
+  expect(validationPlan(["index.html"], inputs)).toEqual([
+    ["fmt", "--check", "--no-error-on-unmatched-pattern", "index.html"],
+    ["run", "build"],
+    ["run", "test:e2e"],
+  ]);
+  expect(validationPlan(["scripts/check-website-e2e.ts"], inputs)).toEqual([
+    ["check"],
+    [
+      "test",
+      "related",
+      "--run",
+      "--project",
+      "unit",
+      "scripts/check-website-e2e.ts",
+      "tests/test-architecture.test.ts",
+    ],
+    ["run", "build"],
+    ["run", "test:e2e"],
+  ]);
   expect(validationPlan(["src/catalog/xai.ts", "tests/xai-accounting.test.ts"], inputs)).toEqual([
     ["check"],
     [
@@ -79,11 +99,13 @@ it("checks generated data and materialized consumers without rerunning code-only
   expect(validationPlan(["data/catalog-snapshot.json"], inputs)).toEqual([
     ["test", "--run", "--project", "generated"],
     ["run", "build"],
+    ["run", "test:e2e"],
     ["run", "test:pricing-performance"],
   ]);
   expect(validationPlan(["data/catalog.json", "data/export-assets.pack"], inputs)).toEqual([
     ["test", "--run", "--project", "generated"],
     ["run", "build"],
+    ["run", "test:e2e"],
     ["run", "test:pricing-performance"],
   ]);
 });
@@ -103,6 +125,7 @@ it("checks every affected pricing consumer once without a duplicate fixture suit
     ],
     ["test", "--run", "--project", "generated"],
     ["run", "build"],
+    ["run", "test:e2e"],
     ["run", "package:build"],
     ["run", "package:check"],
     ["run", "test:pricing-performance"],
@@ -125,7 +148,7 @@ it("uses the unit fallback for filesystem-loaded fixtures without also running r
 });
 
 it("selects harness tests for workflow edits without unrelated production builds", () => {
-  const commands = validationPlan([".github/workflows/catalog-repair.md"], inputs);
+  const commands = validationPlan([".github/workflows/self-heal.yml"], inputs);
   expect(commands).toContainEqual([
     "test",
     "related",
@@ -133,7 +156,7 @@ it("selects harness tests for workflow edits without unrelated production builds
     "--project",
     "unit",
     "tests/test-architecture.test.ts",
-    "tests/catalog-repair-workflow.test.ts",
+    "tests/self-heal.test.ts",
   ]);
   expect(commands.some(([command]) => command === "run")).toBe(false);
 });
@@ -149,8 +172,9 @@ it.each(["pnpm-lock.yaml", "vite.config.ts", "tests/setup.ts"])(
   (path) => {
     const commands = validationPlan([path], inputs);
     expect(commands.filter(([command]) => command === "test")).toEqual([["test", "--run"]]);
-    expect(commands.slice(-4)).toEqual([
+    expect(commands.slice(-5)).toEqual([
       ["run", "build"],
+      ["run", "test:e2e"],
       ["run", "package:build"],
       ["run", "package:check"],
       ["run", "test:pricing-performance"],

@@ -25,7 +25,7 @@ jobs:
       plan: ${{ steps.upload.outputs.artifact-id }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           persist-credentials: false
@@ -39,7 +39,7 @@ jobs:
 
       - name: Upload collection plan
         id: upload
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: catalog-plan-${{ github.run_id }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/collection-plan/
@@ -56,7 +56,7 @@ jobs:
         shard: [sagemaker, bedrock, azure, nvidia, other]
     steps:
       - name: Checkout the collection revision
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
@@ -65,7 +65,7 @@ jobs:
         uses: ./.github/actions/setup-catalog-toolchain
 
       - name: Download collection plan
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.prepare.outputs.plan }}
           path: ${{ runner.temp }}/collection-plan
@@ -104,8 +104,9 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Preserve public source bytes for repair
+        id: public_evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: catalog-public-evidence-${{ github.run_id }}-attempt-${{ github.run_attempt }}-${{ matrix.shard }}
           path: ${{ runner.temp }}/repair-public-evidence/
@@ -113,8 +114,41 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      - name: Record shard evidence artifact receipt
+        if: always()
+        env:
+          SHARD: ${{ matrix.shard }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          ARTIFACT_ID: ${{ steps.public_evidence.outputs.artifact-id }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/evidence-receipt"
+          vp node -e '
+            import { writeFileSync } from "node:fs";
+            const shard = process.env.SHARD;
+            const runId = process.env.RUN_ID;
+            const attempt = Number(process.env.RUN_ATTEMPT);
+            const artifactId = (process.env.ARTIFACT_ID ?? "").trim();
+            const artifactName = artifactId ? `catalog-public-evidence-${runId}-attempt-${attempt}-${shard}` : "";
+            writeFileSync(
+              `${process.env.RUNNER_TEMP}/evidence-receipt/${shard}.json`,
+              JSON.stringify({ shard, attempt, artifact_id: artifactId, artifact_name: artifactName }) + "\n",
+            );
+          '
+
+      - name: Upload shard evidence receipt
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: catalog-evidence-receipt-${{ github.run_id }}-${{ needs.prepare.outputs.plan_id }}-${{ matrix.shard }}
+          overwrite: true
+          path: ${{ runner.temp }}/evidence-receipt/
+          compression-level: 0
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload collected providers
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: catalog-shard-${{ github.run_id }}-${{ needs.prepare.outputs.plan_id }}-${{ matrix.shard }}
           overwrite: true
@@ -131,7 +165,7 @@ jobs:
       candidate: ${{ steps.candidate.outputs.artifact-id }}
     steps:
       - name: Checkout the collection revision
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
@@ -140,17 +174,25 @@ jobs:
         uses: ./.github/actions/setup-catalog-toolchain
 
       - name: Download collection plan
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.prepare.outputs.plan }}
           path: ${{ runner.temp }}/collection-plan
           merge-multiple: true
 
       - name: Download collected providers
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: catalog-shard-${{ github.run_id }}-${{ needs.prepare.outputs.plan_id }}-*
           path: ${{ runner.temp }}/collection-shards
+          merge-multiple: true
+
+      - name: Download consumed shard evidence receipts
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: catalog-evidence-receipt-${{ github.run_id }}-${{ needs.prepare.outputs.plan_id }}-*
+          path: ${{ runner.temp }}/evidence-receipts
           merge-multiple: true
 
       - name: Hydrate the accepted catalog
@@ -167,13 +209,38 @@ jobs:
         env:
           KMODELS_REFRESH_REPORT_PATH: ${{ runner.temp }}/refresh-report.json
 
+      - name: Bundle refresh report and exact consumed evidence manifest
+        if: always()
+        env:
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          if [[ -f "$RUNNER_TEMP/refresh-report.json" ]]; then
+            mkdir -p "$RUNNER_TEMP/refresh-bundle"
+            cp "$RUNNER_TEMP/refresh-report.json" "$RUNNER_TEMP/refresh-bundle/refresh-report.json"
+            vp node -e '
+              import { readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+              import { join } from "node:path";
+              const dir = join(process.env.RUNNER_TEMP, "evidence-receipts");
+              const shards = [];
+              if (existsSync(dir)) {
+                for (const name of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
+                  shards.push(JSON.parse(readFileSync(join(dir, name), "utf8")));
+                }
+              }
+              writeFileSync(
+                join(process.env.RUNNER_TEMP, "refresh-bundle", "refresh-evidence-manifest.json"),
+                JSON.stringify({ version: 1, report_attempt: Number(process.env.RUN_ATTEMPT), shards }, null, 2) + "\n",
+              );
+            '
+          fi
+
       - name: Upload refresh evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: catalog-refresh-${{ github.run_id }}-attempt-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/refresh-report.json
-          if-no-files-found: warn
+          path: ${{ runner.temp }}/refresh-bundle/
+          if-no-files-found: ignore
           retention-days: 7
 
       - name: Stage the candidate snapshot
@@ -181,7 +248,7 @@ jobs:
 
       - name: Upload the candidate snapshot
         id: candidate
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: catalog-candidate-${{ github.run_id }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/catalog-candidate/
@@ -203,7 +270,7 @@ jobs:
           - { check: build }
     steps:
       - name: Checkout the collection revision
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
@@ -212,7 +279,7 @@ jobs:
         uses: ./.github/actions/setup-catalog-toolchain
 
       - name: Download the candidate snapshot
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.assemble.outputs.candidate }}
           path: ${{ runner.temp }}/catalog-candidate
@@ -234,7 +301,7 @@ jobs:
 
       - name: Upload verification evidence
         if: failure() && steps.generated.outcome == 'failure'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: catalog-verification-${{ github.run_id }}-attempt-${{ github.run_attempt }}-shard-${{ matrix.shard }}
           path: ${{ runner.temp }}/generated-verification.txt
@@ -257,7 +324,7 @@ jobs:
 
       - name: Upload pricing performance evidence
         if: always() && matrix.check == 'build'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: catalog-performance-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pricing-performance/
@@ -273,7 +340,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout the collection revision
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.sha }}
 
@@ -281,7 +348,7 @@ jobs:
         uses: ./.github/actions/setup-catalog-toolchain
 
       - name: Download the validated snapshot
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.assemble.outputs.candidate }}
           path: ${{ runner.temp }}/catalog-candidate
@@ -337,7 +404,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout the current pointer
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           persist-credentials: false

@@ -94,3 +94,90 @@ it("uses explicit metadata context without inventing previous prices and avoids 
     ),
   ).toThrow("another provider");
 });
+
+it("forwards structured previous_catalog_models and previous_retail_meters for Azure Retail replay", async () => {
+  const retailFixture = JSON.parse(
+    await readFile(
+      new URL("./fixtures/azure/retail-catalog-matching.json", import.meta.url),
+      "utf8",
+    ),
+  ) as { prices: Array<{ skuName: string; meterId: string; [key: string]: unknown }> };
+  const soraRow = retailFixture.prices.find(({ skuName }) => skuName === "Sora 2 glbl");
+  expect(soraRow).toBeDefined();
+  const observedAt = "2026-10-20T05:36:32.249Z";
+  const makeAzureModel = (
+    id: string,
+    version?: string,
+    tasks: ("text_generation" | "video_generation")[] = ["text_generation"],
+  ) =>
+    providerModelSchema.parse({
+      ...baseModel({
+        providerId: "azure",
+        id,
+        ...(version === undefined ? {} : { version }),
+        name: id,
+        sourceId: "azure-models",
+        observedAt,
+      }),
+      service_families: ["Azure OpenAI"],
+      tasks,
+    });
+  // Build 20 matching Azure OpenAI versions + retail rows so minModels=20 passes, plus the historical Sora 2 glbl row.
+  const baseRow = retailFixture.prices[0];
+  expect(baseRow).toBeDefined();
+  const currentCatalog = Array.from({ length: 20 }, (_, i) => {
+    const day = String(i + 1).padStart(2, "0");
+    return makeAzureModel("gpt-4.1", `2025-04-${day}`);
+  });
+  const fillerRows = currentCatalog.map((_, i) => {
+    const day = String(i + 1).padStart(2, "0");
+    return {
+      ...baseRow,
+      skuName: `gpt-4.1 04${day} Inp glbl`,
+      meterName: `gpt-4.1 04${day} Inp glbl 1M Tokens`,
+      meterId: `replay-meter-${i}`,
+      retailPrice: 1.5,
+    };
+  });
+  const body = JSON.stringify({ prices: [...fillerRows, soraRow] });
+  const oldSora = makeAzureModel("sora-2", "2025-10-06", ["video_generation"]);
+  const evidenceInput = {
+    source_id: "azure-retail-prices",
+    scope: "source" as const,
+    source_url: "https://prices.azure.com/api/retail/prices",
+    observed_at: observedAt,
+    source_hash: sha256(body),
+    body,
+  };
+
+  // Without previous_catalog_models, Sora 2 glbl does not bind.
+  const plainArray = replayCatalogEvidence("azure-retail-prices", evidenceInput, currentCatalog);
+  expect(plainArray.models.some(({ uid }) => uid === oldSora.uid)).toBe(false);
+
+  // With structured previous_catalog_models, Sora 2 glbl binds identically to live collection.
+  const withPrevNoMeters = replayCatalogEvidence("azure-retail-prices", evidenceInput, {
+    catalog_models: currentCatalog,
+    previous_catalog_models: [oldSora],
+  });
+  expect(withPrevNoMeters.models.some(({ uid }) => uid === oldSora.uid)).toBe(true);
+
+  const withPrevAndMeters = replayCatalogEvidence("azure-retail-prices", evidenceInput, {
+    catalog_models: currentCatalog,
+    previous_catalog_models: [oldSora],
+    previous_retail_meters: ["azure/sora-2|10000000-0000-0000-0000-000000000007|"],
+  });
+  expect(withPrevAndMeters.models.some(({ uid }) => uid === oldSora.uid)).toBe(true);
+
+  // context.sha256 MUST distinguish all three context shapes (plain array, without meters, with meters).
+  const hashes = new Set([
+    plainArray.context?.sha256,
+    withPrevNoMeters.context?.sha256,
+    withPrevAndMeters.context?.sha256,
+  ]);
+  expect(hashes.size).toBe(3);
+  expect(withPrevAndMeters.context).toMatchObject({
+    model_count: 20,
+    previous_model_count: 1,
+    previous_retail_meter_count: 1,
+  });
+});

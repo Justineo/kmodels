@@ -2,12 +2,11 @@
 
 Status: current
 
-The [maintenance controller](catalog-maintenance.md) preserves unfinished investigations, routes
-bounded independent verification and tracks code publication, accepted data and deployment separately.
-GPT independently investigates repaired and no-defect claims before comparing the proposal.
-Concrete evidenced errors may trigger one Sol high Codex revision, followed by fresh verification.
-Insufficient evidence stays open. Its discovery leads and model reviews do not replace the
-evidence boundaries below or establish semantic completeness.
+The [autonomous self-healing loop](self-heal.md) triages actionable refresh drift, runs a
+single-model repair attempt against saved official public evidence, and enforces a hard
+deterministic verification gate before auto-pushing to `main` (or opening a Draft PR for
+protected core files). Its automated checks do not replace the evidence boundaries below or
+establish semantic completeness.
 
 ## Decision
 
@@ -25,17 +24,15 @@ own exact identities, pricing policies, known source limits and reviewed fixture
 ### Set a finite scope
 
 For a targeted repair, use the admitted candidates, publication boundary and investigation deadline.
-Preparation selects one error-driven provider using trusted severity, cooldown and age,
-keeping all of that provider's source and validation candidates together alongside
-relevant workflow evidence. Other candidates stay in the prepared
-deferred queue and latest refresh report; they are neither resolved nor part of this run's closing
-list. Work waiting seven days takes priority over new high-severity work; updated source or
-implementation fingerprints reopen previous conclusions. Local invocation without maintenance
-state retains the deterministic six-hour provider rotation. Reruns use the latest evidence. The independent
-periodic review has its own daily run and budget. Conclusions apply to the admitted scope.
-Source-acquisition review follows the admitted providers too; an unrelated transport failure must
-not silently expand a bounded batch. Keep those failures visible in the full refresh report. The
-periodic architecture slot reviews acquisition globally, and execution failures remain workflow-wide.
+Triage (`scripts/self-heal/triage.ts`) selects one error-driven provider from the triggering refresh
+report and quarantine state using severity, open-PR deferral, provider cooldown and per-source
+evidence availability, keeping all of that provider's source and validation candidates together
+alongside bound public evidence. Other providers remain visible in the refresh report and skipped
+list; they are neither resolved nor part of this run's closing list. Reruns use the latest exact-run
+evidence. Source-acquisition review follows the admitted providers too; an unrelated transport failure
+must not silently expand a bounded batch, and execution failures remain visible in the refresh report.
+Daily proactive provider rotation is retired; broader multi-provider or architecture reviews are run
+explicitly on demand.
 For a comprehensive review, define the provider queue and acceptance conditions first. Prioritize
 wrong prices or quantities, identity loss, misleading states and regressions; select further cleanup
 only for a concrete correctness or maintenance benefit. Complete provider rounds and a concentrated
@@ -206,27 +203,16 @@ no-defect conclusion for every admitted candidate.
 
 ## Periodic review
 
-The serialized repair job also rotates one provider review per UTC day, followed by
-a global architecture review. Each cycle has one daily slot per manifest provider plus one global slot.
-This review is independent of error-triggered candidates and examines discovery, identity,
-lifecycle, pricing inventory and scopes, accounting, retention, replay, lookup/display behavior
-and simplicity against current first-party evidence.
+Automated daily proactive provider rotation is retired in favor of reactive, evidence-driven
+self-healing (`.github/workflows/self-heal.yml`) and on-demand manual reviews. Maintainers can still
+trigger targeted manual investigations via `workflow_dispatch` (`self-heal.yml`) or run full
+source-to-consumer provider audits locally using the [review method](#review-method) and
+`vp node scripts/fetch-catalog-evidence.ts <source-id>`.
 
-A calendar slot is an attempt, not proof of completed coverage. Failed or unfinished reviews remain
-incomplete. The workflow artifact retains conclusions and evidence limits. This complements
-targeted repair without introducing another scheduler.
-Periodic records cover discovery, identity/lifecycle, pricing, accounting, publication, consumers,
-diagnostics/repair and simplicity. Reviewed and blocked areas carry hashed evidence. Pending areas
-carry a reason and next action. Publication and consumer completion require their own successful
-transition/consumer receipts. The independent verdict for a periodic repair covers its exact patch,
-repaired claim and changed contracts. After delivery the ledger keeps the comprehensive review
-pending with its saved coverage and the repair revision. A complete periodic review needs an
-independent assessment of every area.
-The checker rejects the source-fetch/parser-replay helpers when mislabeled as consumer or
-transition checks. A check kind is still a claim to inspect, not proof of what an arbitrary
-script actually exercised.
-The trusted terminal summary lists candidate status, incomplete areas and deferred work separately
-from the agent's prose. Review coverage and receipt integrity do not prove semantic correctness.
+When conducting a comprehensive manual review, examine discovery, identity/lifecycle, pricing
+inventory and scopes, accounting, retention/replay, lookup/display behavior, and simplicity against
+current first-party evidence rather than limiting the audit to existing error signals. Record
+evidence limits and deferred items separately from proved conclusions.
 
 ## Evidence and conclusions
 

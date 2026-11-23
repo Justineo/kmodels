@@ -10,6 +10,7 @@ const diagnosticSchema = z.object({
   expected: z.string().optional(),
   observed: z.string().optional(),
   affected_items: z.number().int().nonnegative(),
+  disposition: z.enum(["reject", "accept_with_signal"]).optional(),
 });
 
 const contractFindingSchema = z.object({
@@ -28,10 +29,18 @@ const sourceAttemptSchema = z.object({
     "skipped_not_configured",
   ]),
   content_changed: z.boolean().optional(),
+  content_hash: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/u)
+    .optional(),
   http_status: z.number().int().min(100).max(599).optional(),
   dependency_failures: z.array(dependencyFailureSchema).max(maxDependencyFailures).optional(),
   dependency_failures_omitted: z.number().int().positive().optional(),
   message: z.string().optional(),
+  error_fingerprint: z
+    .string()
+    .regex(/^[0-9a-f]{16}$/u)
+    .optional(),
   consecutive_failures: z.number().int().nonnegative().optional(),
   last_success_at: z.iso.datetime({ offset: true }).optional(),
   pricing_reconciliation: z
@@ -45,6 +54,7 @@ const sourceAttemptSchema = z.object({
   contract_finding: contractFindingSchema.optional(),
   contract_findings: z.array(contractFindingSchema).min(1).max(maxContractFindings).optional(),
   contract_findings_omitted: z.number().int().positive().optional(),
+  contract_findings_extensions_only: z.boolean().optional(),
 });
 
 const providerSummarySchema = z.object({
@@ -80,7 +90,7 @@ const refreshSummarySchema = z.object({
 type SourceAttempt = z.infer<typeof sourceAttemptSchema>;
 
 // These report missing contracts owned by an extractor, not ordinary unknown prices.
-const repairableReconciliationReasons = new Set([
+export const repairableReconciliationReasons: ReadonlySet<string> = new Set([
   "unknown_public_pricing_card",
   "public_price_shape_unsupported",
   "public_price_label_unsupported",
@@ -130,8 +140,19 @@ export interface CatalogRepairCandidate {
     | "scheduled_provider_review"
     | "scheduled_architecture_review"
     | "semantic_coverage_review";
+  /** All distinct triggers merged into this candidate when multiple obligations co-occur on the same subject. */
+  triggers?: CatalogRepairCandidate["trigger"][];
+  /** Individual dependency parse failures recorded alongside this source candidate. */
+  dependency_parse_failures?: Array<{ dependency_id: string; message: string }>;
+  /** Count of additional dependency failures omitted from the bounded 16-item summary. */
+  dependency_failures_omitted?: number;
+  /** Redaction-safe SHA-256 prefix of the unredacted failure error recorded at collection time. */
+  error_fingerprint?: string;
+  /** Content SHA-256 of the source body observed when the failure occurred. */
+  source_hash?: string;
   message: string;
   diagnostics: z.infer<typeof diagnosticSchema>[];
+  reconciliation_reasons?: Record<string, number>;
 }
 
 /** Keep incident and periodic reviews in separate runs with independent budgets. */
@@ -239,11 +260,20 @@ function sourceCandidate(
     source_access: source.access,
     extractor: source.extractor.kind,
     trigger,
+    ...(attempt.error_fingerprint === undefined
+      ? {}
+      : { error_fingerprint: attempt.error_fingerprint }),
+    ...(attempt.content_hash === undefined ? {} : { source_hash: attempt.content_hash }),
     message,
     diagnostics: [
       ...contractFindings(attempt),
       ...(attempt.dependency_failures ?? []).flatMap((failure) => failure.contract_findings ?? []),
-    ].flatMap(({ diagnostics }) => diagnostics),
+    ].flatMap((finding) =>
+      finding.diagnostics.map((diagnostic) => ({
+        ...diagnostic,
+        ...(finding.disposition === "reject" ? { disposition: "reject" as const } : {}),
+      })),
+    ),
   };
 }
 
@@ -260,6 +290,13 @@ function providerCandidate(
     message,
     diagnostics: [],
   };
+}
+
+function mergeTriggers(
+  existing: CatalogRepairCandidate,
+  nextTrigger: CatalogRepairCandidate["trigger"],
+): CatalogRepairCandidate["trigger"][] {
+  return [...new Set([...(existing.triggers ?? [existing.trigger]), nextTrigger])];
 }
 
 export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[] {
@@ -296,17 +333,6 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
         candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
         continue;
       }
-      if (sourceAttempt.outcome === "parse_failed") {
-        const value = sourceCandidate(
-          provider.provider_id,
-          source,
-          sourceAttempt,
-          "source_parse_failure",
-          sourceAttempt.message ?? "The reviewed source no longer satisfies its parser contract.",
-        );
-        candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
-        continue;
-      }
       const dependencies = sourceAttempt.dependency_failures ?? [];
       const structural = dependencies.filter(({ outcome }) => outcome === "parse_failed");
       const relocated =
@@ -317,23 +343,63 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
                 (failure.impact === "bundle" && stalePricingFailure(failure)),
             )
           : [];
+      const omittedDeps = sourceAttempt.dependency_failures_omitted ?? 0;
+      const dependencyParseFailures = structural.map(({ dependency_id, message }) => ({
+        dependency_id,
+        message,
+      }));
+      const dependencySuffix =
+        structural.length > 0 || relocated.length > 0 || omittedDeps > 0
+          ? `Dependency evidence requires investigation: ${[...structural, ...relocated].map(({ dependency_id, message }) => `${dependency_id}: ${message}`).join("; ")}${omittedDeps > 0 ? "; additional failures omitted" : ""}`
+          : undefined;
+      if (sourceAttempt.outcome === "parse_failed") {
+        const mergedTriggers: CatalogRepairCandidate["trigger"][] = [
+          "source_parse_failure",
+          ...(relocated.length > 0 ? (["source_location_change"] as const) : []),
+          ...(omittedDeps > 0 ? (["source_contract_change"] as const) : []),
+        ];
+        const baseMessage =
+          sourceAttempt.message ?? "The reviewed source no longer satisfies its parser contract.";
+        const value: CatalogRepairCandidate = {
+          ...sourceCandidate(
+            provider.provider_id,
+            source,
+            sourceAttempt,
+            "source_parse_failure",
+            dependencySuffix === undefined ? baseMessage : `${baseMessage} ${dependencySuffix}`,
+          ),
+          ...(mergedTriggers.length > 1 ? { triggers: mergedTriggers } : {}),
+          ...(dependencyParseFailures.length > 0
+            ? { dependency_parse_failures: dependencyParseFailures }
+            : {}),
+          ...(omittedDeps > 0 ? { dependency_failures_omitted: omittedDeps } : {}),
+        };
+        candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
+        continue;
+      }
       if (
         ["changed", "unchanged"].includes(sourceAttempt.outcome) &&
-        (structural.length > 0 ||
-          relocated.length > 0 ||
-          (sourceAttempt.dependency_failures_omitted ?? 0) > 0)
+        (structural.length > 0 || relocated.length > 0 || omittedDeps > 0)
       ) {
-        const value = sourceCandidate(
-          provider.provider_id,
-          source,
-          sourceAttempt,
-          structural.length > 0
-            ? "source_parse_failure"
-            : relocated.length > 0
-              ? "source_location_change"
-              : "source_contract_change",
-          `Dependency evidence requires investigation: ${[...structural, ...relocated].map(({ dependency_id, message }) => `${dependency_id}: ${message}`).join("; ")}${(sourceAttempt.dependency_failures_omitted ?? 0) > 0 ? "; additional failures omitted" : ""}`,
-        );
+        const dependencyTriggers: CatalogRepairCandidate["trigger"][] = [
+          ...(structural.length > 0 ? (["source_parse_failure"] as const) : []),
+          ...(relocated.length > 0 ? (["source_location_change"] as const) : []),
+          ...(omittedDeps > 0 ? (["source_contract_change"] as const) : []),
+        ];
+        const value: CatalogRepairCandidate = {
+          ...sourceCandidate(
+            provider.provider_id,
+            source,
+            sourceAttempt,
+            dependencyTriggers[0] ?? "source_contract_change",
+            dependencySuffix ?? "Dependency evidence requires investigation.",
+          ),
+          ...(dependencyTriggers.length > 1 ? { triggers: dependencyTriggers } : {}),
+          ...(dependencyParseFailures.length > 0
+            ? { dependency_parse_failures: dependencyParseFailures }
+            : {}),
+          ...(omittedDeps > 0 ? { dependency_failures_omitted: omittedDeps } : {}),
+        };
         candidates.set(`${value.provider_id}\0${value.subject_id}`, value);
         // The reconciliation branch below may add independent native price evidence.
       }
@@ -346,31 +412,44 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
           reconciliation?.diagnostics
             ?.filter(({ reason_code }) => repairableReconciliationReasons.has(reason_code))
             .flatMap(({ sample }) => (sample === undefined ? [] : [sample])) ?? [];
-        const value = sourceCandidate(
-          provider.provider_id,
-          source,
-          sourceAttempt,
-          "source_pricing_structure",
-          `Missing reviewed source contracts: ${missingContracts.map(([reason, count]) => `${reason}: ${count}`).join(", ")}.${details.length === 0 ? "" : ` ${details.join("; ")}`}`,
-        );
+        const missingReasonMap = Object.fromEntries(missingContracts);
+        const value: CatalogRepairCandidate = {
+          ...sourceCandidate(
+            provider.provider_id,
+            source,
+            sourceAttempt,
+            "source_pricing_structure",
+            `Missing reviewed source contracts: ${missingContracts.map(([reason, count]) => `${reason}: ${count}`).join(", ")}.${details.length === 0 ? "" : ` ${details.join("; ")}`}`,
+          ),
+          reconciliation_reasons: missingReasonMap,
+        };
         const key = `${value.provider_id}\0${value.subject_id}`;
         const existing = candidates.get(key);
         candidates.set(
           key,
           existing === undefined
             ? value
-            : { ...existing, message: `${existing.message} ${value.message}` },
+            : {
+                ...existing,
+                triggers: mergeTriggers(existing, value.trigger),
+                message: `${existing.message} ${value.message}`,
+                reconciliation_reasons: {
+                  ...existing.reconciliation_reasons,
+                  ...missingReasonMap,
+                },
+              },
         );
         continue;
       }
       const findings = contractFindings(sourceAttempt);
       const consumedContractDrift = findings.some(isContractDrift);
       const incompleteFindings =
-        (sourceAttempt.contract_findings_omitted ?? 0) > 0 ||
-        findings.some(
-          ({ diagnostic_count, diagnostics }) =>
-            (diagnostic_count ?? diagnostics.length) > diagnostics.length,
-        );
+        sourceAttempt.contract_findings_extensions_only !== true &&
+        ((sourceAttempt.contract_findings_omitted ?? 0) > 0 ||
+          findings.some(
+            ({ diagnostic_count, diagnostics }) =>
+              (diagnostic_count ?? diagnostics.length) > diagnostics.length,
+          ));
       if (
         ["changed", "unchanged"].includes(sourceAttempt.outcome) &&
         (consumedContractDrift || incompleteFindings)
@@ -389,7 +468,11 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
           key,
           existing === undefined
             ? value
-            : { ...existing, message: `${existing.message} ${value.message}` },
+            : {
+                ...existing,
+                triggers: mergeTriggers(existing, value.trigger),
+                message: `${existing.message} ${value.message}`,
+              },
         );
       }
     }
@@ -416,6 +499,7 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
             ? value
             : {
                 ...existing,
+                triggers: mergeTriggers(existing, value.trigger),
                 message: `${existing.message} Provider validation: ${attempt.validation_issue.code}: ${attempt.validation_issue.message}`,
               },
         );

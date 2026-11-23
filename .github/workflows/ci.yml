@@ -17,52 +17,13 @@ env:
   VITEST_MAX_WORKERS: "2"
 
 jobs:
-  repair-toolchain:
-    needs: plan
-    if: needs.plan.outputs.repair_toolchain == 'true'
-    runs-on: ubuntu-latest
-    env:
-      VP_HOME: /tmp/kmodels-vite-plus
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Verify the repair environment without inference
-        uses: ./.github/actions/setup-repair-toolchain
-
-      - name: Verify the environment persists to subsequent steps
-        run: |
-          vp env doctor
-          vp node --version
-
-      - name: Verify isolated Codex protocol without paid inference
-        run: |
-          docker build --file .github/repair-codex.Dockerfile --tag kmodels-repair-codex:local .github
-          vp node scripts/repair/codex-smoke.ts
-
-      - name: Verify the Catalog repair workflow frontmatter lock
-        run: |
-          set -euo pipefail
-          compiler="$RUNNER_TEMP/gh-aw-v0.89.21"
-          curl --fail --silent --show-error --location \
-            https://github.com/github/gh-aw/releases/download/v0.89.21/linux-amd64 -o "$compiler"
-          printf '%s  %s\n' 1c74ff5fc28b1891d32b67f4348a9b7f750946b6d4a721e909187a848868016b "$compiler" | sha256sum --check
-          chmod +x "$compiler"
-          expected="$("$compiler" hash-frontmatter .github/workflows/catalog-repair.md)"
-          locked="$(sed -n '1s/.*"frontmatter_hash":"\([a-f0-9]*\)".*/\1/p' .github/workflows/catalog-repair.lock.yml)"
-          if [[ "$expected" != "$locked" ]]; then
-            echo "::error::Catalog repair workflow lock is stale. Regenerate it with the pinned compiler and action tag."
-            exit 1
-          fi
-
   plan:
     runs-on: ubuntu-latest
     outputs:
-      repair_toolchain: ${{ steps.validate.outputs.repair_toolchain }}
       groups: ${{ steps.validate.outputs.groups }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           filter: blob:none
@@ -83,7 +44,7 @@ jobs:
       matrix:
         group: ${{ fromJSON(needs.plan.outputs.groups) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           filter: blob:none
@@ -96,7 +57,7 @@ jobs:
 
       - name: Upload pricing performance evidence
         if: always() && matrix.group == 'browser'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pricing-performance-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pricing-performance/
@@ -105,7 +66,7 @@ jobs:
 
   verify:
     if: always()
-    needs: [plan, contracts, repair-toolchain]
+    needs: [plan, contracts]
     runs-on: ubuntu-latest
     steps:
       - name: Require every selected job to pass
@@ -113,9 +74,6 @@ jobs:
           PLAN: ${{ needs.plan.result }}
           GROUPS_JSON: ${{ needs.plan.outputs.groups }}
           CONTRACTS: ${{ needs.contracts.result }}
-          REPAIR: ${{ needs.repair-toolchain.result }}
-          NEED_REPAIR: ${{ needs.plan.outputs.repair_toolchain }}
         run: |
           test "$PLAN" = success
           if [[ "$GROUPS_JSON" = '[]' ]]; then test "$CONTRACTS" = skipped; else test "$CONTRACTS" = success; fi
-          if [[ "$NEED_REPAIR" = true ]]; then test "$REPAIR" = success; else test "$REPAIR" = skipped; fi

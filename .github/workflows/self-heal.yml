@@ -1,0 +1,437 @@
+name: Self-heal catalog
+
+permissions: {}
+
+on:
+  workflow_run:
+    workflows: ["Refresh catalog"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Optional provider ID to target
+        required: false
+        type: string
+      dry_run:
+        description: Verify patch without pushing or creating a PR
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: kmodels-self-heal
+  cancel-in-progress: false
+
+jobs:
+  # Job 1 (Read-only): download exact-attempt refresh-report.json & .json.gz public evidence
+  # into $RUNNER_TEMP (outside checkout), reserve budget, check open PRs/cooldowns, and emit target.json.
+  triage:
+    if: github.repository == 'Justineo/kmodels' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      actionable: ${{ steps.check.outputs.actionable }}
+      provider: ${{ steps.check.outputs.provider }}
+      base_sha: ${{ steps.check.outputs.base_sha }}
+      triage_artifact_id: ${{ steps.upload_triage.outputs.artifact-id }}
+    steps:
+      - name: Checkout main (read-only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Set up catalog toolchain
+        uses: ./.github/actions/setup-catalog-toolchain
+
+      - name: Restore rolling self-heal budget ledger (outside checkout)
+        uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: ${{ runner.temp }}/self-heal/budget-ledger.json
+          key: self-heal-budget-v1-
+          restore-keys: |
+            self-heal-budget-v1-
+
+      - name: Collect exact-attempt refresh report and compressed public evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
+          TRIGGER_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          WORK="$RUNNER_TEMP/self-heal/triage-input"
+          mkdir -p "$WORK/evidence"
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            # Query all artifact pages cleanly via --paginate --slurp, select the latest non-expired
+            # refresh report at or before TRIGGER_RUN_ATTEMPT, and download ONLY the exact evidence
+            # shards traced by its bundled refresh-evidence-manifest.json (falling back to shards
+            # capped at report_attempt when reading a legacy report without a manifest).
+            gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/runs/${TRIGGER_RUN_ID}/artifacts?per_page=100" > "$WORK/artifacts-pages.json"
+            artifact_plan="$(vp node scripts/self-heal/triage.ts --select-upstream-artifacts "$TRIGGER_RUN_ID" "$TRIGGER_RUN_ATTEMPT" < "$WORK/artifacts-pages.json")"
+            selected_shards_plan=""
+            while IFS=$'\t' read -r candidate_attempt candidate_report; do
+              [[ -z "$candidate_report" ]] && continue
+              rm -rf "$WORK/raw-report"
+              downloaded=false
+              for try_num in 1 2 3; do
+                if gh run download "$TRIGGER_RUN_ID" --name "$candidate_report" --dir "$WORK/raw-report"; then
+                  downloaded=true
+                  break
+                fi
+                sleep 2
+              done
+              if [[ "$downloaded" != "true" ]]; then
+                echo "::error::Failed to download refresh report artifact ${candidate_report} after 3 attempts; refusing to silently fall back to an older report" >&2
+                exit 1
+              fi
+              report_file="$(find "$WORK/raw-report" -name 'refresh-report.json' -print -quit)"
+              if [[ -n "$report_file" ]]; then
+                cp "$report_file" "$WORK/refresh-report.json"
+                manifest_file="$(find "$WORK/raw-report" -name 'refresh-evidence-manifest.json' -print -quit)"
+                if [[ -n "$manifest_file" ]]; then
+                  selected_shards_plan="$(vp node scripts/self-heal/triage.ts --select-upstream-artifacts "$TRIGGER_RUN_ID" "$candidate_attempt" "$manifest_file" < "$WORK/artifacts-pages.json")"
+                else
+                  selected_shards_plan="$(vp node scripts/self-heal/triage.ts --select-upstream-artifacts "$TRIGGER_RUN_ID" "$candidate_attempt" < "$WORK/artifacts-pages.json")"
+                fi
+                break
+              fi
+            done < <(vp node -e 'for (const r of JSON.parse(process.argv[1]).reports ?? []) console.log(`${r.attempt}\t${r.name}`);' "$artifact_plan")
+            if [[ -n "$selected_shards_plan" ]]; then
+              while IFS= read -r shard_artifact; do
+                [[ -z "$shard_artifact" ]] && continue
+                shard_downloaded=false
+                for try_num in 1 2 3; do
+                  if gh run download "$TRIGGER_RUN_ID" --name "$shard_artifact" --dir "$WORK/raw-evidence/$shard_artifact"; then
+                    shard_downloaded=true
+                    break
+                  fi
+                  sleep 2
+                done
+                if [[ "$shard_downloaded" != "true" ]]; then
+                  echo "::error::Failed to download required evidence shard artifact ${shard_artifact} after 3 attempts" >&2
+                  exit 1
+                fi
+              done < <(vp node -e 'for (const n of JSON.parse(process.argv[1]).shards) console.log(n);' "$selected_shards_plan")
+            fi
+            if [[ -d "$WORK/raw-evidence" ]]; then
+              find "$WORK/raw-evidence" -type f \( -name '*.json.gz' -o -name '*.json' \) -exec cp {} "$WORK/evidence/" \;
+            fi
+            vp node scripts/catalog-snapshot.ts hydrate
+            [[ -f data/quarantine.json ]] && cp data/quarantine.json "$WORK/quarantine.json" || echo '[]' > "$WORK/quarantine.json"
+          else
+            vp node scripts/catalog-snapshot.ts hydrate
+            cp data/refresh-summary.json "$WORK/refresh-summary.json"
+            [[ -f data/quarantine.json ]] && cp data/quarantine.json "$WORK/quarantine.json" || echo '[]' > "$WORK/quarantine.json"
+          fi
+
+      - name: Triage actionable provider drift
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PROVIDER_FILTER: ${{ inputs.provider }}
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
+          TRIGGER_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          SELF_HEAL_MAX_RUN_USD: ${{ vars.SELF_HEAL_MAX_RUN_USD }}
+          SELF_HEAL_MAX_WINDOW_USD: ${{ vars.SELF_HEAL_MAX_WINDOW_USD }}
+          SELF_HEAL_MAX_WINDOW_RUNS: ${{ vars.SELF_HEAL_MAX_WINDOW_RUNS }}
+          SELF_HEAL_COOLDOWN_HOURS: ${{ vars.SELF_HEAL_COOLDOWN_HOURS }}
+        run: |
+          WORK="$RUNNER_TEMP/self-heal/triage-input"
+          PACKET="$RUNNER_TEMP/self-heal/triage-packet"
+          mkdir -p "$PACKET/evidence"
+          base_sha="$(git rev-parse HEAD)"
+          open_prs="$(gh pr list --state open --json headRefName --jq '[.[] | .headRefName | capture("^self-heal/(?<p>[a-z0-9-]+)-[0-9]+$").p] | unique | join(",")' || true)"
+          args=(--data-dir "$WORK" --evidence-dir "$WORK/evidence" --budget-ledger "$RUNNER_TEMP/self-heal/budget-ledger.json")
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then args+=(--require-refresh-report --require-source-evidence); fi
+          if [[ -n "$PROVIDER_FILTER" ]]; then args+=(--provider "$PROVIDER_FILTER"); fi
+          if [[ -n "$open_prs" ]]; then args+=(--open-pr-providers "$open_prs"); fi
+          if [[ -n "$TRIGGER_RUN_ID" ]]; then args+=(--trigger-run-id "$TRIGGER_RUN_ID"); fi
+          if [[ -n "$TRIGGER_RUN_ATTEMPT" ]]; then args+=(--trigger-run-attempt "$TRIGGER_RUN_ATTEMPT"); fi
+          vp node scripts/self-heal/triage.ts "${args[@]}" | tee "$PACKET/target.json"
+          status="$(vp node -e 'const d = JSON.parse(await new Response(process.stdin).text()); console.log(d.status);' < "$PACKET/target.json")"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$status" == "actionable" ]]; then
+            # Manual dispatch hydrates refresh-summary.json without a bundled evidence archive.
+            # Fetch reviewed public evidence for target source-level candidates before binding target.json.
+            public_sources="$(vp node -e '
+              const d = JSON.parse(await new Response(process.stdin).text());
+              const ids = [...new Set((d.target?.candidates ?? [])
+                .filter((c) => typeof c.source_id === "string" && c.source_access === "public")
+                .map((c) => c.source_id))];
+              console.log(ids.join("\n"));
+            ' < "$PACKET/target.json")"
+            if [[ -n "$public_sources" ]]; then
+              rm -rf /tmp/gh-aw/agent/catalog-evidence
+              while IFS= read -r sid; do
+                [[ -n "$sid" ]] && vp node scripts/fetch-catalog-evidence.ts "$sid" || true
+              done <<< "$public_sources"
+              if [[ -d /tmp/gh-aw/agent/catalog-evidence ]]; then
+                target_provider="$(vp node -e 'const d = JSON.parse(await new Response(process.stdin).text()); console.log(d.target?.provider_id ?? "");' < "$PACKET/target.json")"
+                while IFS= read -r ev_file; do
+                  cp "$ev_file" "$WORK/evidence/"
+                  base_name="$(basename "$ev_file" .json)"
+                  # Azure Retail Prices requires historical previous_catalog_models and previous_retail_meters
+                  # which are not available from current data/catalog.json alone; never write partial context for it.
+                  if [[ -f data/catalog.json && -n "$target_provider" && "$base_name" != azure-retail-prices-* ]]; then
+                    vp node scripts/self-heal/triage.ts --write-context data/catalog.json "$target_provider" "$WORK/evidence/${base_name}.context.json.gz" || true
+                  fi
+                done < <(find /tmp/gh-aw/agent/catalog-evidence -type f -name '*.json')
+              fi
+            fi
+            vp node scripts/self-heal/triage.ts "${args[@]}" --require-source-evidence | tee "$PACKET/target.json"
+            status="$(vp node -e 'const d = JSON.parse(await new Response(process.stdin).text()); console.log(d.status);' < "$PACKET/target.json")"
+          fi
+          cp -r "$WORK/evidence/." "$PACKET/evidence/" 2>/dev/null || true
+          provider="$(vp node -e 'const d = JSON.parse(await new Response(process.stdin).text()); console.log(d.target?.provider_id ?? "");' < "$PACKET/target.json")"
+          echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
+          echo "actionable=$([[ "$status" == "actionable" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "provider=$provider" >> "$GITHUB_OUTPUT"
+
+      - name: Surface missing self-heal generator configuration
+        if: steps.check.outputs.actionable == 'true' && vars.SELF_HEAL_AGENT_CMD == ''
+        run: |
+          echo "::warning title=Self-heal generator not configured::Actionable drift detected for '${{ steps.check.outputs.provider }}', but repository variable SELF_HEAL_AGENT_CMD is unset. Configure vars.SELF_HEAL_AGENT_CMD and secrets.SELF_HEAL_API_KEY to enable automated patch generation."
+          {
+            echo "### Self-heal generator not configured"
+            echo ""
+            echo "Actionable catalog drift was detected for \`${{ steps.check.outputs.provider }}\`, so the triage packet was uploaded, but \`generate\`, \`verify\`, and \`publish\` were skipped because \`vars.SELF_HEAL_AGENT_CMD\` is empty."
+            echo ""
+            echo "To enable automated repair in production, configure:"
+            echo "- Repository variable \`SELF_HEAL_AGENT_CMD\`"
+            echo "- Repository secret \`SELF_HEAL_API_KEY\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload triage packet
+        id: upload_triage
+        if: steps.check.outputs.actionable == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: self-heal-triage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/self-heal/triage-packet/
+          retention-days: 7
+
+  # Job 2 (Untrusted generation, ZERO write credentials, ZERO provider secrets):
+  # runs the single LLM agent against a read-only checkout; all artifacts live in $RUNNER_TEMP.
+  generate:
+    needs: triage
+    if: needs.triage.outputs.actionable == 'true' && vars.SELF_HEAL_AGENT_CMD != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    outputs:
+      has_patch: ${{ steps.gen.outputs.has_patch }}
+      proposal_artifact_id: ${{ steps.upload_proposal.outputs.artifact-id }}
+      generate_attempt: ${{ github.run_attempt }}
+    steps:
+      - name: Checkout pinned base SHA (no write credentials)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.triage.outputs.base_sha }}
+          persist-credentials: false
+
+      - name: Set up catalog toolchain
+        uses: ./.github/actions/setup-catalog-toolchain
+
+      - name: Restore rolling self-heal budget ledger (read-only re-check before paid generation)
+        uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: ${{ runner.temp }}/self-heal/budget-ledger.json
+          key: self-heal-budget-v1-
+          restore-keys: |
+            self-heal-budget-v1-
+
+      - name: Download triage packet (outside checkout)
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.triage.outputs.triage_artifact_id }}
+          path: ${{ runner.temp }}/self-heal/triage-packet/
+          merge-multiple: true
+
+      - name: Generate candidate patch without write credentials
+        id: gen
+        env:
+          SELF_HEAL_API_KEY: ${{ secrets.SELF_HEAL_API_KEY }}
+          SELF_HEAL_MODEL: ${{ vars.SELF_HEAL_MODEL }}
+          SELF_HEAL_AGENT_CMD: ${{ vars.SELF_HEAL_AGENT_CMD }}
+          SELF_HEAL_MAX_RUN_USD: ${{ vars.SELF_HEAL_MAX_RUN_USD }}
+          SELF_HEAL_MAX_RUN_TOKENS: ${{ vars.SELF_HEAL_MAX_RUN_TOKENS }}
+          SELF_HEAL_MAX_WINDOW_USD: ${{ vars.SELF_HEAL_MAX_WINDOW_USD }}
+          SELF_HEAL_MAX_WINDOW_RUNS: ${{ vars.SELF_HEAL_MAX_WINDOW_RUNS }}
+          SELF_HEAL_COOLDOWN_HOURS: ${{ vars.SELF_HEAL_COOLDOWN_HOURS }}
+        run: |
+          vp node scripts/self-heal/generate.ts \
+            --triage-file "$RUNNER_TEMP/self-heal/triage-packet/target.json" \
+            --evidence-root "$RUNNER_TEMP/self-heal/triage-packet/evidence" \
+            --output-dir "$RUNNER_TEMP/self-heal/proposal-out" \
+            --budget-ledger "$RUNNER_TEMP/self-heal/budget-ledger.json"
+          if [[ -f "$RUNNER_TEMP/self-heal/proposal-out/candidate.patch" && -f "$RUNNER_TEMP/self-heal/proposal-out/proposal.json" ]]; then
+            echo "has_patch=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_patch=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload candidate proposal and usage report (always, even on failure)
+        id: upload_proposal
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: self-heal-proposal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/self-heal/proposal-out/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Job 3 (Isolated candidate verification, ZERO write credentials, ZERO LLM secrets):
+  # executes untrusted candidate code, before/after replay, and full validate-changes on a clean checkout.
+  verify:
+    needs: [triage, generate]
+    if: needs.generate.outputs.has_patch == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      verify_artifact_id: ${{ steps.upload_verify.outputs.artifact-id }}
+    steps:
+      - name: Checkout pinned base SHA (no write credentials)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.triage.outputs.base_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up catalog toolchain
+        uses: ./.github/actions/setup-catalog-toolchain
+
+      - name: Hydrate accepted catalog for validation
+        run: vp node scripts/catalog-snapshot.ts hydrate
+
+      - name: Download triage packet (outside checkout)
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.triage.outputs.triage_artifact_id }}
+          path: ${{ runner.temp }}/self-heal/triage-packet/
+          merge-multiple: true
+
+      - name: Download candidate proposal (outside checkout)
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.generate.outputs.proposal_artifact_id }}
+          path: ${{ runner.temp }}/self-heal/proposal-out/
+          merge-multiple: true
+
+      - name: Verify candidate patch in read-only isolation
+        run: |
+          vp node scripts/self-heal/verify.ts \
+            --triage-file "$RUNNER_TEMP/self-heal/triage-packet/target.json" \
+            --evidence-root "$RUNNER_TEMP/self-heal/triage-packet/evidence" \
+            --proposal-dir "$RUNNER_TEMP/self-heal/proposal-out" \
+            --output-dir "$RUNNER_TEMP/self-heal/verify-out"
+
+      - name: Upload verification receipt (always)
+        id: upload_verify
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: self-heal-verify-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/self-heal/verify-out/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Job 4 (Trusted publish & budget settlement, ZERO LLM secrets, NEVER executes candidate code):
+  # always settles budget/cooldown even when generate or verify failed; publishes ONLY exact verified patches.
+  publish:
+    needs: [triage, generate, verify]
+    if: always() && needs.triage.outputs.actionable == 'true' && vars.SELF_HEAL_AGENT_CMD != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Checkout pinned base SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.triage.outputs.base_sha }}
+          fetch-depth: 0
+
+      - name: Set up catalog toolchain
+        uses: ./.github/actions/setup-catalog-toolchain
+
+      - name: Restore rolling self-heal budget ledger (outside checkout)
+        uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: ${{ runner.temp }}/self-heal/budget-ledger.json
+          key: self-heal-budget-v1-
+          restore-keys: |
+            self-heal-budget-v1-
+
+      - name: Download triage packet (outside checkout)
+        if: needs.triage.outputs.triage_artifact_id != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.triage.outputs.triage_artifact_id }}
+          path: ${{ runner.temp }}/self-heal/triage-packet/
+          merge-multiple: true
+
+      - name: Download proposal/usage artifact if present (outside checkout)
+        if: needs.generate.outputs.proposal_artifact_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.generate.outputs.proposal_artifact_id }}
+          path: ${{ runner.temp }}/self-heal/proposal-out/
+          merge-multiple: true
+
+      - name: Download verification receipt if present (outside checkout)
+        if: needs.verify.outputs.verify_artifact_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.verify.outputs.verify_artifact_id }}
+          path: ${{ runner.temp }}/self-heal/verify-out/
+          merge-multiple: true
+
+      - name: Configure repair git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Settle budget ledger and publish verified patch (no candidate execution)
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          VERIFY_JOB_RESULT: ${{ needs.verify.result }}
+          GENERATE_RUN_ATTEMPT: ${{ needs.generate.outputs.generate_attempt }}
+          SELF_HEAL_MAX_RUN_USD: ${{ vars.SELF_HEAL_MAX_RUN_USD }}
+          SELF_HEAL_MAX_RUN_TOKENS: ${{ vars.SELF_HEAL_MAX_RUN_TOKENS }}
+          SELF_HEAL_MAX_WINDOW_USD: ${{ vars.SELF_HEAL_MAX_WINDOW_USD }}
+          SELF_HEAL_MAX_WINDOW_RUNS: ${{ vars.SELF_HEAL_MAX_WINDOW_RUNS }}
+          SELF_HEAL_COOLDOWN_HOURS: ${{ vars.SELF_HEAL_COOLDOWN_HOURS }}
+        run: |
+          args=(--triage-file "$RUNNER_TEMP/self-heal/triage-packet/target.json" --budget-ledger "$RUNNER_TEMP/self-heal/budget-ledger.json")
+          if [[ -d "$RUNNER_TEMP/self-heal/proposal-out" ]]; then args+=(--proposal-dir "$RUNNER_TEMP/self-heal/proposal-out"); fi
+          if [[ -d "$RUNNER_TEMP/self-heal/verify-out" ]]; then args+=(--verify-dir "$RUNNER_TEMP/self-heal/verify-out"); fi
+          if [[ -n "$VERIFY_JOB_RESULT" ]]; then args+=(--verify-job-result "$VERIFY_JOB_RESULT"); fi
+          if [[ -n "$GENERATE_RUN_ATTEMPT" ]]; then args+=(--generate-attempt "$GENERATE_RUN_ATTEMPT"); fi
+          if [[ "$DRY_RUN" == "true" ]]; then args+=(--dry-run); fi
+          vp node scripts/self-heal/publish.ts "${args[@]}"
+
+      - name: Save updated budget ledger
+        if: always()
+        uses: actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: ${{ runner.temp }}/self-heal/budget-ledger.json
+          key: self-heal-budget-v1-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Trigger catalog refresh only after verified auto-push to main
+        if: inputs.dry_run != true && steps.publish.outputs.outcome == 'auto_push' && steps.publish.outputs.published_sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run catalog.yml --ref main

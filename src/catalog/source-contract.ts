@@ -67,6 +67,8 @@ export function isContractDrift(finding: {
 export interface SourceContractFindings {
   contract_findings?: SourceContractEvidence[];
   contract_findings_omitted?: number;
+  /** True only when truncated findings/diagnostics were all proven to be benign accept_with_signal unknown_field extensions. */
+  contract_findings_extensions_only?: true;
 }
 
 /** Read the previous report format without keeping a dual-write path in collection. */
@@ -80,17 +82,45 @@ export function contractFindings<T>(source: {
   );
 }
 
+/** Retains full pre-truncation diagnostics in memory for replay counting without widening persisted 8-item summaries. */
+const unboundedDiagnosticsByEvidence = new WeakMap<
+  SourceContractEvidence,
+  readonly ContractDiagnostic[]
+>();
+
 export function createContractFindingCollector() {
   // Callback populations may overlap or describe different things. Never sum their item counts.
-  const findings: { evidence: SourceContractEvidence; key: string }[] = [];
+  const findings: { evidence: SourceContractEvidence; key: string; drift: boolean }[] = [];
+  const diagnosticCounts = new Map<string, number>();
+  const rejectDiagnosticCounts = new Map<string, number>();
+  let totalFindings = 0;
+  let rejectFindings = 0;
+  let hasContractDrift = false;
   let omitted = 0;
   return {
     add(this: void, evidence: SourceContractEvidence): void {
-      findings.push({ evidence, key: stableCompactJson(evidence) });
+      totalFindings += 1;
+      if (evidence.disposition === "reject") rejectFindings += 1;
+      const fullDiagnostics = unboundedDiagnosticsByEvidence.get(evidence) ?? evidence.diagnostics;
+      const findingHasDrift =
+        evidence.disposition === "reject" ||
+        fullDiagnostics.some(({ kind }) => kind !== "unknown_field");
+      if (findingHasDrift) hasContractDrift = true;
+      for (const diagnostic of fullDiagnostics) {
+        const diagKey = `${diagnostic.kind}:${diagnostic.path}`;
+        const weight = diagnostic.affected_items > 0 ? diagnostic.affected_items : 1;
+        diagnosticCounts.set(diagKey, (diagnosticCounts.get(diagKey) ?? 0) + weight);
+        if (evidence.disposition === "reject") {
+          rejectDiagnosticCounts.set(diagKey, (rejectDiagnosticCounts.get(diagKey) ?? 0) + weight);
+        }
+      }
+      findings.push({ evidence, key: stableCompactJson(evidence), drift: findingHasDrift });
       findings.sort(
         (left, right) =>
           Number(right.evidence.disposition === "reject") -
-            Number(left.evidence.disposition === "reject") || compareUtf8(left.key, right.key),
+            Number(left.evidence.disposition === "reject") ||
+          Number(right.drift) - Number(left.drift) ||
+          compareUtf8(left.key, right.key),
       );
       if (findings.length > maxContractFindings) {
         findings.pop();
@@ -98,11 +128,35 @@ export function createContractFindingCollector() {
       }
     },
     summary(): SourceContractFindings {
+      const hasTruncatedDiagnostics = findings.some(
+        ({ evidence }) => evidence.diagnostic_count > evidence.diagnostics.length,
+      );
       return {
         ...(findings.length === 0
           ? {}
           : { contract_findings: findings.map(({ evidence }) => evidence) }),
         ...(omitted === 0 ? {} : { contract_findings_omitted: omitted }),
+        ...((omitted > 0 || hasTruncatedDiagnostics) && !hasContractDrift
+          ? { contract_findings_extensions_only: true as const }
+          : {}),
+      };
+    },
+    /** Full unbounded counts across all observed findings (including findings omitted from the 16-item summary). */
+    replayCounts(): {
+      total_findings: number;
+      reject_findings: number;
+      diagnostic_counts: Record<string, number>;
+      reject_diagnostic_counts: Record<string, number>;
+    } {
+      return {
+        total_findings: totalFindings,
+        reject_findings: rejectFindings,
+        diagnostic_counts: Object.fromEntries(
+          [...diagnosticCounts.entries()].sort(([a], [b]) => compareUtf8(a, b)),
+        ),
+        reject_diagnostic_counts: Object.fromEntries(
+          [...rejectDiagnosticCounts.entries()].sort(([a], [b]) => compareUtf8(a, b)),
+        ),
       };
     },
   };
@@ -381,7 +435,11 @@ function aggregateEvidence(
     diagnostic_count: all.length,
     diagnostics: all.slice(0, maxDiagnostics),
   };
-  return sourceContractEvidenceSchema.parse(evidence);
+  const parsed = sourceContractEvidenceSchema.parse(evidence);
+  if (all.length > maxDiagnostics) {
+    unboundedDiagnosticsByEvidence.set(parsed, all);
+  }
+  return parsed;
 }
 
 export function zodContractEvidence(
