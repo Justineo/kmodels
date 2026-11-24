@@ -1123,24 +1123,19 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
 });
 
 describe("self-heal ownership, reverse-deps, replay semantics & large-diff handling", () => {
-  it("routes cross-provider shared files like gemini.ts and anthropic-price-row.ts to draft_pr", () => {
-    expect(findCrossProviderImporters("src/catalog/gemini.ts", "gemini")).toContain(
-      "src/catalog/databricks.ts",
-    );
-    expect(findCrossProviderImporters("src/catalog/anthropic-price-row.ts", "anthropic")).toContain(
-      "src/catalog/azure.ts",
-    );
+  it.each([
+    ["gemini", "src/catalog/gemini.ts", "src/catalog/databricks.ts"],
+    ["anthropic", "src/catalog/anthropic-price-row.ts", "src/catalog/azure.ts"],
+  ])("routes cross-provider %s files to draft_pr", (provider, path, importer) => {
+    expect(findCrossProviderImporters(path, provider)).toContain(importer);
+    expect(classifyChangedPaths([path], provider)).toEqual({
+      mode: "draft_pr",
+      forbidden_files: [],
+      protected_files: [path],
+    });
+  });
 
-    expect(classifyChangedPaths(["src/catalog/gemini.ts"], "gemini")).toEqual({
-      mode: "draft_pr",
-      forbidden_files: [],
-      protected_files: ["src/catalog/gemini.ts"],
-    });
-    expect(classifyChangedPaths(["src/catalog/anthropic-price-row.ts"], "anthropic")).toEqual({
-      mode: "draft_pr",
-      forbidden_files: [],
-      protected_files: ["src/catalog/anthropic-price-row.ts"],
-    });
+  it("allows auto_push for provider-owned files without cross-provider importers", () => {
     expect(
       classifyChangedPaths(
         [
