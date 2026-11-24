@@ -233,6 +233,12 @@ duplicate selectors, and validation of changed caller inputs on subsequent calls
 
 ## Required validation
 
+For a Vite+ upgrade, take the `vite` alias from the target `vite-plus` package's
+`dependencies.vite` and pin it in `package.json` and `pnpm-workspace.yaml` before refreshing
+the lockfile. The core version encodes the bundled Vite version. Renovate proposes the
+`vite-plus` upgrade and leaves the core alias for the same change, because the build and
+development commands require both pins to match. See [Update Vite+](https://viteplus.dev/guide/upgrade-project).
+
 For read-only offline performance comparisons, run `vp node scripts/benchmark-catalog.ts`
 in a fresh process against the same hydrated snapshot and runtime. It measures pair reading
 and validation, replay-input validation, compilation/preparation, and projection/packing;
