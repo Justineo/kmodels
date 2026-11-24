@@ -49,7 +49,7 @@ jobs:
         uses: ./.github/actions/setup-catalog-toolchain
 
       - name: Restore rolling self-heal budget ledger (outside checkout)
-        uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ${{ runner.temp }}/self-heal/budget-ledger.json
           key: self-heal-budget-v1-
@@ -238,7 +238,7 @@ jobs:
         uses: ./.github/actions/setup-catalog-toolchain
 
       - name: Restore rolling self-heal budget ledger (read-only re-check before paid generation)
-        uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ${{ runner.temp }}/self-heal/budget-ledger.json
           key: self-heal-budget-v1-
@@ -364,7 +364,7 @@ jobs:
         uses: ./.github/actions/setup-catalog-toolchain
 
       - name: Restore rolling self-heal budget ledger (outside checkout)
-        uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ${{ runner.temp }}/self-heal/budget-ledger.json
           key: self-heal-budget-v1-
@@ -425,7 +425,7 @@ jobs:
 
       - name: Save updated budget ledger
         if: always()
-        uses: actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ${{ runner.temp }}/self-heal/budget-ledger.json
           key: self-heal-budget-v1-${{ github.run_id }}-${{ github.run_attempt }}
