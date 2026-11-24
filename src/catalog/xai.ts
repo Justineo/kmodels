@@ -717,7 +717,7 @@ function endpointPrices(
         batchMultipliers?.get(identity.name),
         priorityMultiplier,
       ).filter((rate) => rate.meter !== "input_image");
-      const scoped = rates.map((rate) => ({
+      const scoped = rates.map<SourcePriceFact>((rate) => ({
         ...rate,
         conditions: { ...rate.conditions, endpoint: global },
       }));

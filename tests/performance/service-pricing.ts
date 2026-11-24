@@ -108,7 +108,8 @@ export async function checkServicePricing(page: Page) {
     operations.map(({ key }) => key).sort(),
   );
   for (const operation of operations.filter(({ state }) => state !== "numeric")) {
-    for (const { key, state, label } of [operation, metered]) {
+    const choices: (typeof operations)[number][] = [operation, metered];
+    for (const { key, state, label } of choices) {
       const next: typeof initial = await page.evaluate(
         ({ id, key }) => window.pricingBenchmark.select(id, key),
         {
