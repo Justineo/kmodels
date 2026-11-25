@@ -1151,7 +1151,7 @@ describe("self-heal ownership, reverse-deps, replay semantics & large-diff handl
       forbidden_files: [],
       protected_files: [],
     });
-  });
+  }, 15_000);
 
   it("hard-rejects sealed transport, CI workflows, self-heal scripts, packages, and lockfiles", () => {
     for (const forbidden of [

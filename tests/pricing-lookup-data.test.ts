@@ -18,6 +18,12 @@ import type {
   PricingTerm,
 } from "../src/catalog/pricing-schema.ts";
 import { generatedData } from "./generated-data-context.ts";
+import {
+  DEFAULT_CODEX_MODEL,
+  calculateUsageCostUsd,
+  loadOpenAIPricingLookup,
+  resolveOpenAIRateBand,
+} from "../scripts/self-heal/adapters/codex.ts";
 
 describe("unit-price exports", () => {
   it("validates complete provider partitions and preserves all commercial components", async () => {
@@ -126,6 +132,45 @@ describe("unit-price exports", () => {
       ),
     ]);
   }, 90_000);
+
+  it("resolves live self-heal Codex adapter OpenAI rates directly from published export assets", async () => {
+    const lookup = await loadOpenAIPricingLookup();
+    // Structural check only (no hardcoded dollar constants) so legitimate OpenAI price updates
+    // never block catalog publication; exact dollar arithmetic is covered by synthetic unit tests.
+    const band = resolveOpenAIRateBand(DEFAULT_CODEX_MODEL, 10_000, lookup);
+    expect(band.input.numerator > 0n).toBe(true);
+    expect(band.output.numerator > 0n).toBe(true);
+    expect(band.cacheRead.numerator >= 0n).toBe(true);
+
+    const expectedMicroUsd =
+      ((10_000n * band.input.numerator * band.output.denominator +
+        1_000n * band.output.numerator * band.input.denominator) *
+        2_000_000n +
+        band.input.denominator * band.output.denominator) /
+      (band.input.denominator * band.output.denominator * 2n);
+    const expectedUsd = Number(expectedMicroUsd) / 1_000_000;
+    expect(
+      calculateUsageCostUsd(
+        DEFAULT_CODEX_MODEL,
+        {
+          input_tokens: 10_000,
+          output_tokens: 1_000,
+          total_tokens: 11_000,
+          input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 },
+        },
+        lookup,
+      ),
+    ).toBe(expectedUsd);
+
+    // Synthetic unrecognized and synthetic dated IDs must fail closed rather than borrowing base rates
+    // (never assert against real dated OpenAI IDs that future catalog refreshes may legitimately add).
+    expect(() => resolveOpenAIRateBand("gpt-9-custom", 10_000, lookup)).toThrow(
+      /Unsupported SELF_HEAL_MODEL/,
+    );
+    expect(() =>
+      resolveOpenAIRateBand(`${DEFAULT_CODEX_MODEL}-1999-01-01`, 10_000, lookup),
+    ).toThrow(/Unsupported SELF_HEAL_MODEL/);
+  });
 });
 
 function expectExportedOffers(

@@ -1,7 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { atomicWrite, readJson } from "../../src/catalog/io.ts";
 
 export const budgetOutcomeSchema = z.enum([
   "auto_push",
@@ -88,19 +89,29 @@ export function emptyBudgetLedger(): BudgetLedger {
   return { version: 1, entries: [] };
 }
 
+export function parsePositiveNumber(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export function parseBudgetLimitsFromEnv(env: NodeJS.ProcessEnv = process.env): BudgetLimits {
-  const positiveNumber = (raw: string | undefined, fallback: number): number => {
-    if (raw === undefined || raw.trim() === "") return fallback;
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-  };
   return {
-    maxRunUsd: positiveNumber(env.SELF_HEAL_MAX_RUN_USD, defaultBudgetLimits.maxRunUsd),
-    maxRunTokens: positiveNumber(env.SELF_HEAL_MAX_RUN_TOKENS, defaultBudgetLimits.maxRunTokens),
-    maxWindowUsd: positiveNumber(env.SELF_HEAL_MAX_WINDOW_USD, defaultBudgetLimits.maxWindowUsd),
-    maxWindowRuns: positiveNumber(env.SELF_HEAL_MAX_WINDOW_RUNS, defaultBudgetLimits.maxWindowRuns),
-    windowHours: positiveNumber(env.SELF_HEAL_WINDOW_HOURS, defaultBudgetLimits.windowHours),
-    providerCooldownHours: positiveNumber(
+    maxRunUsd: parsePositiveNumber(env.SELF_HEAL_MAX_RUN_USD, defaultBudgetLimits.maxRunUsd),
+    maxRunTokens: parsePositiveNumber(
+      env.SELF_HEAL_MAX_RUN_TOKENS,
+      defaultBudgetLimits.maxRunTokens,
+    ),
+    maxWindowUsd: parsePositiveNumber(
+      env.SELF_HEAL_MAX_WINDOW_USD,
+      defaultBudgetLimits.maxWindowUsd,
+    ),
+    maxWindowRuns: parsePositiveNumber(
+      env.SELF_HEAL_MAX_WINDOW_RUNS,
+      defaultBudgetLimits.maxWindowRuns,
+    ),
+    windowHours: parsePositiveNumber(env.SELF_HEAL_WINDOW_HOURS, defaultBudgetLimits.windowHours),
+    providerCooldownHours: parsePositiveNumber(
       env.SELF_HEAL_COOLDOWN_HOURS,
       defaultBudgetLimits.providerCooldownHours,
     ),
@@ -133,11 +144,7 @@ export function buildSettledBudgetEntry(params: {
       ? params.usage.estimated_usd
       : 0;
   const settledUsd = known ? knownFloorUsd : Math.max(limits.maxRunUsd, knownFloorUsd);
-  const observedUsd = known
-    ? Number(knownFloorUsd.toFixed(6))
-    : knownFloorUsd > 0
-      ? Number(knownFloorUsd.toFixed(6))
-      : undefined;
+  const observedUsd = known || knownFloorUsd > 0 ? Number(knownFloorUsd.toFixed(6)) : undefined;
   return budgetUsageEntrySchema.parse({
     run_id: params.run_id,
     ...(params.run_attempt === undefined ? {} : { run_attempt: params.run_attempt }),
@@ -391,20 +398,12 @@ export function appendBudgetEntry(
 }
 
 export async function readBudgetLedger(path: string): Promise<BudgetLedger> {
-  try {
-    const raw = await readFile(path, "utf8");
-    return budgetLedgerSchema.parse(JSON.parse(raw));
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return emptyBudgetLedger();
-    }
-    throw error;
-  }
+  const raw = await readJson(path);
+  return raw === undefined ? emptyBudgetLedger() : budgetLedgerSchema.parse(raw);
 }
 
 export async function writeBudgetLedger(path: string, ledger: BudgetLedger): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(budgetLedgerSchema.parse(ledger), null, 2)}\n`, "utf8");
+  await atomicWrite(path, `${JSON.stringify(budgetLedgerSchema.parse(ledger), null, 2)}\n`);
 }
 
 async function main(): Promise<void> {

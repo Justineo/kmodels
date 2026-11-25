@@ -19,6 +19,7 @@ import {
   type BudgetLedger,
   type BudgetLimits,
 } from "./budget.ts";
+import { parseCliFlag } from "./runtime.ts";
 
 /**
  * Only source-level parse/contract/pricing-structure triggers can be verified offline via
@@ -67,11 +68,9 @@ const providerIdBySourceId = new Map(
     sources.map((source) => [source.id, provider.id] as const),
   ),
 );
-
-export function sourceRequiresAuthInventoryContext(sourceId: string): boolean {
-  const source = sourceById.get(sourceId);
-  return source !== undefined && AUTH_CONTEXT_REQUIRED_EXTRACTORS.has(source.extractor.kind);
-}
+const providerOwnedSources = new Map(
+  manifests.map(({ provider, sources }) => [provider.id, new Set(sources.map((s) => s.id))]),
+);
 
 export function replayContextRequirementError(
   sourceId: string,
@@ -146,7 +145,7 @@ export function mayBeRedactedOrTruncatedMessage(raw: string): boolean {
   );
 }
 
-function primaryCandidateMessage(message: string): string {
+export function primaryCandidateMessage(message: string): string {
   let primary = message;
   for (const marker of [
     " Missing reviewed source contracts:",
@@ -157,6 +156,54 @@ function primaryCandidateMessage(message: string): string {
     if (idx >= 0) primary = primary.slice(0, idx);
   }
   return primary;
+}
+
+export function isGenericParseFailureMessage(normalizedMessage: string): boolean {
+  return GENERIC_PARSE_FAILURE_MESSAGES.has(normalizedMessage.toLowerCase());
+}
+
+export function hasOmittedDependencyFailure(candidate: CatalogRepairCandidate): boolean {
+  return (
+    (candidate.dependency_failures_omitted ?? 0) > 0 ||
+    candidate.message.includes("additional failures omitted")
+  );
+}
+
+export interface TargetReplayReadiness {
+  readonly targetSourceIds: string[];
+  readonly hasUnboundProviderCandidate: boolean;
+  readonly unsupportedTriggers: string[];
+  readonly evidenceBySource: Map<string, BoundEvidenceFile>;
+  readonly missingSourceIds: string[];
+  readonly contextErrors: string[];
+  readonly evidenceCount: number;
+}
+
+export function inspectTargetReplayReadiness(
+  candidates: readonly CatalogRepairCandidate[],
+  evidenceFiles: readonly BoundEvidenceFile[],
+): TargetReplayReadiness {
+  const targetSourceIds = [
+    ...new Set(candidates.map((c) => c.source_id).filter((id): id is string => id !== undefined)),
+  ];
+  const hasUnboundProviderCandidate = candidates.some(
+    (c) => c.scope === "provider" && c.source_id === undefined,
+  );
+  const unsupportedTriggers = nonReplayVerifiableTriggers(candidates);
+  const evidenceBySource = new Map(evidenceFiles.map((e) => [e.source_id, e]));
+  const missingSourceIds = targetSourceIds.filter((id) => !evidenceBySource.has(id));
+  const contextErrors = targetSourceIds
+    .map((id) => replayContextRequirementError(id, evidenceBySource.get(id)))
+    .filter((msg): msg is string => msg !== undefined);
+  return {
+    targetSourceIds,
+    hasUnboundProviderCandidate,
+    unsupportedTriggers,
+    evidenceBySource,
+    missingSourceIds,
+    contextErrors,
+    evidenceCount: evidenceFiles.length,
+  };
 }
 
 export function nonReplayVerifiableTriggers(
@@ -171,10 +218,7 @@ export function nonReplayVerifiableTriggers(
         unsupported.push(`${trigger}(${subject})`);
       }
     }
-    if (
-      (candidate.dependency_failures_omitted ?? 0) > 0 ||
-      candidate.message.includes("additional failures omitted")
-    ) {
+    if (hasOmittedDependencyFailure(candidate)) {
       unsupported.push(`omitted_dependency_failures(${subject})`);
     }
     const depParseCount = candidate.dependency_parse_failures?.length ?? 0;
@@ -193,7 +237,7 @@ export function nonReplayVerifiableTriggers(
     if (allTriggers.includes("source_parse_failure")) {
       const primary = primaryCandidateMessage(candidate.message);
       const trimmed = primary.trim().replace(/\s+/g, " ").replace(/\.+$/, "");
-      if (trimmed.length === 0 || GENERIC_PARSE_FAILURE_MESSAGES.has(trimmed.toLowerCase())) {
+      if (trimmed.length === 0 || isGenericParseFailureMessage(trimmed)) {
         unsupported.push(`unidentifiable_parse_failure(${subject})`);
       } else if (
         mayBeRedactedOrTruncatedMessage(primary) &&
@@ -205,19 +249,6 @@ export function nonReplayVerifiableTriggers(
     }
   }
   return [...new Set(unsupported)];
-}
-
-export interface UpstreamEvidenceReceipt {
-  shard: string;
-  attempt: number;
-  artifact_id: string;
-  artifact_name: string;
-}
-
-export interface UpstreamEvidenceManifest {
-  version: 1;
-  report_attempt: number;
-  shards: UpstreamEvidenceReceipt[];
 }
 
 const upstreamEvidenceManifestSchema = z.object({
@@ -252,7 +283,7 @@ export function selectUpstreamRefreshArtifacts(
   shards: string[];
 } {
   const pages = Array.isArray(slurpedPages) ? slurpedPages : [slurpedPages];
-  const artifacts: Array<{ id?: string; name: string; expired?: boolean }> = [];
+  const artifacts: Array<{ id?: string; name: string }> = [];
   for (const page of pages) {
     if (typeof page !== "object" || page === null || !("artifacts" in page)) continue;
     const list = (page as { artifacts?: unknown }).artifacts;
@@ -264,8 +295,7 @@ export function selectUpstreamRefreshArtifacts(
         "name" in item &&
         typeof item.name === "string"
       ) {
-        const expired = "expired" in item && item.expired === true;
-        if (expired) continue;
+        if ("expired" in item && item.expired === true) continue;
         const rawId = "id" in item ? item.id : undefined;
         const id =
           typeof rawId === "number" && Number.isFinite(rawId)
@@ -273,7 +303,7 @@ export function selectUpstreamRefreshArtifacts(
             : typeof rawId === "string" && rawId.trim().length > 0
               ? rawId.trim()
               : undefined;
-        artifacts.push({ ...(id === undefined ? {} : { id }), name: item.name, expired });
+        artifacts.push({ ...(id === undefined ? {} : { id }), name: item.name });
       }
     }
   }
@@ -533,9 +563,6 @@ export function selectSelfHealTarget(
 
   const openPrProviders = options.openPrProviders ?? new Set<string>();
   const skipped: SkippedProvider[] = [];
-  const providerOwnedSources = new Map(
-    manifests.map(({ provider, sources }) => [provider.id, new Set(sources.map((s) => s.id))]),
-  );
   const selectEvidenceForProvider = (
     providerId: string,
     providerCandidates: readonly CatalogRepairCandidate[],
@@ -564,42 +591,32 @@ export function selectSelfHealTarget(
       }
     }
     const evidenceFiles = selectEvidenceForProvider(providerId, providerCandidates);
-    const candidateSourceIds = [
-      ...new Set(
-        providerCandidates.map((c) => c.source_id).filter((id): id is string => id !== undefined),
-      ),
-    ];
-    const hasUnboundProviderCandidate = providerCandidates.some(
-      (c) => c.scope === "provider" && c.source_id === undefined,
-    );
-    const unsupportedTriggers = nonReplayVerifiableTriggers(providerCandidates);
     if (options.requireSourceEvidence === true) {
-      if (hasUnboundProviderCandidate || unsupportedTriggers.length > 0) {
+      const readiness = inspectTargetReplayReadiness(providerCandidates, evidenceFiles);
+      if (readiness.hasUnboundProviderCandidate || readiness.unsupportedTriggers.length > 0) {
         skipped.push({
           provider_id: providerId,
           reason: "missing_evidence",
           detail:
-            unsupportedTriggers.length > 0
-              ? `Trigger(s) cannot be verified via single-source offline replay: ${unsupportedTriggers.join(", ")}`
+            readiness.unsupportedTriggers.length > 0
+              ? `Trigger(s) cannot be verified via single-source offline replay: ${readiness.unsupportedTriggers.join(", ")}`
               : "Provider-level assembly or quarantine failure has no reproducible provider verification target",
         });
         continue;
       }
-      const evidenceBySource = new Map(evidenceFiles.map((e) => [e.source_id, e]));
-      const boundSourceIds = new Set(evidenceBySource.keys());
-      const missingIds = candidateSourceIds.filter((id) => !boundSourceIds.has(id));
-      const contextErrors = candidateSourceIds
-        .map((id) => replayContextRequirementError(id, evidenceBySource.get(id)))
-        .filter((msg): msg is string => msg !== undefined);
-      if (missingIds.length > 0 || evidenceFiles.length === 0 || contextErrors.length > 0) {
+      if (
+        readiness.missingSourceIds.length > 0 ||
+        readiness.evidenceCount === 0 ||
+        readiness.contextErrors.length > 0
+      ) {
         skipped.push({
           provider_id: providerId,
           reason: "missing_evidence",
           detail:
-            contextErrors.length > 0
-              ? contextErrors.join("; ")
-              : missingIds.length > 0
-                ? `Missing bound evidence for source(s): ${missingIds.join(", ")}`
+            readiness.contextErrors.length > 0
+              ? readiness.contextErrors.join("; ")
+              : readiness.missingSourceIds.length > 0
+                ? `Missing bound evidence for source(s): ${readiness.missingSourceIds.join(", ")}`
                 : "No bound evidence for reproducible verification",
         });
         continue;
@@ -641,6 +658,54 @@ export function selectSelfHealTarget(
   };
 }
 
+function decodeCapturedJson(raw: Buffer, isGzip: boolean): unknown {
+  const text = isGzip
+    ? gunzipSync(raw, { maxOutputLength: maxCaptureBytes }).toString("utf8")
+    : raw.toString("utf8");
+  return JSON.parse(text);
+}
+
+async function discoverCompanionContext(
+  rootDir: string,
+  evidencePath: string,
+  stem: string,
+  expectedProviderId: string | undefined,
+): Promise<
+  | {
+      context_relative_path: string;
+      context_sha256: string;
+      context_kind: "catalog_models" | "azure_retail";
+    }
+  | undefined
+> {
+  for (const candidateName of [`${stem}.context.json.gz`, `${stem}.context.json`]) {
+    const candidatePath = join(dirname(evidencePath), candidateName);
+    try {
+      const contextRaw = await readFile(candidatePath);
+      const parsedCtx = decodeCapturedJson(contextRaw, candidateName.endsWith(".gz"));
+      const validated = parseReplayContext(parsedCtx, expectedProviderId);
+      if (validated.catalogModels !== undefined) {
+        return {
+          context_relative_path: relative(rootDir, candidatePath).split(sep).join(posix.sep),
+          context_sha256: sha256(contextRaw),
+          context_kind: validated.kind,
+        };
+      }
+    } catch {
+      // Ignore missing or invalid companion context file.
+    }
+  }
+  return undefined;
+}
+
+const IGNORED_EVIDENCE_FILES = new Set([
+  "refresh-report.json",
+  "refresh-summary.json",
+  "quarantine.json",
+  "manifest.json",
+  "target.json",
+]);
+
 /**
  * Discover captured public source evidence files (`*.json.gz` from `captureRepairSource` and
  * `*.json` from `fetch-catalog-evidence.ts`) and emit portable relative paths + content hashes.
@@ -670,75 +735,40 @@ export async function discoverEvidenceFiles(
       const isJson = entry.name.endsWith(".json");
       if (!isGzip && !isJson) continue;
       if (entry.name.endsWith(".context.json.gz") || entry.name.endsWith(".context.json")) continue;
-      if (
-        entry.name === "refresh-report.json" ||
-        entry.name === "refresh-summary.json" ||
-        entry.name === "quarantine.json" ||
-        entry.name === "manifest.json" ||
-        entry.name === "target.json"
-      )
-        continue;
+      if (IGNORED_EVIDENCE_FILES.has(entry.name)) continue;
       try {
         const raw = await readFile(fullPath);
-        const text = isGzip
-          ? gunzipSync(raw, { maxOutputLength: maxCaptureBytes }).toString("utf8")
-          : raw.toString("utf8");
-        const parsed: unknown = JSON.parse(text);
+        const parsed = decodeCapturedJson(raw, isGzip);
         if (
-          typeof parsed === "object" &&
-          parsed !== null &&
-          "source_id" in parsed &&
-          typeof parsed.source_id === "string" &&
-          !("omitted" in parsed)
+          typeof parsed !== "object" ||
+          parsed === null ||
+          !("source_id" in parsed) ||
+          typeof parsed.source_id !== "string" ||
+          "omitted" in parsed
         ) {
-          // Reuse replay-catalog-evidence's exact body/hash/URL/public-source verification BEFORE paid generation.
-          const { evidence } = verifiedCatalogEvidence(parsed.source_id, parsed);
-          const relPath = relative(rootDir, fullPath).split(sep).join(posix.sep);
-          const stem = isGzip
-            ? entry.name.slice(0, -".json.gz".length)
-            : entry.name.slice(0, -".json".length);
-          const expectedProviderId = providerIdBySourceId.get(evidence.source_id);
-          let contextInfo:
-            | {
-                context_relative_path: string;
-                context_sha256: string;
-                context_kind: "catalog_models" | "azure_retail";
-              }
-            | undefined;
-          for (const candidateName of [`${stem}.context.json.gz`, `${stem}.context.json`]) {
-            const candidatePath = join(dirname(fullPath), candidateName);
-            try {
-              const contextRaw = await readFile(candidatePath);
-              const contextText = candidateName.endsWith(".gz")
-                ? gunzipSync(contextRaw, { maxOutputLength: maxCaptureBytes }).toString("utf8")
-                : contextRaw.toString("utf8");
-              const parsedCtx: unknown = JSON.parse(contextText);
-              // Reuse the exact replay context schema and provider ownership check from replay-catalog-evidence.ts.
-              const validated = parseReplayContext(parsedCtx, expectedProviderId);
-              if (validated.catalogModels !== undefined) {
-                contextInfo = {
-                  context_relative_path: relative(rootDir, candidatePath)
-                    .split(sep)
-                    .join(posix.sep),
-                  context_sha256: sha256(contextRaw),
-                  context_kind: validated.kind,
-                };
-                break;
-              }
-            } catch {
-              // Ignore missing or invalid companion context file.
-            }
-          }
-          results.push(
-            boundEvidenceFileSchema.parse({
-              source_id: evidence.source_id,
-              relative_path: relPath,
-              source_hash: evidence.source_hash,
-              sha256: sha256(raw),
-              ...contextInfo,
-            }),
-          );
+          continue;
         }
+        // Reuse replay-catalog-evidence's exact body/hash/URL/public-source verification BEFORE paid generation.
+        const { evidence } = verifiedCatalogEvidence(parsed.source_id, parsed);
+        const relPath = relative(rootDir, fullPath).split(sep).join(posix.sep);
+        const stem = isGzip
+          ? entry.name.slice(0, -".json.gz".length)
+          : entry.name.slice(0, -".json".length);
+        const contextInfo = await discoverCompanionContext(
+          rootDir,
+          fullPath,
+          stem,
+          providerIdBySourceId.get(evidence.source_id),
+        );
+        results.push(
+          boundEvidenceFileSchema.parse({
+            source_id: evidence.source_id,
+            relative_path: relPath,
+            source_hash: evidence.source_hash,
+            sha256: sha256(raw),
+            ...contextInfo,
+          }),
+        );
       } catch {
         // Ignore malformed or non-capture JSON files in evidence directory.
       }
@@ -749,6 +779,17 @@ export async function discoverEvidenceFiles(
     (a, b) =>
       a.source_id.localeCompare(b.source_id) || a.relative_path.localeCompare(b.relative_path),
   );
+}
+
+export async function readActionableTriage(triageFile: string): Promise<SelfHealTarget> {
+  const triage = JSON.parse(await readFile(resolve(triageFile), "utf8")) as {
+    status?: unknown;
+    target?: SelfHealTarget;
+  };
+  if (triage.status !== "actionable" || triage.target === undefined) {
+    throw new Error("Triage file does not contain an actionable target");
+  }
+  return triage.target;
 }
 
 async function readTelemetry(dataDir: string, requireRefreshReport: boolean): Promise<unknown> {
@@ -841,10 +882,7 @@ async function main(): Promise<void> {
     console.log(JSON.stringify({ provider_id: providerId, model_count: count }, null, 2));
     return;
   }
-  const flag = (name: string): string | undefined => {
-    const index = args.indexOf(name);
-    return index >= 0 ? args[index + 1] : undefined;
-  };
+  const flag = (name: string): string | undefined => parseCliFlag(args, name);
   const dataDir = resolve(flag("--data-dir") ?? "data");
   const evidenceDir = flag("--evidence-dir");
   const providerFilter = flag("--provider");

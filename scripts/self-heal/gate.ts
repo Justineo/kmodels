@@ -11,10 +11,14 @@ import {
   type CatalogRepairCandidate,
 } from "../../src/catalog/catalog-repair.ts";
 import { moduleDependencies } from "../module-dependencies.ts";
+import { runGit, sanitizedUntrustedEnv, SELF_HEAL_MAX_BUFFER } from "./runtime.ts";
 import {
+  hasOmittedDependencyFailure,
+  inspectTargetReplayReadiness,
+  isGenericParseFailureMessage,
   mayBeRedactedOrTruncatedMessage,
   nonReplayVerifiableTriggers,
-  replayContextRequirementError,
+  primaryCandidateMessage,
   type BoundEvidenceFile,
 } from "./triage.ts";
 
@@ -30,8 +34,6 @@ export interface GateVerdict {
   violations: string[];
   replayed_sources: string[];
 }
-
-const SUBPROCESS_MAX_BUFFER = 128 * 1024 * 1024;
 
 const HARD_FORBIDDEN_PATTERNS: readonly RegExp[] = [
   /^\.github\//,
@@ -231,13 +233,10 @@ export function parsePatchPaths(patchText: string): string[] {
   return [...paths].sort();
 }
 
-const THRESHOLD_NAMES = new Set([
-  "minModels",
-  "minDocuments",
-  "minProducts",
-  "minCards",
-  "minModelDocuments",
-]);
+const THRESHOLD_ASSIGNMENT_RE =
+  /\b(minModels|minDocuments|minProducts|minCards|minModelDocuments)\s*:\s*(\d+)/g;
+const THRESHOLD_DIFF_RE =
+  /^([+-]).*\b(minModels|minDocuments|minProducts|minCards|minModelDocuments)\s*:\s*(\d+)/;
 
 /**
  * Extract numeric collection thresholds keyed by owning source identity (`id: "..."` or
@@ -258,12 +257,10 @@ export function extractSourceThresholds(source: string): Map<string, number> {
         currentScope = `fn:${fnMatch[1]}`;
       }
     }
-    const thresholdRegex =
-      /\b(minModels|minDocuments|minProducts|minCards|minModelDocuments)\s*:\s*(\d+)/g;
-    for (const match of line.matchAll(thresholdRegex)) {
+    for (const match of line.matchAll(THRESHOLD_ASSIGNMENT_RE)) {
       const field = match[1];
       const rawValue = match[2];
-      if (field === undefined || rawValue === undefined || !THRESHOLD_NAMES.has(field)) continue;
+      if (field === undefined || rawValue === undefined) continue;
       const baseKey = `${currentScope}:${field}`;
       const count = occurrenceByKey.get(baseKey) ?? 0;
       occurrenceByKey.set(baseKey, count + 1);
@@ -328,9 +325,7 @@ export function auditDiffSafety(
     if (line.startsWith("---") || line.startsWith("+++") || line.startsWith("@@")) continue;
 
     if (options.beforeFiles === undefined && options.afterFiles === undefined) {
-      const thresholdMatch = line.match(
-        /^([+-]).*\b(minModels|minDocuments|minProducts|minCards|minModelDocuments)\s*:\s*(\d+)/,
-      );
+      const thresholdMatch = line.match(THRESHOLD_DIFF_RE);
       if (thresholdMatch !== null) {
         const [, sign, field, rawValue] = thresholdMatch;
         const value = Number(rawValue);
@@ -393,11 +388,13 @@ const replayContractDiagnosticSchema = z.object({
   affected_items: z.number().int().nonnegative().optional(),
 });
 
+const replayStructuredFindingSchema = z.object({
+  disposition: z.enum(["reject", "accept_with_signal"]).optional(),
+  diagnostics: z.array(replayContractDiagnosticSchema),
+});
+
 const replayContractFindingSchema = z.union([
-  z.object({
-    disposition: z.enum(["reject", "accept_with_signal"]).optional(),
-    diagnostics: z.array(replayContractDiagnosticSchema),
-  }),
+  replayStructuredFindingSchema,
   replayContractDiagnosticSchema,
 ]);
 
@@ -423,21 +420,26 @@ const replaySummarySchema = z.object({
     .optional(),
 });
 
+type ReplaySummary = z.infer<typeof replaySummarySchema>;
+
 function contractDiagnosticKey(diagnostic: { kind: string; path?: string | undefined }): string {
   return `${diagnostic.kind}:${diagnostic.path ?? "/"}`;
 }
 
-function contractDiagnosticCounts(
-  summary: z.infer<typeof replaySummarySchema>,
+function buildDiagnosticCounts(
+  precomputed: Readonly<Record<string, number>> | undefined,
+  findings: ReplaySummary["contract_findings"],
+  rejectOnly: boolean,
 ): Map<string, number> {
   const counts = new Map<string, number>();
-  if (summary.contract_diagnostic_counts !== undefined) {
-    for (const [key, value] of Object.entries(summary.contract_diagnostic_counts)) {
+  if (precomputed !== undefined) {
+    for (const [key, value] of Object.entries(precomputed)) {
       if (value > 0) counts.set(key, value);
     }
     return counts;
   }
-  for (const finding of summary.contract_findings ?? []) {
+  for (const finding of findings ?? []) {
+    if (rejectOnly && (!("disposition" in finding) || finding.disposition !== "reject")) continue;
     const items = "diagnostics" in finding ? finding.diagnostics : [finding];
     for (const diagnostic of items) {
       const key = contractDiagnosticKey(diagnostic);
@@ -451,7 +453,15 @@ function contractDiagnosticCounts(
   return counts;
 }
 
-function totalContractFindings(summary: z.infer<typeof replaySummarySchema>): number {
+function contractDiagnosticCounts(summary: ReplaySummary): Map<string, number> {
+  return buildDiagnosticCounts(
+    summary.contract_diagnostic_counts,
+    summary.contract_findings,
+    false,
+  );
+}
+
+function totalContractFindings(summary: ReplaySummary): number {
   return (
     summary.contract_findings_total ??
     (summary.contract_findings?.length ?? 0) + (summary.contract_findings_omitted ?? 0)
@@ -462,28 +472,12 @@ function isUnknownFieldKey(key: string): boolean {
   return key === "unknown_field" || key.startsWith("unknown_field:");
 }
 
-function rejectContractDiagnosticCounts(
-  summary: z.infer<typeof replaySummarySchema>,
-): Map<string, number> {
-  const counts = new Map<string, number>();
-  if (summary.contract_reject_diagnostic_counts !== undefined) {
-    for (const [key, value] of Object.entries(summary.contract_reject_diagnostic_counts)) {
-      if (value > 0) counts.set(key, value);
-    }
-    return counts;
-  }
-  for (const finding of summary.contract_findings ?? []) {
-    if (!("disposition" in finding) || finding.disposition !== "reject") continue;
-    for (const diagnostic of finding.diagnostics) {
-      const key = contractDiagnosticKey(diagnostic);
-      const weight =
-        diagnostic.affected_items !== undefined && diagnostic.affected_items > 0
-          ? diagnostic.affected_items
-          : 1;
-      counts.set(key, (counts.get(key) ?? 0) + weight);
-    }
-  }
-  return counts;
+function rejectContractDiagnosticCounts(summary: ReplaySummary): Map<string, number> {
+  return buildDiagnosticCounts(
+    summary.contract_reject_diagnostic_counts,
+    summary.contract_findings,
+    true,
+  );
 }
 
 function nonExtensionContractDiagnosticKeys(counts: ReadonlyMap<string, number>): string[] {
@@ -561,29 +555,12 @@ export function needsBrowserPrerequisite(commands: readonly (readonly string[])[
   );
 }
 
-const GENERIC_PARSE_FAILURE_MESSAGES = new Set([
-  "the reviewed source no longer satisfies its parser contract",
-  "the source contains unresolved contract evidence; investigate before deciding whether a code repair is needed",
-]);
-
 /**
  * Preserve identifier casing (e.g. `Model-X` vs `model-x`) while canonicalizing collector/replay
  * redaction and whitespace so distinct case-sensitive registry keys remain distinguishable.
  */
 function normalizeFailureMessage(raw: string): string {
   return sourceErrorMessage(new Error(raw)).trim().replace(/\s+/g, " ").replace(/\.+$/, "");
-}
-
-function isGenericParseFailureMessage(normalized: string): boolean {
-  return GENERIC_PARSE_FAILURE_MESSAGES.has(normalized.toLowerCase());
-}
-
-function hasOmittedDependencyFailures(candidates: readonly CatalogRepairCandidate[]): boolean {
-  return candidates.some(
-    (candidate) =>
-      (candidate.dependency_failures_omitted ?? 0) > 0 ||
-      candidate.message.includes("additional failures omitted"),
-  );
 }
 
 /**
@@ -609,16 +586,7 @@ function extractTargetParseFailureMessages(candidates: readonly CatalogRepairCan
     for (const dep of candidate.dependency_parse_failures ?? []) {
       record(dep.message);
     }
-    // Strip secondary clauses appended when reconciliation/contract/validation candidates merge onto the same source.
-    let primary = candidate.message;
-    for (const marker of [
-      " Missing reviewed source contracts:",
-      " The source contains unresolved contract evidence",
-      " Provider validation:",
-    ]) {
-      const idx = primary.indexOf(marker);
-      if (idx >= 0) primary = primary.slice(0, idx);
-    }
+    const primary = primaryCandidateMessage(candidate.message);
     const depPrefix = "Dependency evidence requires investigation:";
     const depIdx = primary.indexOf(depPrefix);
     if (depIdx >= 0) {
@@ -650,12 +618,7 @@ const replayParseErrorSchema = z.object({
     .regex(/^[0-9a-f]{16}$/u)
     .optional(),
   message: z.string().optional(),
-  contract_finding: z
-    .object({
-      disposition: z.enum(["reject", "accept_with_signal"]).optional(),
-      diagnostics: z.array(replayContractDiagnosticSchema),
-    })
-    .optional(),
+  contract_finding: replayStructuredFindingSchema.optional(),
   contract_findings: z.array(replayContractFindingSchema).optional(),
   contract_diagnostic_counts: z.record(z.string(), z.number().int().nonnegative()).optional(),
 });
@@ -701,7 +664,7 @@ function parseBaselineReplayError(
         if (parsed.data.stage === "parse_error") {
           if (parsed.data.contract_diagnostic_counts !== undefined) {
             for (const [key, count] of Object.entries(parsed.data.contract_diagnostic_counts)) {
-              if (count > 0 && key !== "unknown_field" && !key.startsWith("unknown_field:")) {
+              if (count > 0 && !isUnknownFieldKey(key)) {
                 keys.add(key);
               }
             }
@@ -733,6 +696,118 @@ function parseBaselineReplayError(
     ...(message === undefined ? {} : { message }),
     keys,
   };
+}
+
+function parseReplaySummary(
+  role: "Candidate" | "Baseline",
+  stdout: string,
+  sourceId: string,
+): { ok: true; summary: ReplaySummary } | { ok: false; reason: string } {
+  let summary: ReplaySummary;
+  try {
+    summary = replaySummarySchema.parse(JSON.parse(stdout));
+  } catch (error) {
+    return {
+      ok: false,
+      reason: `${role} replay produced invalid summary JSON for ${sourceId}: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+  if (summary.source_id !== sourceId) {
+    return {
+      ok: false,
+      reason: `${role} replay summary belonged to ${summary.source_id}, expected ${sourceId}`,
+    };
+  }
+  return { ok: true, summary };
+}
+
+function inspectBaselineNonZeroError(
+  baseline: { status: number | null; stdout: string; stderr: string },
+  sourceId: string,
+):
+  | { ok: true; combined: string; parsed: ReturnType<typeof parseBaselineReplayError> }
+  | { ok: false; reason: string } {
+  const combined = `${baseline.stderr}\n${baseline.stdout}`.trim();
+  if (combined.length === 0) {
+    return {
+      ok: false,
+      reason: `Baseline replay for ${sourceId} exited ${baseline.status} with empty output; failure evidence missing`,
+    };
+  }
+  if (ENVIRONMENT_ERROR_PATTERN.test(combined)) {
+    return {
+      ok: false,
+      reason: `Baseline replay failed due to environment/context error for ${sourceId}: ${combined.slice(0, 300)}`,
+    };
+  }
+  const parsed = parseBaselineReplayError(combined, sourceId);
+  if (parsed.sourceMismatch !== undefined) {
+    return {
+      ok: false,
+      reason: `Baseline parse error belonged to ${parsed.sourceMismatch}, expected ${sourceId}`,
+    };
+  }
+  return { ok: true, combined, parsed };
+}
+
+function checkCandidateCleanAfterParseFailure(
+  sourceId: string,
+  candidateContractCounts: ReadonlyMap<string, number>,
+  candidateReasons: ReadonlyMap<string, number>,
+): { ok: boolean; reason?: string } {
+  const candidateDriftKeys = nonExtensionContractDiagnosticKeys(candidateContractCounts);
+  if (candidateDriftKeys.length > 0) {
+    return {
+      ok: false,
+      reason: `Candidate replay for ${sourceId} contains unresolved/new contract diagnostic(s): ${candidateDriftKeys.join(", ")}`,
+    };
+  }
+  if (candidateReasons.size > 0) {
+    return {
+      ok: false,
+      reason: `Candidate replay for ${sourceId} contains unresolved/new reconciliation diagnostic(s): ${[...candidateReasons.keys()].sort().join(", ")}`,
+    };
+  }
+  return { ok: true };
+}
+
+function checkNoMapRegression(
+  sourceId: string,
+  label: string,
+  baseline: ReadonlyMap<string, number>,
+  candidate: ReadonlyMap<string, number>,
+): string | undefined {
+  for (const [key, candCount] of candidate) {
+    const baseCount = baseline.get(key) ?? 0;
+    if (candCount > baseCount) {
+      return `Candidate replay for ${sourceId} regressed ${label} ${key} (${baseCount} -> ${candCount})`;
+    }
+  }
+  return undefined;
+}
+
+function checkTargetKeysReduced(
+  sourceId: string,
+  label: string,
+  keys: ReadonlySet<string>,
+  getBaselineCount: (key: string) => number,
+  getCandidateCount: (key: string) => number,
+): string | undefined {
+  const unreproduced: string[] = [];
+  const unresolved: string[] = [];
+  for (const key of [...keys].sort()) {
+    const baseCount = getBaselineCount(key);
+    const candCount = getCandidateCount(key);
+    if (baseCount === 0) unreproduced.push(key);
+    else if (candCount >= baseCount) unresolved.push(`${key} (${baseCount} -> ${candCount})`);
+  }
+  if (unreproduced.length > 0) {
+    return `Baseline replay for ${sourceId} did not reproduce ${label}: ${unreproduced.join(", ")}`;
+  }
+  if (unresolved.length > 0) {
+    return `Candidate replay for ${sourceId} did not reduce ${label}: ${unresolved.join(", ")}`;
+  }
+  return undefined;
 }
 
 export function evaluateBeforeAfterReplay(params: {
@@ -775,21 +850,9 @@ export function evaluateBeforeAfterReplay(params: {
       reason: `Candidate replay failed for ${sourceId}: ${(candidate.stderr || candidate.stdout).trim().slice(0, 300)}`,
     };
   }
-  let candidateSummary: z.infer<typeof replaySummarySchema>;
-  try {
-    candidateSummary = replaySummarySchema.parse(JSON.parse(candidate.stdout));
-  } catch (error) {
-    return {
-      ok: false,
-      reason: `Candidate replay produced invalid summary JSON for ${sourceId}: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
-  if (candidateSummary.source_id !== sourceId) {
-    return {
-      ok: false,
-      reason: `Candidate replay summary belonged to ${candidateSummary.source_id}, expected ${sourceId}`,
-    };
-  }
+  const parsedCandidate = parseReplaySummary("Candidate", candidate.stdout, sourceId);
+  if (!parsedCandidate.ok) return parsedCandidate;
+  const candidateSummary = parsedCandidate.summary;
 
   const candidateContractCounts = contractDiagnosticCounts(candidateSummary);
   const candidateRejectContractCounts = rejectContractDiagnosticCounts(candidateSummary);
@@ -799,7 +862,7 @@ export function evaluateBeforeAfterReplay(params: {
   // matching the exact source, stage, and ALL targeted diagnostics or recorded error message(s),
   // AND candidate MUST parse cleanly with zero unresolved or newly introduced drift diagnostics.
   if (expectsParseFailure) {
-    if (hasOmittedDependencyFailures(matchingCandidates)) {
+    if (matchingCandidates.some(hasOmittedDependencyFailure)) {
       return {
         ok: false,
         reason: `Target for ${sourceId} includes omitted dependency failure(s) that cannot be completely verified via single-source replay`,
@@ -817,30 +880,13 @@ export function evaluateBeforeAfterReplay(params: {
         reason: `Baseline replay for ${sourceId} exited 0 and did not reproduce source_parse_failure`,
       };
     }
-    const combinedBaselineError = `${baseline.stderr}\n${baseline.stdout}`.trim();
-    if (combinedBaselineError.length === 0) {
-      return {
-        ok: false,
-        reason: `Baseline replay for ${sourceId} exited ${baseline.status} with empty output; failure evidence missing`,
-      };
-    }
-    if (ENVIRONMENT_ERROR_PATTERN.test(combinedBaselineError)) {
-      return {
-        ok: false,
-        reason: `Baseline replay failed due to environment/context error for ${sourceId}: ${combinedBaselineError.slice(0, 300)}`,
-      };
-    }
-    const parsedError = parseBaselineReplayError(combinedBaselineError, sourceId);
+    const inspected = inspectBaselineNonZeroError(baseline, sourceId);
+    if (!inspected.ok) return inspected;
+    const parsedError = inspected.parsed;
     if (!parsedError.structured) {
       return {
         ok: false,
         reason: `Baseline replay for ${sourceId} did not emit a structured replay parse_error payload; original failure cannot be verified`,
-      };
-    }
-    if (parsedError.sourceMismatch !== undefined) {
-      return {
-        ok: false,
-        reason: `Baseline parse error belonged to ${parsedError.sourceMismatch}, expected ${sourceId}`,
       };
     }
     if (parsedError.stage !== "parse_error") {
@@ -941,7 +987,6 @@ export function evaluateBeforeAfterReplay(params: {
         reason: `Redacted or truncated failure message for ${sourceId} lacks error_fingerprint or source_hash binding; refusing to match ambiguous redacted text`,
       };
     }
-    // Reject any unresolved or newly introduced drift / reject / reconciliation diagnostics on the candidate summary.
     const candidateDriftKeys = nonExtensionContractDiagnosticKeys(candidateContractCounts);
     if (candidateDriftKeys.length > 0) {
       return {
@@ -988,70 +1033,31 @@ export function evaluateBeforeAfterReplay(params: {
     };
   }
   if (baseline.status !== 0) {
-    const combinedBaselineError = `${baseline.stderr}\n${baseline.stdout}`.trim();
-    if (combinedBaselineError.length === 0) {
-      return {
-        ok: false,
-        reason: `Baseline replay for ${sourceId} exited ${baseline.status} with empty output; failure evidence missing`,
-      };
-    }
-    if (ENVIRONMENT_ERROR_PATTERN.test(combinedBaselineError)) {
-      return {
-        ok: false,
-        reason: `Baseline replay failed due to environment/context error for ${sourceId}: ${combinedBaselineError.slice(0, 300)}`,
-      };
-    }
-    const parsedError = parseBaselineReplayError(combinedBaselineError, sourceId);
-    if (parsedError.sourceMismatch !== undefined) {
-      return {
-        ok: false,
-        reason: `Baseline parse error belonged to ${parsedError.sourceMismatch}, expected ${sourceId}`,
-      };
-    }
+    const inspected = inspectBaselineNonZeroError(baseline, sourceId);
+    if (!inspected.ok) return inspected;
     // Non-parse-failure summary targets MUST exit 0 on baseline to reproduce their diagnostics.
     if (matchingCandidates.length > 0) {
       return {
         ok: false,
-        reason: `Baseline replay for ${sourceId} exited non-zero instead of reproducing target summary diagnostics: ${combinedBaselineError.slice(0, 200)}`,
+        reason: `Baseline replay for ${sourceId} exited non-zero instead of reproducing target summary diagnostics: ${inspected.combined.slice(0, 200)}`,
       };
     }
-    if (!parsedError.structured || parsedError.stage !== "parse_error") {
+    if (!inspected.parsed.structured || inspected.parsed.stage !== "parse_error") {
       return {
         ok: false,
         reason: `Baseline replay for ${sourceId} failed without a structured parse_error payload`,
       };
     }
-    const candidateDriftKeys = nonExtensionContractDiagnosticKeys(candidateContractCounts);
-    if (candidateDriftKeys.length > 0) {
-      return {
-        ok: false,
-        reason: `Candidate replay for ${sourceId} contains unresolved/new contract diagnostic(s): ${candidateDriftKeys.join(", ")}`,
-      };
-    }
-    if (candidateReasons.size > 0) {
-      return {
-        ok: false,
-        reason: `Candidate replay for ${sourceId} contains unresolved/new reconciliation diagnostic(s): ${[...candidateReasons.keys()].sort().join(", ")}`,
-      };
-    }
-    return { ok: true };
+    return checkCandidateCleanAfterParseFailure(
+      sourceId,
+      candidateContractCounts,
+      candidateReasons,
+    );
   }
 
-  let baselineSummary: z.infer<typeof replaySummarySchema>;
-  try {
-    baselineSummary = replaySummarySchema.parse(JSON.parse(baseline.stdout));
-  } catch (error) {
-    return {
-      ok: false,
-      reason: `Baseline replay produced invalid summary JSON for ${sourceId}: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
-  if (baselineSummary.source_id !== sourceId) {
-    return {
-      ok: false,
-      reason: `Baseline replay summary belonged to ${baselineSummary.source_id}, expected ${sourceId}`,
-    };
-  }
+  const parsedBaseline = parseReplaySummary("Baseline", baseline.stdout, sourceId);
+  if (!parsedBaseline.ok) return parsedBaseline;
+  const baselineSummary = parsedBaseline.summary;
 
   const baselineContractCounts = contractDiagnosticCounts(baselineSummary);
   const baselineRejectContractCounts = rejectContractDiagnosticCounts(baselineSummary);
@@ -1060,98 +1066,54 @@ export function evaluateBeforeAfterReplay(params: {
   const baselineReasons = repairableReasonCounts(baselineSummary);
 
   // Never allow a candidate patch to introduce or worsen any sibling diagnostic on the same source.
-  for (const [key, candCount] of candidateRejectContractCounts) {
-    const baseCount = baselineRejectContractCounts.get(key) ?? 0;
-    if (candCount > baseCount) {
-      return {
-        ok: false,
-        reason: `Candidate replay for ${sourceId} regressed reject contract diagnostic ${key} (${baseCount} -> ${candCount})`,
-      };
-    }
-  }
-  for (const [key, candCount] of candidateContractCounts) {
-    const baseCount = baselineContractCounts.get(key) ?? 0;
-    if (candCount > baseCount) {
-      return {
-        ok: false,
-        reason: `Candidate replay for ${sourceId} regressed contract diagnostic ${key} (${baseCount} -> ${candCount})`,
-      };
-    }
-  }
-  if (candidateContractFindings > baselineContractFindings) {
-    return {
-      ok: false,
-      reason: `Candidate replay for ${sourceId} regressed contract_findings (${baselineContractFindings} -> ${candidateContractFindings})`,
-    };
-  }
-  for (const [reason, candCount] of candidateReasons) {
-    const baseCount = baselineReasons.get(reason) ?? 0;
-    if (candCount > baseCount) {
-      return {
-        ok: false,
-        reason: `Candidate replay for ${sourceId} regressed sibling diagnostic ${reason} (${baseCount} -> ${candCount})`,
-      };
-    }
-  }
+  const regression =
+    checkNoMapRegression(
+      sourceId,
+      "reject contract diagnostic",
+      baselineRejectContractCounts,
+      candidateRejectContractCounts,
+    ) ??
+    checkNoMapRegression(
+      sourceId,
+      "contract diagnostic",
+      baselineContractCounts,
+      candidateContractCounts,
+    ) ??
+    (candidateContractFindings > baselineContractFindings
+      ? `Candidate replay for ${sourceId} regressed contract_findings (${baselineContractFindings} -> ${candidateContractFindings})`
+      : undefined) ??
+    checkNoMapRegression(sourceId, "sibling diagnostic", baselineReasons, candidateReasons);
+  if (regression !== undefined) return { ok: false, reason: regression };
 
-  // Evaluate EVERY targeted reconciliation reason individually (never sum across multiple targets).
+  // Evaluate EVERY targeted reconciliation reason and contract diagnostic key individually.
   if (targetReasons.size > 0) {
-    const unreproduced: string[] = [];
-    const unresolved: string[] = [];
-    for (const reason of [...targetReasons].sort()) {
-      const baseCount = baselineReasons.get(reason) ?? 0;
-      const candCount = candidateReasons.get(reason) ?? 0;
-      if (baseCount === 0) {
-        unreproduced.push(reason);
-      } else if (candCount >= baseCount) {
-        unresolved.push(`${reason} (${baseCount} -> ${candCount})`);
-      }
-    }
-    if (unreproduced.length > 0) {
-      return {
-        ok: false,
-        reason: `Baseline replay for ${sourceId} did not reproduce target diagnostic(s): ${unreproduced.join(", ")}`,
-      };
-    }
-    if (unresolved.length > 0) {
-      return {
-        ok: false,
-        reason: `Candidate replay for ${sourceId} did not reduce target diagnostic(s): ${unresolved.join(", ")}`,
-      };
-    }
+    const reasonError = checkTargetKeysReduced(
+      sourceId,
+      "target diagnostic(s)",
+      targetReasons,
+      (key) => baselineReasons.get(key) ?? 0,
+      (key) => candidateReasons.get(key) ?? 0,
+    );
+    if (reasonError !== undefined) return { ok: false, reason: reasonError };
   }
 
-  // Evaluate EVERY targeted contract diagnostic key (kind:path) individually.
   if (targetContractKeys.size > 0) {
-    const unreproduced: string[] = [];
-    const unresolved: string[] = [];
-    for (const key of [...targetContractKeys].sort()) {
+    const contractError = checkTargetKeysReduced(
+      sourceId,
+      "target contract diagnostic(s)",
+      targetContractKeys,
       // `unknown_field` only enters targetContractKeys from `disposition: "reject"` findings;
       // compare reject counts so downgrading a strict rejection to `accept_with_signal` passes.
-      const baseCount = isUnknownFieldKey(key)
-        ? (baselineRejectContractCounts.get(key) ?? 0)
-        : (baselineContractCounts.get(key) ?? 0);
-      const candCount = isUnknownFieldKey(key)
-        ? (candidateRejectContractCounts.get(key) ?? 0)
-        : (candidateContractCounts.get(key) ?? 0);
-      if (baseCount === 0) {
-        unreproduced.push(key);
-      } else if (candCount >= baseCount) {
-        unresolved.push(`${key} (${baseCount} -> ${candCount})`);
-      }
-    }
-    if (unreproduced.length > 0) {
-      return {
-        ok: false,
-        reason: `Baseline replay for ${sourceId} did not reproduce target contract diagnostic(s): ${unreproduced.join(", ")}`,
-      };
-    }
-    if (unresolved.length > 0) {
-      return {
-        ok: false,
-        reason: `Candidate replay for ${sourceId} did not reduce target contract diagnostic(s): ${unresolved.join(", ")}`,
-      };
-    }
+      (key) =>
+        isUnknownFieldKey(key)
+          ? (baselineRejectContractCounts.get(key) ?? 0)
+          : (baselineContractCounts.get(key) ?? 0),
+      (key) =>
+        isUnknownFieldKey(key)
+          ? (candidateRejectContractCounts.get(key) ?? 0)
+          : (candidateContractCounts.get(key) ?? 0),
+    );
+    if (contractError !== undefined) return { ok: false, reason: contractError };
   }
 
   if (targetReasons.size > 0 || targetContractKeys.size > 0) {
@@ -1172,13 +1134,6 @@ export function evaluateBeforeAfterReplay(params: {
       };
     }
     return { ok: true };
-  }
-
-  if (expectsParseFailure) {
-    return {
-      ok: false,
-      reason: `Baseline replay for ${sourceId} exited 0 and did not reproduce source_parse_failure`,
-    };
   }
 
   const baselineDiagnostics = countRepairableDiagnostics(baselineSummary);
@@ -1208,21 +1163,42 @@ function resolveEvidencePath(evidenceRoot: string, relativePath: string): string
   return full;
 }
 
+function verifyBoundFile(
+  evidenceRoot: string,
+  relativePath: string,
+  expectedSha256: string | undefined,
+  sourceId: string,
+  label: "Evidence" | "Evidence context",
+): { ok: true; fullPath: string } | { ok: false; violation: string } {
+  let fullPath: string;
+  try {
+    fullPath = resolveEvidencePath(evidenceRoot, relativePath);
+  } catch (error) {
+    return { ok: false, violation: error instanceof Error ? error.message : String(error) };
+  }
+  let actualHash: string;
+  try {
+    actualHash = sha256(readFileSync(fullPath));
+  } catch {
+    return { ok: false, violation: `${label} file unreadable for ${sourceId}: ${fullPath}` };
+  }
+  if (expectedSha256 && actualHash !== expectedSha256) {
+    return {
+      ok: false,
+      violation: `${label} SHA-256 mismatch for ${sourceId}: expected ${expectedSha256}, got ${actualHash}`,
+    };
+  }
+  return { ok: true, fullPath };
+}
+
 function git(args: readonly string[], cwd?: string): string {
-  const result = spawnSync("git", args, {
-    encoding: "utf8",
-    maxBuffer: SUBPROCESS_MAX_BUFFER,
-    ...(cwd ? { cwd } : {}),
-  });
-  if (result.error !== undefined) throw result.error;
-  if (result.status !== 0) throw new Error(result.stderr.trim() || `git ${args[0]} failed`);
-  return result.stdout;
+  return runGit(args, cwd ?? process.cwd());
 }
 
 function gitOptionalShow(base: string, filePath: string, cwd?: string): string | undefined {
   const result = spawnSync("git", ["show", `${base}:${filePath}`], {
     encoding: "utf8",
-    maxBuffer: SUBPROCESS_MAX_BUFFER,
+    maxBuffer: SELF_HEAL_MAX_BUFFER,
     ...(cwd ? { cwd } : {}),
   });
   if (result.status !== 0) return undefined;
@@ -1237,6 +1213,12 @@ export function runSelfHealGate(options: {
   evidenceRoot?: string;
   evidenceFiles?: readonly BoundEvidenceFile[];
   requireEvidenceReplay?: boolean;
+  skipEvidenceReplay?: boolean;
+  replayCommandWrapper?: (replayArgs: readonly string[]) => {
+    command: string;
+    args: string[];
+    env?: NodeJS.ProcessEnv;
+  };
   compareBaselineReplay?: boolean;
   installCiPrerequisites?: boolean;
   skipValidation?: boolean;
@@ -1290,41 +1272,32 @@ export function runSelfHealGate(options: {
   const replayed_sources: string[] = [];
   const evidenceFiles = options.evidenceFiles ?? [];
   const targetCandidates = options.targetCandidates ?? [];
-  const hasUnboundProviderCandidate = targetCandidates.some(
-    (c) => c.scope === "provider" && c.source_id === undefined,
-  );
-  const unsupportedTriggers = nonReplayVerifiableTriggers(targetCandidates);
-  const targetSourceIds = [
-    ...new Set(
-      targetCandidates.map((c) => c.source_id).filter((id): id is string => id !== undefined),
-    ),
-  ];
-  const evidenceBySource = new Map(evidenceFiles.map((e) => [e.source_id, e]));
-  const missingSourceIds = targetSourceIds.filter((id) => !evidenceBySource.has(id));
-  const contextErrors = targetSourceIds
-    .map((id) => replayContextRequirementError(id, evidenceBySource.get(id)))
-    .filter((msg): msg is string => msg !== undefined);
+  const readiness = inspectTargetReplayReadiness(targetCandidates, evidenceFiles);
   const mustReplay = options.requireEvidenceReplay ?? targetCandidates.length > 0;
 
-  if (mustReplay && unsupportedTriggers.length > 0) {
+  if (mustReplay && readiness.unsupportedTriggers.length > 0) {
     violations.push(
-      `Target trigger(s) cannot be verified via single-source offline replay: ${unsupportedTriggers.join(", ")}`,
+      `Target trigger(s) cannot be verified via single-source offline replay: ${readiness.unsupportedTriggers.join(", ")}`,
     );
-  } else if (mustReplay && hasUnboundProviderCandidate) {
+  } else if (mustReplay && readiness.hasUnboundProviderCandidate) {
     violations.push(
       "Provider-level assembly or quarantine failure cannot be verified via source-only evidence replay",
     );
-  } else if (mustReplay && missingSourceIds.length > 0) {
-    violations.push(`Missing bound evidence for target source(s): ${missingSourceIds.join(", ")}`);
-  } else if (mustReplay && contextErrors.length > 0) {
-    violations.push(...contextErrors);
-  } else if (mustReplay && evidenceFiles.length === 0) {
+  } else if (mustReplay && readiness.missingSourceIds.length > 0) {
+    violations.push(
+      `Missing bound evidence for target source(s): ${readiness.missingSourceIds.join(", ")}`,
+    );
+  } else if (mustReplay && readiness.contextErrors.length > 0) {
+    violations.push(...readiness.contextErrors);
+  } else if (mustReplay && readiness.evidenceCount === 0) {
     violations.push(
       "Evidence replay is required for failure candidates but no bound evidence was provided",
     );
   }
 
-  if (violations.length === 0 && evidenceFiles.length > 0) {
+  const untrustedEnv = sanitizedUntrustedEnv();
+
+  if (violations.length === 0 && options.skipEvidenceReplay !== true && evidenceFiles.length > 0) {
     const evidenceRoot = options.evidenceRoot ?? cwd;
     let baselineDir: string | undefined;
     try {
@@ -1338,50 +1311,33 @@ export function runSelfHealGate(options: {
         }
       }
       for (const entry of evidenceFiles) {
-        let resolvedPath: string;
-        try {
-          resolvedPath = resolveEvidencePath(evidenceRoot, entry.relative_path);
-        } catch (error) {
-          violations.push(error instanceof Error ? error.message : String(error));
+        const verifiedEvidence = verifyBoundFile(
+          evidenceRoot,
+          entry.relative_path,
+          entry.sha256,
+          entry.source_id,
+          "Evidence",
+        );
+        if (!verifiedEvidence.ok) {
+          violations.push(verifiedEvidence.violation);
           continue;
         }
-        let actualHash: string;
-        try {
-          actualHash = sha256(readFileSync(resolvedPath));
-        } catch {
-          violations.push(`Evidence file unreadable for ${entry.source_id}: ${resolvedPath}`);
-          continue;
-        }
-        if (entry.sha256 && actualHash !== entry.sha256) {
-          violations.push(
-            `Evidence SHA-256 mismatch for ${entry.source_id}: expected ${entry.sha256}, got ${actualHash}`,
-          );
-          continue;
-        }
+        const resolvedPath = verifiedEvidence.fullPath;
 
         let resolvedContextPath: string | undefined;
         if (entry.context_relative_path !== undefined) {
-          try {
-            resolvedContextPath = resolveEvidencePath(evidenceRoot, entry.context_relative_path);
-          } catch (error) {
-            violations.push(error instanceof Error ? error.message : String(error));
+          const verifiedContext = verifyBoundFile(
+            evidenceRoot,
+            entry.context_relative_path,
+            entry.context_sha256,
+            entry.source_id,
+            "Evidence context",
+          );
+          if (!verifiedContext.ok) {
+            violations.push(verifiedContext.violation);
             continue;
           }
-          let actualContextHash: string;
-          try {
-            actualContextHash = sha256(readFileSync(resolvedContextPath));
-          } catch {
-            violations.push(
-              `Evidence context file unreadable for ${entry.source_id}: ${resolvedContextPath}`,
-            );
-            continue;
-          }
-          if (entry.context_sha256 && actualContextHash !== entry.context_sha256) {
-            violations.push(
-              `Evidence context SHA-256 mismatch for ${entry.source_id}: expected ${entry.context_sha256}, got ${actualContextHash}`,
-            );
-            continue;
-          }
+          resolvedContextPath = verifiedContext.fullPath;
         }
 
         const replayArgs = [
@@ -1392,17 +1348,24 @@ export function runSelfHealGate(options: {
           ...(resolvedContextPath === undefined ? [] : [resolvedContextPath]),
         ];
 
-        const candidateReplay = spawnSync("vp", replayArgs, {
-          cwd,
-          encoding: "utf8",
-          maxBuffer: SUBPROCESS_MAX_BUFFER,
-        });
+        const wrappedCandidate = options.replayCommandWrapper?.(replayArgs);
+        const candidateReplay = spawnSync(
+          wrappedCandidate?.command ?? "vp",
+          wrappedCandidate?.args ?? replayArgs,
+          {
+            cwd,
+            env: wrappedCandidate?.env ?? untrustedEnv,
+            encoding: "utf8",
+            maxBuffer: SELF_HEAL_MAX_BUFFER,
+          },
+        );
 
         if (baselineDir !== undefined) {
           const baselineReplay = spawnSync("vp", replayArgs, {
             cwd: baselineDir,
+            env: untrustedEnv,
             encoding: "utf8",
-            maxBuffer: SUBPROCESS_MAX_BUFFER,
+            maxBuffer: SELF_HEAL_MAX_BUFFER,
           });
           const comparison = evaluateBeforeAfterReplay({
             sourceId: entry.source_id,
@@ -1427,8 +1390,13 @@ export function runSelfHealGate(options: {
             continue;
           }
         } else if (candidateReplay.status !== 0) {
+          const detail =
+            candidateReplay.stderr ||
+            candidateReplay.stdout ||
+            candidateReplay.error?.message ||
+            `exit status ${String(candidateReplay.status)}`;
           violations.push(
-            `Evidence replay failed for ${entry.source_id}: ${(candidateReplay.stderr || candidateReplay.stdout).trim().slice(0, 300)}`,
+            `Evidence replay failed for ${entry.source_id}: ${detail.trim().slice(0, 300)}`,
           );
           continue;
         }
@@ -1451,8 +1419,9 @@ export function runSelfHealGate(options: {
     if (shouldInstallPrereqs) {
       const planRun = spawnSync("vp", ["node", "scripts/validate-changes.ts", base, "--plan"], {
         cwd,
+        env: untrustedEnv,
         encoding: "utf8",
-        maxBuffer: SUBPROCESS_MAX_BUFFER,
+        maxBuffer: SELF_HEAL_MAX_BUFFER,
       });
       if (planRun.status === 0) {
         try {
@@ -1463,7 +1432,7 @@ export function runSelfHealGate(options: {
             const installBrowser = spawnSync(
               "vp",
               ["exec", "playwright", "install", "--with-deps", "chromium", "--only-shell"],
-              { cwd, stdio: "inherit" },
+              { cwd, env: untrustedEnv, stdio: "inherit" },
             );
             if (installBrowser.status !== 0) {
               violations.push(
@@ -1479,6 +1448,7 @@ export function runSelfHealGate(options: {
     if (violations.length === 0) {
       const validation = spawnSync("vp", ["node", "scripts/validate-changes.ts", base], {
         cwd,
+        env: untrustedEnv,
         stdio: "inherit",
       });
       if (validation.status !== 0) {

@@ -1,10 +1,18 @@
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { sha256 } from "../../src/catalog/io.ts";
+import {
+  DEFAULT_CODEX_MODEL,
+  buildCodexSandboxArgs,
+  loadOpenAIPricingLookup,
+  resolveCodexBinary,
+  resolveOpenAIRateBand,
+  runCodexAdapter,
+  type OpenAIInferencePriceLookup,
+} from "./adapters/codex.ts";
 import {
   evaluateBudget,
   isValidUsd,
@@ -14,13 +22,18 @@ import {
 } from "./budget.ts";
 import { runSelfHealGate } from "./gate.ts";
 import {
+  assertOutsideRepo,
+  parseCliFlag,
+  parsePositiveInt,
+  runGit,
+  sanitizedUntrustedEnv,
+  selfHealPrivateBaseDir,
+} from "./runtime.ts";
+import {
   filterEvidenceForTargetCandidates,
-  nonReplayVerifiableTriggers,
-  replayContextRequirementError,
+  inspectTargetReplayReadiness,
   type SelfHealTarget,
 } from "./triage.ts";
-
-const GIT_MAX_BUFFER = 128 * 1024 * 1024;
 
 export const proposalSchema = z.strictObject({
   version: z.literal(1),
@@ -46,13 +59,6 @@ export const usageReportSchema = z.strictObject({
 
 export type SelfHealProposal = z.infer<typeof proposalSchema>;
 export type SelfHealUsageReport = z.infer<typeof usageReportSchema>;
-
-function assertOutsideRepo(pathToCheck: string, repoRoot: string, label: string): void {
-  const rel = relative(resolve(repoRoot), resolve(pathToCheck));
-  if (rel === "" || (!rel.startsWith("..") && !rel.startsWith("/"))) {
-    throw new Error(`${label} (${pathToCheck}) must live outside the git repository checkout`);
-  }
-}
 
 function buildTaskPrompt(target: SelfHealTarget, evidenceRoot: string, feedback?: string): string {
   const evidenceLines = target.evidence_files.map(
@@ -90,15 +96,15 @@ function buildTaskPrompt(target: SelfHealTarget, evidenceRoot: string, feedback?
   ].join("\n");
 }
 
-function git(args: readonly string[], cwd: string): string {
-  const result = spawnSync("git", args, {
-    cwd,
-    encoding: "utf8",
-    maxBuffer: GIT_MAX_BUFFER,
-  });
-  if (result.error !== undefined) throw result.error;
-  if (result.status !== 0) throw new Error(result.stderr.trim() || `git ${args[0]} failed`);
-  return result.stdout;
+/**
+ * Match the repository's built-in OpenAI Codex adapter command so `generate.ts` invokes
+ * `runCodexAdapter` directly in-process using already-loaded immutable modules rather than
+ * reloading scripts or `node_modules` from the writable candidate workspace on retry.
+ */
+export function isBuiltinCodexAdapterCommand(agentCommand: string): boolean {
+  return /^(?:vp\s+node|node)\s+(?:\.\/)?scripts\/self-heal\/adapters\/codex\.ts$/.test(
+    agentCommand.trim(),
+  );
 }
 
 /**
@@ -110,15 +116,15 @@ function captureCandidatePatch(
   baseSha: string,
   changedFiles: readonly string[],
 ): string {
-  const untracked = git(["ls-files", "--others", "--exclude-standard", "-z"], cwd)
+  const untracked = runGit(["ls-files", "--others", "--exclude-standard", "-z"], cwd)
     .split("\0")
     .filter((file) => file.length > 0 && changedFiles.includes(file));
   if (untracked.length > 0) {
-    git(["add", "-N", "--", ...untracked], cwd);
+    runGit(["add", "-N", "--", ...untracked], cwd);
   }
-  const patch = git(["diff", "--binary", baseSha, "--", ...changedFiles], cwd);
+  const patch = runGit(["diff", "--binary", baseSha, "--", ...changedFiles], cwd);
   if (untracked.length > 0) {
-    git(["reset", "--", ...untracked], cwd);
+    runGit(["reset", "--", ...untracked], cwd);
   }
   return patch;
 }
@@ -162,6 +168,8 @@ export async function runGenerate(options: {
   budgetLedgerPath?: string;
   runAttempt?: number;
   agentCommand?: string;
+  codexFetcher?: typeof fetch;
+  codexPricingLookup?: OpenAIInferencePriceLookup;
   allowInsideRepoForTest?: boolean;
   allowZeroEvidenceForTest?: boolean;
 }): Promise<{ hasPatch: boolean; usage: SelfHealUsageReport; proposal?: SelfHealProposal }> {
@@ -169,21 +177,14 @@ export async function runGenerate(options: {
   const resolvedOut = resolve(options.outputDir);
   const resolvedEvidenceRoot = resolve(options.evidenceRoot);
   if (options.allowInsideRepoForTest !== true) {
-    assertOutsideRepo(options.triageFile, cwd, "--triage-file");
-    assertOutsideRepo(resolvedEvidenceRoot, cwd, "--evidence-root");
-    assertOutsideRepo(resolvedOut, cwd, "--output-dir");
+    assertOutsideRepo(cwd, options.triageFile, "--triage-file");
+    assertOutsideRepo(cwd, resolvedEvidenceRoot, "--evidence-root");
+    assertOutsideRepo(cwd, resolvedOut, "--output-dir");
     if (options.budgetLedgerPath !== undefined) {
-      assertOutsideRepo(options.budgetLedgerPath, cwd, "--budget-ledger");
+      assertOutsideRepo(cwd, options.budgetLedgerPath, "--budget-ledger");
     }
   }
-  const envAttemptRaw = process.env.GITHUB_RUN_ATTEMPT;
-  const envAttempt =
-    envAttemptRaw !== undefined &&
-    Number.isInteger(Number(envAttemptRaw)) &&
-    Number(envAttemptRaw) > 0
-      ? Number(envAttemptRaw)
-      : undefined;
-  const generateRunAttempt = options.runAttempt ?? envAttempt;
+  const generateRunAttempt = options.runAttempt ?? parsePositiveInt(process.env.GITHUB_RUN_ATTEMPT);
 
   await mkdir(resolvedOut, { recursive: true });
   const triage = JSON.parse(await readFile(resolve(options.triageFile), "utf8")) as {
@@ -204,41 +205,28 @@ export async function runGenerate(options: {
   }
   const target = triage.target;
 
-  const targetSourceIds = [
-    ...new Set(
-      target.candidates.map((c) => c.source_id).filter((id): id is string => id !== undefined),
-    ),
-  ];
-  const hasUnboundProviderCandidate = target.candidates.some(
-    (c) => c.scope === "provider" && c.source_id === undefined,
-  );
-  const unsupportedTriggers = nonReplayVerifiableTriggers(target.candidates);
   const hashMatchedEvidence = filterEvidenceForTargetCandidates(
     target.candidates,
     target.evidence_files,
   );
-  const evidenceBySource = new Map(hashMatchedEvidence.map((e) => [e.source_id, e]));
-  const missingSourceIds = targetSourceIds.filter((id) => !evidenceBySource.has(id));
-  const contextErrors = targetSourceIds
-    .map((id) => replayContextRequirementError(id, evidenceBySource.get(id)))
-    .filter((msg): msg is string => msg !== undefined);
+  const readiness = inspectTargetReplayReadiness(target.candidates, hashMatchedEvidence);
   if (
     options.allowZeroEvidenceForTest !== true &&
-    (unsupportedTriggers.length > 0 ||
-      hasUnboundProviderCandidate ||
-      missingSourceIds.length > 0 ||
-      contextErrors.length > 0 ||
-      hashMatchedEvidence.length === 0)
+    (readiness.unsupportedTriggers.length > 0 ||
+      readiness.hasUnboundProviderCandidate ||
+      readiness.missingSourceIds.length > 0 ||
+      readiness.contextErrors.length > 0 ||
+      readiness.evidenceCount === 0)
   ) {
     const reason =
-      unsupportedTriggers.length > 0
-        ? `Target trigger(s) cannot be verified via single-source offline replay (${unsupportedTriggers.join(", ")}); refusing paid generation`
-        : hasUnboundProviderCandidate
+      readiness.unsupportedTriggers.length > 0
+        ? `Target trigger(s) cannot be verified via single-source offline replay (${readiness.unsupportedTriggers.join(", ")}); refusing paid generation`
+        : readiness.hasUnboundProviderCandidate
           ? "Provider-level assembly or quarantine failure lacks reproducible provider verification; refusing paid generation"
-          : missingSourceIds.length > 0
-            ? `Missing bound official evidence for failing source(s): ${missingSourceIds.join(", ")}; refusing paid generation`
-            : contextErrors.length > 0
-              ? `${contextErrors.join("; ")}; refusing paid generation`
+          : readiness.missingSourceIds.length > 0
+            ? `Missing bound official evidence for failing source(s): ${readiness.missingSourceIds.join(", ")}; refusing paid generation`
+            : readiness.contextErrors.length > 0
+              ? `${readiness.contextErrors.join("; ")}; refusing paid generation`
               : "Target has no bound official evidence for reproducible verification; refusing paid generation";
     const usage: SelfHealUsageReport = usageReportSchema.parse({
       status: "no_patch",
@@ -287,9 +275,12 @@ export async function runGenerate(options: {
   if (!agentCommand) {
     throw new Error("SELF_HEAL_AGENT_CMD is required to generate a repair patch");
   }
+  const usesBuiltinCodex = isBuiltinCodexAdapterCommand(agentCommand);
 
-  const baseSha = git(["rev-parse", "HEAD"], cwd).trim();
-  const workDir = await mkdtemp(join(tmpdir(), "kmodels-self-heal-gen-"));
+  const baseSha = runGit(["rev-parse", "HEAD"], cwd).trim();
+  const runsBase = selfHealPrivateBaseDir("runs", cwd);
+  await mkdir(runsBase, { recursive: true });
+  const workDir = await mkdtemp(join(runsBase, "gen-"));
   const usageFile = join(workDir, "usage.json");
   let allUsageKnown = true;
   let anyInputTokens = false;
@@ -302,8 +293,40 @@ export async function runGenerate(options: {
   let finalStatus: SelfHealUsageReport["status"] = "no_patch";
   let finalError: string | undefined;
   let producedProposal: SelfHealProposal | undefined;
+  let finalUsage!: SelfHealUsageReport;
 
   try {
+    let builtinApiKey: string | undefined;
+    let codexModel: string | undefined;
+    let codexBin: string | undefined;
+    let codexPricingLookup: OpenAIInferencePriceLookup | undefined;
+    let sandboxCodexHome: string | undefined;
+    if (usesBuiltinCodex) {
+      // Validate credentials, pre-load verified Kmodels pricing data, validate the configured model,
+      // and resolve the Codex binary ONCE before attempt 1 so candidate workspace edits can never
+      // tamper with pricing lookups or binary resolution. Any pre-call config/setup error emits a
+      // verified $0 deferred receipt (attempts: 0) so `publish` never burns paid budget or starts
+      // provider cooldown when zero agent calls were made.
+      try {
+        builtinApiKey = process.env.SELF_HEAL_API_KEY?.trim();
+        if (!builtinApiKey) {
+          throw new Error("Missing SELF_HEAL_API_KEY");
+        }
+        codexModel = process.env.SELF_HEAL_MODEL?.trim() || DEFAULT_CODEX_MODEL;
+        codexPricingLookup = options.codexPricingLookup ?? (await loadOpenAIPricingLookup());
+        resolveOpenAIRateBand(codexModel, 1, codexPricingLookup);
+        codexBin = await resolveCodexBinary(
+          options.codexFetcher === undefined ? undefined : { fetcher: options.codexFetcher },
+        );
+        sandboxCodexHome = join(workDir, "sandbox-codex-home");
+        await mkdir(sandboxCodexHome, { recursive: true });
+      } catch (error) {
+        finalStatus = "deferred";
+        finalError = `Pre-call Codex setup failed before any paid call: ${error instanceof Error ? error.message : String(error)}`;
+        throw error;
+      }
+    }
+
     let feedback: string | undefined;
     const maxRunUsd = roundUsd(limits.maxRunUsd);
     const promptTarget: SelfHealTarget = { ...target, evidence_files: hashMatchedEvidence };
@@ -331,22 +354,52 @@ export async function runGenerate(options: {
       );
       await rm(usageFile, { force: true });
 
-      // Strip any accidental write tokens from agent subprocess environment.
-      const agentEnv: NodeJS.ProcessEnv = { ...process.env };
-      delete agentEnv.GH_TOKEN;
-      delete agentEnv.GITHUB_TOKEN;
-      agentEnv.SELF_HEAL_PROMPT_FILE = promptPath;
-      agentEnv.SELF_HEAL_PROVIDER = target.provider_id;
-      agentEnv.SELF_HEAL_EVIDENCE_ROOT = resolvedEvidenceRoot;
-      agentEnv.SELF_HEAL_USAGE_FILE = usageFile;
-      agentEnv.SELF_HEAL_MAX_RUN_USD = String(remainingUsd);
-      agentEnv.SELF_HEAL_MAX_RUN_TOKENS = String(remainingTokens);
+      let exitStatus: number | null = 0;
+      let agentFailureDetail: string | undefined;
+      if (usesBuiltinCodex && builtinApiKey !== undefined && codexBin !== undefined) {
+        try {
+          const codexResult = await runCodexAdapter({
+            cwd,
+            apiKey: builtinApiKey,
+            promptFile: promptPath,
+            usageFile,
+            codexBin,
+            ...(codexPricingLookup === undefined ? {} : { pricingLookup: codexPricingLookup }),
+            ...(codexModel === undefined ? {} : { model: codexModel }),
+            maxRunUsd: remainingUsd,
+            maxRunTokens: remainingTokens,
+            ...(options.codexFetcher === undefined ? {} : { fetcher: options.codexFetcher }),
+          });
+          if (codexResult.budgetExceeded) {
+            exitStatus = 1;
+            agentFailureDetail = "Codex adapter stopped because per-run budget cap was reached";
+          } else {
+            exitStatus = codexResult.exitCode;
+          }
+        } catch (error) {
+          exitStatus = 1;
+          agentFailureDetail = error instanceof Error ? error.message : String(error);
+        }
+      } else {
+        // Strip any accidental write tokens from custom agent subprocess environments.
+        const agentEnv: NodeJS.ProcessEnv = { ...process.env };
+        delete agentEnv.GH_TOKEN;
+        delete agentEnv.GITHUB_TOKEN;
+        agentEnv.SELF_HEAL_PROMPT_FILE = promptPath;
+        agentEnv.SELF_HEAL_PROVIDER = target.provider_id;
+        agentEnv.SELF_HEAL_EVIDENCE_ROOT = resolvedEvidenceRoot;
+        agentEnv.SELF_HEAL_USAGE_FILE = usageFile;
+        agentEnv.SELF_HEAL_WORKDIR = cwd;
+        agentEnv.SELF_HEAL_MAX_RUN_USD = String(remainingUsd);
+        agentEnv.SELF_HEAL_MAX_RUN_TOKENS = String(remainingTokens);
 
-      const agent = spawnSync("bash", ["-c", agentCommand], {
-        cwd,
-        stdio: "inherit",
-        env: agentEnv,
-      });
+        const agent = spawnSync("bash", ["-c", agentCommand], {
+          cwd,
+          stdio: "inherit",
+          env: agentEnv,
+        });
+        exitStatus = agent.status;
+      }
       const attemptUsage = await readAgentUsage(usageFile);
       if (!attemptUsage.known) {
         allUsageKnown = false;
@@ -377,9 +430,9 @@ export async function runGenerate(options: {
         break;
       }
 
-      if (agent.status !== 0) {
+      if (exitStatus !== 0) {
         finalStatus = "generate_failed";
-        feedback = `Agent command exited with status ${agent.status}`;
+        feedback = agentFailureDetail ?? `Agent command exited with status ${exitStatus}`;
         finalError = feedback;
         if (!allUsageKnown) {
           finalError = `${feedback} (retry skipped because usage was unreported)`;
@@ -388,6 +441,24 @@ export async function runGenerate(options: {
         continue;
       }
 
+      // Always run static diff/path/safety checks in `generate`. For the built-in Codex adapter,
+      // also run deterministic candidate evidence replay inside a secret-free, read-only,
+      // network-disabled `codex sandbox` so parse failures feed back into attempt 2 while keeping
+      // the separate secret-free `verify` job authoritative for before/after replay and full validation.
+      const sandboxedReplayWrapper =
+        usesBuiltinCodex && codexBin !== undefined && sandboxCodexHome !== undefined
+          ? (replayArgs: readonly string[]) => {
+              const env = sanitizedUntrustedEnv();
+              delete env.RUNNER_TEMP;
+              env.CODEX_HOME = sandboxCodexHome;
+              env.GIT_TERMINAL_PROMPT = "0";
+              return {
+                command: codexBin,
+                args: buildCodexSandboxArgs({ cwd, command: ["vp", ...replayArgs] }),
+                env,
+              };
+            }
+          : undefined;
       const verdict = runSelfHealGate({
         cwd,
         base: baseSha,
@@ -395,7 +466,12 @@ export async function runGenerate(options: {
         targetCandidates: target.candidates,
         evidenceRoot: resolvedEvidenceRoot,
         evidenceFiles: hashMatchedEvidence,
-        requireEvidenceReplay: options.allowZeroEvidenceForTest === true ? false : true,
+        requireEvidenceReplay:
+          sandboxedReplayWrapper !== undefined && options.allowZeroEvidenceForTest !== true,
+        skipEvidenceReplay: sandboxedReplayWrapper === undefined,
+        ...(sandboxedReplayWrapper === undefined
+          ? {}
+          : { replayCommandWrapper: sandboxedReplayWrapper }),
         skipValidation: true,
       });
 
@@ -455,7 +531,7 @@ export async function runGenerate(options: {
       (allUsageKnown || anyEstimatedUsd) && isValidUsd(totalEstimatedUsd)
         ? roundUsd(totalEstimatedUsd)
         : null;
-    const usage: SelfHealUsageReport = usageReportSchema.parse({
+    finalUsage = usageReportSchema.parse({
       status: finalStatus,
       ...(generateRunAttempt === undefined ? {} : { generate_run_attempt: generateRunAttempt }),
       usage_known:
@@ -469,12 +545,9 @@ export async function runGenerate(options: {
       attempts,
       ...(finalError === undefined ? {} : { error: finalError }),
     });
-    await writeFile(join(resolvedOut, "usage.json"), `${JSON.stringify(usage, null, 2)}\n`);
+    await writeFile(join(resolvedOut, "usage.json"), `${JSON.stringify(finalUsage, null, 2)}\n`);
   }
 
-  const finalUsage = usageReportSchema.parse(
-    JSON.parse(await readFile(join(resolvedOut, "usage.json"), "utf8")),
-  );
   return {
     hasPatch: producedProposal !== undefined,
     usage: finalUsage,
@@ -484,14 +557,10 @@ export async function runGenerate(options: {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const flag = (name: string): string | undefined => {
-    const index = args.indexOf(name);
-    return index >= 0 ? args[index + 1] : undefined;
-  };
-  const triageFile = flag("--triage-file");
-  const evidenceRoot = flag("--evidence-root");
-  const outputDir = flag("--output-dir");
-  const budgetLedgerPath = flag("--budget-ledger");
+  const triageFile = parseCliFlag(args, "--triage-file");
+  const evidenceRoot = parseCliFlag(args, "--evidence-root");
+  const outputDir = parseCliFlag(args, "--output-dir");
+  const budgetLedgerPath = parseCliFlag(args, "--budget-ledger");
   if (!triageFile || !evidenceRoot || !outputDir) {
     throw new Error(
       "Usage: generate.ts --triage-file <target.json> --evidence-root <dir> --output-dir <dir> [--budget-ledger <ledger.json>]",

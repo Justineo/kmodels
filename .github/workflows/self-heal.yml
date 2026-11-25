@@ -65,6 +65,18 @@ jobs:
         run: |
           WORK="$RUNNER_TEMP/self-heal/triage-input"
           mkdir -p "$WORK/evidence"
+          download_with_retry() {
+            local artifact_name="$1"
+            local target_dir="$2"
+            local try_num
+            for try_num in 1 2 3; do
+              if gh run download "$TRIGGER_RUN_ID" --name "$artifact_name" --dir "$target_dir"; then
+                return 0
+              fi
+              sleep 2
+            done
+            return 1
+          }
           if [[ "$EVENT_NAME" == "workflow_run" ]]; then
             # Query all artifact pages cleanly via --paginate --slurp, select the latest non-expired
             # refresh report at or before TRIGGER_RUN_ATTEMPT, and download ONLY the exact evidence
@@ -76,15 +88,7 @@ jobs:
             while IFS=$'\t' read -r candidate_attempt candidate_report; do
               [[ -z "$candidate_report" ]] && continue
               rm -rf "$WORK/raw-report"
-              downloaded=false
-              for try_num in 1 2 3; do
-                if gh run download "$TRIGGER_RUN_ID" --name "$candidate_report" --dir "$WORK/raw-report"; then
-                  downloaded=true
-                  break
-                fi
-                sleep 2
-              done
-              if [[ "$downloaded" != "true" ]]; then
+              if ! download_with_retry "$candidate_report" "$WORK/raw-report"; then
                 echo "::error::Failed to download refresh report artifact ${candidate_report} after 3 attempts; refusing to silently fall back to an older report" >&2
                 exit 1
               fi
@@ -99,34 +103,25 @@ jobs:
                 fi
                 break
               fi
-            done < <(vp node -e 'for (const r of JSON.parse(process.argv[1]).reports ?? []) console.log(`${r.attempt}\t${r.name}`);' "$artifact_plan")
+            done < <(jq -r '(.reports // [])[] | "\(.attempt)\t\(.name)"' <<< "$artifact_plan")
             if [[ -n "$selected_shards_plan" ]]; then
               while IFS= read -r shard_artifact; do
                 [[ -z "$shard_artifact" ]] && continue
-                shard_downloaded=false
-                for try_num in 1 2 3; do
-                  if gh run download "$TRIGGER_RUN_ID" --name "$shard_artifact" --dir "$WORK/raw-evidence/$shard_artifact"; then
-                    shard_downloaded=true
-                    break
-                  fi
-                  sleep 2
-                done
-                if [[ "$shard_downloaded" != "true" ]]; then
+                if ! download_with_retry "$shard_artifact" "$WORK/raw-evidence/$shard_artifact"; then
                   echo "::error::Failed to download required evidence shard artifact ${shard_artifact} after 3 attempts" >&2
                   exit 1
                 fi
-              done < <(vp node -e 'for (const n of JSON.parse(process.argv[1]).shards) console.log(n);' "$selected_shards_plan")
+              done < <(jq -r '(.shards // [])[]' <<< "$selected_shards_plan")
             fi
             if [[ -d "$WORK/raw-evidence" ]]; then
               find "$WORK/raw-evidence" -type f \( -name '*.json.gz' -o -name '*.json' \) -exec cp {} "$WORK/evidence/" \;
             fi
-            vp node scripts/catalog-snapshot.ts hydrate
-            [[ -f data/quarantine.json ]] && cp data/quarantine.json "$WORK/quarantine.json" || echo '[]' > "$WORK/quarantine.json"
-          else
-            vp node scripts/catalog-snapshot.ts hydrate
-            cp data/refresh-summary.json "$WORK/refresh-summary.json"
-            [[ -f data/quarantine.json ]] && cp data/quarantine.json "$WORK/quarantine.json" || echo '[]' > "$WORK/quarantine.json"
           fi
+          vp node scripts/catalog-snapshot.ts hydrate
+          if [[ "$EVENT_NAME" != "workflow_run" ]]; then
+            cp data/refresh-summary.json "$WORK/refresh-summary.json"
+          fi
+          [[ -f data/quarantine.json ]] && cp data/quarantine.json "$WORK/quarantine.json" || echo '[]' > "$WORK/quarantine.json"
 
       - name: Triage actionable provider drift
         id: check
@@ -153,24 +148,18 @@ jobs:
           if [[ -n "$TRIGGER_RUN_ID" ]]; then args+=(--trigger-run-id "$TRIGGER_RUN_ID"); fi
           if [[ -n "$TRIGGER_RUN_ATTEMPT" ]]; then args+=(--trigger-run-attempt "$TRIGGER_RUN_ATTEMPT"); fi
           vp node scripts/self-heal/triage.ts "${args[@]}" | tee "$PACKET/target.json"
-          status="$(vp node -e 'const d = JSON.parse(await new Response(process.stdin).text()); console.log(d.status);' < "$PACKET/target.json")"
+          status="$(jq -r '.status // ""' "$PACKET/target.json")"
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$status" == "actionable" ]]; then
             # Manual dispatch hydrates refresh-summary.json without a bundled evidence archive.
             # Fetch reviewed public evidence for target source-level candidates before binding target.json.
-            public_sources="$(vp node -e '
-              const d = JSON.parse(await new Response(process.stdin).text());
-              const ids = [...new Set((d.target?.candidates ?? [])
-                .filter((c) => typeof c.source_id === "string" && c.source_access === "public")
-                .map((c) => c.source_id))];
-              console.log(ids.join("\n"));
-            ' < "$PACKET/target.json")"
+            public_sources="$(jq -r '[(.target.candidates // [])[] | select((.source_id | type) == "string" and .source_access == "public") | .source_id] | unique | .[]' "$PACKET/target.json")"
             if [[ -n "$public_sources" ]]; then
               rm -rf /tmp/gh-aw/agent/catalog-evidence
               while IFS= read -r sid; do
                 [[ -n "$sid" ]] && vp node scripts/fetch-catalog-evidence.ts "$sid" || true
               done <<< "$public_sources"
               if [[ -d /tmp/gh-aw/agent/catalog-evidence ]]; then
-                target_provider="$(vp node -e 'const d = JSON.parse(await new Response(process.stdin).text()); console.log(d.target?.provider_id ?? "");' < "$PACKET/target.json")"
+                target_provider="$(jq -r '.target.provider_id // ""' "$PACKET/target.json")"
                 while IFS= read -r ev_file; do
                   cp "$ev_file" "$WORK/evidence/"
                   base_name="$(basename "$ev_file" .json)"
@@ -183,10 +172,10 @@ jobs:
               fi
             fi
             vp node scripts/self-heal/triage.ts "${args[@]}" --require-source-evidence | tee "$PACKET/target.json"
-            status="$(vp node -e 'const d = JSON.parse(await new Response(process.stdin).text()); console.log(d.status);' < "$PACKET/target.json")"
+            status="$(jq -r '.status // ""' "$PACKET/target.json")"
           fi
           cp -r "$WORK/evidence/." "$PACKET/evidence/" 2>/dev/null || true
-          provider="$(vp node -e 'const d = JSON.parse(await new Response(process.stdin).text()); console.log(d.target?.provider_id ?? "");' < "$PACKET/target.json")"
+          provider="$(jq -r '.target.provider_id // ""' "$PACKET/target.json")"
           echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
           echo "actionable=$([[ "$status" == "actionable" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "provider=$provider" >> "$GITHUB_OUTPUT"
@@ -236,6 +225,23 @@ jobs:
 
       - name: Set up catalog toolchain
         uses: ./.github/actions/setup-catalog-toolchain
+
+      - name: Hydrate accepted catalog for pricing lookup
+        run: |
+          if ! vp node scripts/catalog-snapshot.ts hydrate; then
+            mkdir -p "$RUNNER_TEMP/self-heal/proposal-out"
+            jq -n --argjson attempt "${GITHUB_RUN_ATTEMPT:-1}" '{
+              status: "deferred",
+              generate_run_attempt: $attempt,
+              usage_known: true,
+              input_tokens: 0,
+              output_tokens: 0,
+              estimated_usd: 0,
+              attempts: 0,
+              error: "Catalog snapshot hydration failed before any paid generation call"
+            }' > "$RUNNER_TEMP/self-heal/proposal-out/usage.json"
+            exit 1
+          fi
 
       - name: Restore rolling self-heal budget ledger (read-only re-check before paid generation)
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

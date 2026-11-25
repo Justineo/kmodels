@@ -1,14 +1,12 @@
-import { spawnSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { sha256 } from "../../src/catalog/io.ts";
 import { parsePatchPaths, runSelfHealGate } from "./gate.ts";
 import { proposalSchema } from "./generate.ts";
-import type { SelfHealTarget } from "./triage.ts";
-
-const GIT_MAX_BUFFER = 128 * 1024 * 1024;
+import { assertOutsideRepo, parseCliFlag, runGit } from "./runtime.ts";
+import { readActionableTriage } from "./triage.ts";
 
 export const verificationReceiptSchema = z.strictObject({
   version: z.literal(1),
@@ -27,24 +25,6 @@ export const verificationReceiptSchema = z.strictObject({
 });
 
 export type VerificationReceipt = z.infer<typeof verificationReceiptSchema>;
-
-function assertOutsideRepo(pathToCheck: string, repoRoot: string, label: string): void {
-  const rel = relative(resolve(repoRoot), resolve(pathToCheck));
-  if (rel === "" || (!rel.startsWith("..") && !rel.startsWith("/"))) {
-    throw new Error(`${label} (${pathToCheck}) must live outside the git repository checkout`);
-  }
-}
-
-function git(args: readonly string[], cwd: string): string {
-  const result = spawnSync("git", args, {
-    cwd,
-    encoding: "utf8",
-    maxBuffer: GIT_MAX_BUFFER,
-  });
-  if (result.error !== undefined) throw result.error;
-  if (result.status !== 0) throw new Error(result.stderr.trim() || `git ${args[0]} failed`);
-  return result.stdout.trim();
-}
 
 /**
  * Isolated, read-only candidate verification job.
@@ -67,24 +47,18 @@ export async function runVerify(options: {
   const resolvedEvidenceRoot = resolve(options.evidenceRoot);
   const resolvedOut = resolve(options.outputDir);
   if (options.allowInsideRepoForTest !== true) {
-    assertOutsideRepo(options.triageFile, cwd, "--triage-file");
-    assertOutsideRepo(resolvedEvidenceRoot, cwd, "--evidence-root");
-    assertOutsideRepo(resolvedProposalDir, cwd, "--proposal-dir");
-    assertOutsideRepo(resolvedOut, cwd, "--output-dir");
+    assertOutsideRepo(cwd, options.triageFile, "--triage-file");
+    assertOutsideRepo(cwd, resolvedEvidenceRoot, "--evidence-root");
+    assertOutsideRepo(cwd, resolvedProposalDir, "--proposal-dir");
+    assertOutsideRepo(cwd, resolvedOut, "--output-dir");
   }
   await mkdir(resolvedOut, { recursive: true });
 
-  const [triageRaw, proposalRaw, patchBytes] = await Promise.all([
-    readFile(resolve(options.triageFile), "utf8"),
+  const [target, proposalRaw, patchBytes] = await Promise.all([
+    readActionableTriage(options.triageFile),
     readFile(join(resolvedProposalDir, "proposal.json"), "utf8"),
     readFile(join(resolvedProposalDir, "candidate.patch")),
   ]);
-
-  const triage = JSON.parse(triageRaw) as { status: string; target?: SelfHealTarget };
-  if (triage.status !== "actionable" || triage.target === undefined) {
-    throw new Error("Triage file does not contain an actionable target");
-  }
-  const target = triage.target;
   const proposal = proposalSchema.parse(JSON.parse(proposalRaw));
 
   const violations: string[] = [];
@@ -99,7 +73,7 @@ export async function runVerify(options: {
       `Candidate patch digest mismatch: expected ${proposal.patch_sha256}, got ${actualPatchHash}`,
     );
   }
-  const headSha = git(["rev-parse", "HEAD"], cwd);
+  const headSha = runGit(["rev-parse", "HEAD"], cwd).trim();
   if (headSha !== proposal.base_sha) {
     violations.push(
       `Verify checkout HEAD (${headSha}) does not match proposal base_sha (${proposal.base_sha})`,
@@ -113,27 +87,14 @@ export async function runVerify(options: {
     );
   }
 
-  let receipt: VerificationReceipt;
-  if (violations.length > 0) {
-    receipt = verificationReceiptSchema.parse({
-      version: 1,
-      ok: false,
-      mode: "rejected",
-      base_sha: proposal.base_sha,
-      provider_id: target.provider_id,
-      ...(proposal.trigger_run_id === undefined ? {} : { trigger_run_id: proposal.trigger_run_id }),
-      ...(proposal.trigger_run_attempt === undefined
-        ? {}
-        : { trigger_run_attempt: proposal.trigger_run_attempt }),
-      patch_sha256: proposal.patch_sha256,
-      changed_files: expectedPaths,
-      protected_files: [],
-      replayed_sources: [],
-      violations,
-      verified_at: new Date().toISOString(),
-    });
-  } else {
-    git(["apply", "--whitespace=nowarn", join(resolvedProposalDir, "candidate.patch")], cwd);
+  let ok = false;
+  let mode: VerificationReceipt["mode"] = "rejected";
+  let protectedFiles: string[] = [];
+  let replayedSources: string[] = [];
+  let finalViolations = violations;
+
+  if (violations.length === 0) {
+    runGit(["apply", "--whitespace=nowarn", join(resolvedProposalDir, "candidate.patch")], cwd);
 
     const verdict = runSelfHealGate({
       cwd,
@@ -150,31 +111,35 @@ export async function runVerify(options: {
       skipValidation: options.skipValidation === true,
     });
 
-    const mergedViolations = [...verdict.violations];
+    finalViolations = [...verdict.violations];
     if (JSON.stringify(verdict.changed_files) !== JSON.stringify(expectedPaths)) {
-      mergedViolations.push(
+      finalViolations.push(
         `Applied working tree files (${verdict.changed_files.join(", ")}) drifted from proposal files (${expectedPaths.join(", ")})`,
       );
     }
-    const ok = verdict.ok && mergedViolations.length === 0;
-    receipt = verificationReceiptSchema.parse({
-      version: 1,
-      ok,
-      mode: ok ? verdict.mode : "rejected",
-      base_sha: proposal.base_sha,
-      provider_id: target.provider_id,
-      ...(proposal.trigger_run_id === undefined ? {} : { trigger_run_id: proposal.trigger_run_id }),
-      ...(proposal.trigger_run_attempt === undefined
-        ? {}
-        : { trigger_run_attempt: proposal.trigger_run_attempt }),
-      patch_sha256: proposal.patch_sha256,
-      changed_files: expectedPaths,
-      protected_files: verdict.protected_files,
-      replayed_sources: verdict.replayed_sources,
-      violations: mergedViolations,
-      verified_at: new Date().toISOString(),
-    });
+    ok = verdict.ok && finalViolations.length === 0;
+    mode = ok ? verdict.mode : "rejected";
+    protectedFiles = verdict.protected_files;
+    replayedSources = verdict.replayed_sources;
   }
+
+  const receipt = verificationReceiptSchema.parse({
+    version: 1,
+    ok,
+    mode,
+    base_sha: proposal.base_sha,
+    provider_id: target.provider_id,
+    ...(proposal.trigger_run_id === undefined ? {} : { trigger_run_id: proposal.trigger_run_id }),
+    ...(proposal.trigger_run_attempt === undefined
+      ? {}
+      : { trigger_run_attempt: proposal.trigger_run_attempt }),
+    patch_sha256: proposal.patch_sha256,
+    changed_files: expectedPaths,
+    protected_files: protectedFiles,
+    replayed_sources: replayedSources,
+    violations: finalViolations,
+    verified_at: new Date().toISOString(),
+  });
 
   await writeFile(
     join(resolvedOut, "verification-receipt.json"),
@@ -185,14 +150,10 @@ export async function runVerify(options: {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const flag = (name: string): string | undefined => {
-    const index = args.indexOf(name);
-    return index >= 0 ? args[index + 1] : undefined;
-  };
-  const triageFile = flag("--triage-file");
-  const evidenceRoot = flag("--evidence-root");
-  const proposalDir = flag("--proposal-dir");
-  const outputDir = flag("--output-dir");
+  const triageFile = parseCliFlag(args, "--triage-file");
+  const evidenceRoot = parseCliFlag(args, "--evidence-root");
+  const proposalDir = parseCliFlag(args, "--proposal-dir");
+  const outputDir = parseCliFlag(args, "--output-dir");
   if (!triageFile || !evidenceRoot || !proposalDir || !outputDir) {
     throw new Error(
       "Usage: verify.ts --triage-file <target.json> --evidence-root <dir> --proposal-dir <dir> --output-dir <dir>",

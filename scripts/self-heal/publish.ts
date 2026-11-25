@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { appendFile, readFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { sha256 } from "../../src/catalog/io.ts";
+import { readJson, sha256 } from "../../src/catalog/io.ts";
 import {
   appendBudgetEntry,
   buildSettledBudgetEntry,
@@ -15,10 +15,14 @@ import {
 } from "./budget.ts";
 import { classifyChangedPaths, parsePatchPaths, type DeliveryMode } from "./gate.ts";
 import { proposalSchema, usageReportSchema, type SelfHealUsageReport } from "./generate.ts";
-import type { SelfHealTarget } from "./triage.ts";
+import {
+  assertOutsideRepo,
+  parseCliFlag,
+  parsePositiveInt,
+  SELF_HEAL_MAX_BUFFER,
+} from "./runtime.ts";
+import { readActionableTriage } from "./triage.ts";
 import { verificationReceiptSchema, type VerificationReceipt } from "./verify.ts";
-
-const GIT_MAX_BUFFER = 128 * 1024 * 1024;
 
 export interface PublishOutcome {
   outcome: BudgetOutcome;
@@ -29,18 +33,11 @@ export interface PublishOutcome {
   violations: string[];
 }
 
-function assertOutsideRepo(pathToCheck: string, repoRoot: string, label: string): void {
-  const rel = relative(resolve(repoRoot), resolve(pathToCheck));
-  if (rel === "" || (!rel.startsWith("..") && !rel.startsWith("/"))) {
-    throw new Error(`${label} (${pathToCheck}) must live outside the git repository checkout`);
-  }
-}
-
 function runCommand(command: string, args: readonly string[], cwd: string): string {
   const result = spawnSync(command, args, {
     cwd,
     encoding: "utf8",
-    maxBuffer: GIT_MAX_BUFFER,
+    maxBuffer: SELF_HEAL_MAX_BUFFER,
   });
   if (result.error !== undefined) throw result.error;
   if (result.status !== 0) {
@@ -49,15 +46,6 @@ function runCommand(command: string, args: readonly string[], cwd: string): stri
     );
   }
   return result.stdout.trim();
-}
-
-async function optionalJson(path: string): Promise<unknown> {
-  try {
-    return JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
-    throw error;
-  }
 }
 
 async function emitGithubOutputs(outcome: PublishOutcome): Promise<void> {
@@ -95,22 +83,15 @@ export async function runPublish(options: {
 }): Promise<PublishOutcome> {
   const cwd = resolve(options.cwd ?? ".");
   if (options.allowInsideRepoForTest !== true) {
-    assertOutsideRepo(options.triageFile, cwd, "--triage-file");
+    assertOutsideRepo(cwd, options.triageFile, "--triage-file");
     if (options.proposalDir !== undefined)
-      assertOutsideRepo(options.proposalDir, cwd, "--proposal-dir");
-    if (options.verifyDir !== undefined) assertOutsideRepo(options.verifyDir, cwd, "--verify-dir");
+      assertOutsideRepo(cwd, options.proposalDir, "--proposal-dir");
+    if (options.verifyDir !== undefined) assertOutsideRepo(cwd, options.verifyDir, "--verify-dir");
     if (options.budgetLedgerPath !== undefined)
-      assertOutsideRepo(options.budgetLedgerPath, cwd, "--budget-ledger");
+      assertOutsideRepo(cwd, options.budgetLedgerPath, "--budget-ledger");
   }
 
-  const triage = JSON.parse(await readFile(resolve(options.triageFile), "utf8")) as {
-    status: string;
-    target?: SelfHealTarget;
-  };
-  if (triage.status !== "actionable" || triage.target === undefined) {
-    throw new Error("Triage file does not contain an actionable target");
-  }
-  const target = triage.target;
+  const target = await readActionableTriage(options.triageFile);
 
   const limits = parseBudgetLimitsFromEnv();
   const ledger =
@@ -123,7 +104,7 @@ export async function runPublish(options: {
     const rawUsage =
       options.proposalDir === undefined
         ? undefined
-        : await optionalJson(join(resolve(options.proposalDir), "usage.json"));
+        : await readJson(join(resolve(options.proposalDir), "usage.json"));
     if (rawUsage !== undefined) parsedUsage = usageReportSchema.parse(rawUsage);
   } catch {
     // Truncated/corrupt usage.json falls back to conservative unknown-usage settlement.
@@ -145,13 +126,6 @@ export async function runPublish(options: {
           estimated_usd: null,
         };
 
-  const envRunAttemptRaw = process.env.GITHUB_RUN_ATTEMPT;
-  const envRunAttempt =
-    envRunAttemptRaw !== undefined &&
-    Number.isInteger(Number(envRunAttemptRaw)) &&
-    Number(envRunAttemptRaw) > 0
-      ? Number(envRunAttemptRaw)
-      : undefined;
   const resolvedRunId = options.runId ?? process.env.GITHUB_RUN_ID ?? `local-${Date.now()}`;
   // Key settlement by `generate`'s attempt (from usage.json or upstream generate job output)
   // rather than publish's attempt, so re-running verify/publish alone never double-bills one generation.
@@ -159,7 +133,7 @@ export async function runPublish(options: {
     parsedUsage?.generate_run_attempt ??
     options.generateAttempt ??
     options.runAttempt ??
-    envRunAttempt;
+    parsePositiveInt(process.env.GITHUB_RUN_ATTEMPT);
 
   let ledgerSettled = false;
   const settleLedger = async (outcome: BudgetOutcome): Promise<void> => {
@@ -178,6 +152,21 @@ export async function runPublish(options: {
     await writeBudgetLedger(resolve(options.budgetLedgerPath), updated);
   };
 
+  const finish = async (
+    outcome: BudgetOutcome,
+    details: Omit<PublishOutcome, "outcome" | "provider_id">,
+    settle = true,
+  ): Promise<PublishOutcome> => {
+    if (settle) await settleLedger(outcome);
+    const result: PublishOutcome = {
+      outcome,
+      provider_id: target.provider_id,
+      ...details,
+    };
+    await emitGithubOutputs(result);
+    return result;
+  };
+
   // Case 1: Generation failed, hit budget cap, or produced no patch -> settle budget & cooldown and exit.
   let rawProposal: unknown;
   let rawReceipt: unknown;
@@ -185,22 +174,17 @@ export async function runPublish(options: {
     rawProposal =
       options.proposalDir === undefined
         ? undefined
-        : await optionalJson(join(resolve(options.proposalDir), "proposal.json"));
+        : await readJson(join(resolve(options.proposalDir), "proposal.json"));
     rawReceipt =
       options.verifyDir === undefined
         ? undefined
-        : await optionalJson(join(resolve(options.verifyDir), "verification-receipt.json"));
+        : await readJson(join(resolve(options.verifyDir), "verification-receipt.json"));
   } catch (error) {
-    await settleLedger("rejected");
-    const result: PublishOutcome = {
-      outcome: "rejected",
-      provider_id: target.provider_id,
+    return finish("rejected", {
       violations: [
         `Could not read proposal or verification receipt: ${error instanceof Error ? error.message : String(error)}`,
       ],
-    };
-    await emitGithubOutputs(result);
-    return result;
+    });
   }
 
   if (rawProposal === undefined) {
@@ -216,13 +200,15 @@ export async function runPublish(options: {
       // Pre-call refusal (cooldown, rolling budget exhausted, or missing evidence) never invoked
       // the paid agent: do NOT append a ledger entry, restart cooldown, or consume a window run slot.
       const outcome: BudgetOutcome = parsedUsage.status === "deferred" ? "deferred" : "no_patch";
-      const result: PublishOutcome = {
+      return finish(
         outcome,
-        provider_id: target.provider_id,
-        violations: [parsedUsage.error ?? `Generation deferred before any paid call (${outcome})`],
-      };
-      await emitGithubOutputs(result);
-      return result;
+        {
+          violations: [
+            parsedUsage.error ?? `Generation deferred before any paid call (${outcome})`,
+          ],
+        },
+        false,
+      );
     }
     const outcome: BudgetOutcome =
       parsedUsage?.status === "budget_exceeded"
@@ -230,14 +216,9 @@ export async function runPublish(options: {
         : parsedUsage?.status === "no_patch"
           ? "no_patch"
           : "generate_failed";
-    await settleLedger(outcome);
-    const result: PublishOutcome = {
-      outcome,
-      provider_id: target.provider_id,
+    return finish(outcome, {
       violations: [parsedUsage?.error ?? `No candidate proposal produced (${outcome})`],
-    };
-    await emitGithubOutputs(result);
-    return result;
+    });
   }
 
   let proposal: ReturnType<typeof proposalSchema.parse>;
@@ -249,28 +230,18 @@ export async function runPublish(options: {
     patchPath = join(resolve(options.proposalDir!), "candidate.patch");
     patchBytes = await readFile(patchPath);
     if (rawReceipt === undefined) {
-      await settleLedger("rejected");
-      const result: PublishOutcome = {
-        outcome: "rejected",
-        provider_id: target.provider_id,
+      return finish("rejected", {
         patch_sha256: proposal.patch_sha256,
         violations: ["Missing verification receipt from isolated verify job"],
-      };
-      await emitGithubOutputs(result);
-      return result;
+      });
     }
     receipt = verificationReceiptSchema.parse(rawReceipt);
   } catch (error) {
-    await settleLedger("rejected");
-    const result: PublishOutcome = {
-      outcome: "rejected",
-      provider_id: target.provider_id,
+    return finish("rejected", {
       violations: [
         `Malformed or incomplete delivery artifact: ${error instanceof Error ? error.message : String(error)}`,
       ],
-    };
-    await emitGithubOutputs(result);
-    return result;
+    });
   }
 
   // Trusted invariant verification (zero candidate code execution).
@@ -323,42 +294,27 @@ export async function runPublish(options: {
       },
     });
     if (!budgetCheck.allowed) {
-      await settleLedger("budget_rejected");
-      const result: PublishOutcome = {
-        outcome: "budget_rejected",
-        provider_id: target.provider_id,
+      return finish("budget_rejected", {
         patch_sha256: proposal.patch_sha256,
         violations: budgetCheck.reasons,
-      };
-      await emitGithubOutputs(result);
-      return result;
+      });
     }
   }
 
   if (violations.length > 0) {
-    await settleLedger("rejected");
-    const result: PublishOutcome = {
-      outcome: "rejected",
-      provider_id: target.provider_id,
+    return finish("rejected", {
       patch_sha256: proposal.patch_sha256,
       mode: "rejected",
       violations: [...new Set(violations)],
-    };
-    await emitGithubOutputs(result);
-    return result;
+    });
   }
 
   if (options.dryRun === true) {
-    await settleLedger("dry_run");
-    const result: PublishOutcome = {
-      outcome: "dry_run",
-      provider_id: target.provider_id,
+    return finish("dry_run", {
       patch_sha256: proposal.patch_sha256,
       mode: classification.mode,
       violations: [],
-    };
-    await emitGithubOutputs(result);
-    return result;
+    });
   }
 
   // Apply ONLY the verified exact patch and stage ONLY the verified file set (zero candidate execution).
@@ -407,17 +363,12 @@ export async function runPublish(options: {
           );
         }
       }
-      await settleLedger("auto_push");
-      const result: PublishOutcome = {
-        outcome: "auto_push",
-        provider_id: target.provider_id,
+      return finish("auto_push", {
         patch_sha256: proposal.patch_sha256,
         published_sha: commitSha,
         mode: "auto_push",
         violations: [],
-      };
-      await emitGithubOutputs(result);
-      return result;
+      });
     }
 
     const branch = `self-heal/${target.provider_id}-${process.env.GITHUB_RUN_ID ?? Date.now()}`;
@@ -443,56 +394,37 @@ export async function runPublish(options: {
         cwd,
       );
     }
-    await settleLedger("draft_pr");
-    const result: PublishOutcome = {
-      outcome: "draft_pr",
-      provider_id: target.provider_id,
+    return finish("draft_pr", {
       patch_sha256: proposal.patch_sha256,
       published_sha: commitSha,
       mode: "draft_pr",
       violations: [],
-    };
-    await emitGithubOutputs(result);
-    return result;
+    });
   } catch (error) {
-    await settleLedger("publish_failed");
-    const result: PublishOutcome = {
-      outcome: "publish_failed",
-      provider_id: target.provider_id,
+    return finish("publish_failed", {
       patch_sha256: proposal.patch_sha256,
       mode: classification.mode,
       violations: [error instanceof Error ? error.message : String(error)],
-    };
-    await emitGithubOutputs(result);
-    return result;
+    });
   }
 }
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const flag = (name: string): string | undefined => {
-    const index = args.indexOf(name);
-    return index >= 0 ? args[index + 1] : undefined;
-  };
-  const triageFile = flag("--triage-file");
+  const triageFile = parseCliFlag(args, "--triage-file");
   if (!triageFile) {
     throw new Error(
       "Usage: publish.ts --triage-file <target.json> [--proposal-dir <dir>] [--verify-dir <dir>] [--budget-ledger <ledger.json>] [--dry-run]",
     );
   }
-  const proposalDir = flag("--proposal-dir");
-  const verifyDir = flag("--verify-dir");
+  const proposalDir = parseCliFlag(args, "--proposal-dir");
+  const verifyDir = parseCliFlag(args, "--verify-dir");
   const verifyJobResult =
-    flag("--verify-job-result") ?? (process.env.VERIFY_JOB_RESULT || undefined);
-  const generateAttemptRaw =
-    flag("--generate-attempt") ?? (process.env.GENERATE_RUN_ATTEMPT || undefined);
-  const generateAttempt =
-    generateAttemptRaw !== undefined &&
-    Number.isInteger(Number(generateAttemptRaw)) &&
-    Number(generateAttemptRaw) > 0
-      ? Number(generateAttemptRaw)
-      : undefined;
-  const budgetLedgerPath = flag("--budget-ledger");
+    parseCliFlag(args, "--verify-job-result") ?? (process.env.VERIFY_JOB_RESULT || undefined);
+  const generateAttempt = parsePositiveInt(
+    parseCliFlag(args, "--generate-attempt") ?? (process.env.GENERATE_RUN_ATTEMPT || undefined),
+  );
+  const budgetLedgerPath = parseCliFlag(args, "--budget-ledger");
   const outcome = await runPublish({
     triageFile,
     ...(proposalDir === undefined ? {} : { proposalDir }),

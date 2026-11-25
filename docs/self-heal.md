@@ -103,6 +103,29 @@ Before enabling automated self-heal in production, configure and verify in GitHu
   `generate.ts` checks cumulative spend after each subprocess returns, the configured command MUST
   enforce `SELF_HEAL_MAX_RUN_USD` and `SELF_HEAL_MAX_RUN_TOKENS` **before** issuing billable model
   requests (pre-request cap enforcement) and write exact token/USD usage to `SELF_HEAL_USAGE_FILE`.
+  The repository ships a built-in OpenAI Codex adapter (`vp node scripts/self-heal/adapters/codex.ts`,
+  defaulting to `gpt-6.2-sol` and overridable via `vars.SELF_HEAL_MODEL`). Rather than maintaining a
+  hardcoded rate table, the adapter consumes Kmodels' own SHA-256-verified published pricing data
+  (`data/export-assets.json` + `data/export-assets.pack`, hydrated before generation — with
+  hydration failures emitting a verified `$0` / `attempts: 0` `deferred` receipt so transient
+  snapshot download errors never consume paid budget or start provider cooldown — and loaded once
+  into immutable parent memory via `createInferencePriceLookup`), evaluating exact rational standard
+  `v1/responses` rates (`completion_window: "ordinary"`, `deployment_scope: "global_processing"`,
+  context thresholds, and cache tiers) and failing closed at `$0` for any uncatalogued (including
+  uncatalogued dated snapshots) or ambiguous model. When configured with the built-in adapter, `generate.ts` invokes `runCodexAdapter` directly
+  in-process from already-loaded immutable modules (never reloading scripts or `node_modules` from
+  the writable workspace on retry), runs static diff/path/safety checks plus deterministic candidate
+  evidence replay inside a secret-free, read-only, network-disabled `codex sandbox` (so parse errors
+  on attempt 1 feed back into attempt 2 while the separate secret-free `verify` job remains
+  authoritative for before/after replay and full validation), stores trusted parent files
+  (`usage.json`, prompts, `codex-model.json`, and SHA-256-verified cached `bin/codex`) strictly
+  outside `/tmp`, the repo checkout, and the Codex subprocess's private `TMPDIR`, and strips all API
+  keys/tokens from every untrusted subprocess. The loopback metering proxy enforces worst-case
+  byte-bounded pre-request USD/token caps, writes pending/unsettled usage (`estimated_usd: null`)
+  before dispatching any upstream POST so pre-header disconnects, kills, or ambiguous `5xx`/`408`
+  gateway errors (such as `502`/`504`) never leave a retryable `$0` receipt (only confirmed
+  pre-execution HTTP rejections restore known spend), and atomically settles verified Responses SSE
+  usage into `SELF_HEAL_USAGE_FILE`.
 - Repository secret `SELF_HEAL_API_KEY` (only passed to the isolated `generate` job).
 - Optional budget override variables: `SELF_HEAL_MAX_RUN_USD`, `SELF_HEAL_MAX_RUN_TOKENS`,
   `SELF_HEAL_MAX_WINDOW_USD`, `SELF_HEAL_MAX_WINDOW_RUNS`, `SELF_HEAL_COOLDOWN_HOURS`.
