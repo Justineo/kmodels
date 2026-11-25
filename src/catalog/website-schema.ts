@@ -22,6 +22,11 @@ import {
 } from "./pricing-schema.ts";
 import { pricingLimits } from "./pricing-constants.ts";
 
+import {
+  detailRequiresWebsiteSchema13,
+  WEBSITE_INFERENCE_STATUSES,
+  WEBSITE_OFFER_GROUPS,
+} from "./website-core.ts";
 export { WEBSITE_DETAIL_CHUNK_MAX_BYTES } from "./website-core.ts";
 import { modelCardSchema, deploymentSpecSchema, accessConditionSchema } from "./model-metadata.ts";
 import {
@@ -405,14 +410,7 @@ const websitePricingOfferSchema = z.strictObject({
     .strictObject({ observed_at: z.string(), claims: z.array(commercialSelectionScopeSchema) })
     .optional(),
   title: z.string().min(1),
-  group: z.enum([
-    "model_mechanism",
-    "optional_service",
-    "automatic_component",
-    "capacity",
-    "plan",
-    "standalone",
-  ]),
+  group: z.enum(WEBSITE_OFFER_GROUPS),
   capacity_choice: z.strictObject({ group_key: hash, label: nonEmpty }).optional(),
   mechanism_refs: z.array(hash).min(1).optional(),
   mechanism_links: z
@@ -494,7 +492,7 @@ export const websiteInferencePriceSchema = z.strictObject({
   matching: inferenceMatchDataSchema.optional(),
   pricing_options: z.array(websitePricingSelectorSchema).optional(),
   model_id: nonEmpty,
-  status: z.enum(["matched", "candidates", "unknown"]),
+  status: z.enum(WEBSITE_INFERENCE_STATUSES),
   reason: inferencePriceReasonSchema.optional(),
   explanation: nonEmpty,
   missing_conditions: z.array(nonEmpty),
@@ -672,15 +670,7 @@ export function requiresWebsiteDetail13(
     "limit_details" | "capability_details" | "access_conditions"
   >,
 ): boolean {
-  return Boolean(
-    model.access_conditions?.length ||
-    model.capability_details?.some((g) =>
-      g.statements.some((s) => s.kind === "capability_support"),
-    ) ||
-    model.limit_details?.some((g) =>
-      g.statements.some((s) => s.account_tier || s.kind === "published_maximum_label"),
-    ),
-  );
+  return detailRequiresWebsiteSchema13(model);
 }
 
 const websiteDetailChunkSchemaV7 = z.strictObject({

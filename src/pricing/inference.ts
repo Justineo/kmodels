@@ -25,17 +25,12 @@ import {
   type Selector,
 } from "./schema.ts";
 import { inferenceMatchData } from "./inference-matching-data.ts";
-import {
-  inferenceSelectors,
-  matchInferencePrices,
-  type InferenceTermSelection,
-} from "./inference-matching.ts";
+import { inferenceSelectors, matchInferencePrices } from "./inference-matching.ts";
 import { validateSelectors, type Gap } from "./selection.ts";
 import {
   createPricingSnapshot,
   offerApplicabilities,
-  resolveOffer,
-  resolveTerm,
+  resolveCandidateOffer,
   type PricingSnapshot,
 } from "./snapshot.ts";
 
@@ -175,25 +170,7 @@ export function prepareInferencePriceLookup(snapshot: PricingSnapshot, mappingDa
             ]),
             missing_conditions: candidate.missing_conditions,
             gaps: candidate.gaps,
-            offer: resolveOffer(
-              owner.provider,
-              owner.offer,
-              candidate.states,
-              candidate.relations,
-              owner.offer.terms.flatMap((term) => {
-                const selection = candidate.terms.find(({ id }) => id === term.id);
-                return selection === undefined
-                  ? []
-                  : [selectedTerm(owner.provider, term, selection)];
-              }),
-            ),
-            referenced_rates: candidate.referenced_rates.flatMap((selection) => {
-              const rate = snapshot.rates.get(selection.id);
-              if (rate === undefined)
-                throw new PricingError("INVALID_DATA", "Missing referenced price");
-              const selected = selectedTerm(rate.provider, rate.term, selection);
-              return selected.kind === "rate" ? [selected] : [];
-            }),
+            ...resolveCandidateOffer(snapshot, owner, candidate),
           };
         }),
       ),
@@ -255,12 +232,4 @@ function validateRule(
 
 function isModelDimension(dimension: PriceDimension): boolean {
   return dimension.namespace === "kmodels" && dimension.value === "model";
-}
-
-export function selectedTerm(
-  provider: PriceDataProvider,
-  term: Parameters<typeof resolveTerm>[1],
-  selected: InferenceTermSelection,
-) {
-  return resolveTerm(provider, term, selected.variants, selected.raw_variants);
 }

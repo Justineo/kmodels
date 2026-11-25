@@ -19,8 +19,8 @@ import { extractKimiCommercialPricingInputs } from "../src/catalog/kimi-accounti
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
 import { decimalsEqual } from "../src/catalog/pricing.ts";
+import { curlResponse } from "../src/catalog/transport/http.ts";
 import {
-  curlResponse,
   linkedDocumentUrls,
   normalizeOllamaList,
   normalizeOllamaModelPage,

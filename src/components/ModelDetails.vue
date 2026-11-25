@@ -203,10 +203,7 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 onMounted(() => document.addEventListener("keydown", handleKeydown));
-onUnmounted(() => {
-  document.removeEventListener("keydown", handleKeydown);
-  resetCopyFeedback();
-});
+onUnmounted(() => document.removeEventListener("keydown", handleKeydown));
 </script>
 
 <template>

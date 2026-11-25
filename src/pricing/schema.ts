@@ -18,7 +18,6 @@ import {
   pricingScopeSchema,
   providerPricingFreshnessSchema,
   providerPricingVocabularySchema,
-  publishedValiditySchema,
   rawPricingVariantSchema,
   unitExpressionSchema,
 } from "../catalog/pricing-schema.ts";
@@ -351,14 +350,5 @@ export interface ResolvedPriceOffer {
   source_refs: string[];
 }
 
-export const priceDataTermSchema: z.ZodType<PriceDataTerm, PriceDataTerm> = rawPriceDataTermSchema;
-export const priceDataOfferSchema: z.ZodType<PriceDataOffer, PriceDataOffer> =
-  rawPriceDataOfferSchema;
-export const priceDataBookSchema: z.ZodType<PriceDataBook, PriceDataBook> = rawPriceDataBookSchema;
-export const priceDataProviderSchema: z.ZodType<PriceDataProvider, PriceDataProvider> =
-  rawPriceDataProviderSchema;
 export const priceDataEnvelopeSchema: z.ZodType<PriceDataEnvelope, PriceDataEnvelope> =
   rawPriceDataEnvelopeSchema;
-
-// Keep publishedValiditySchema referenced for downstream schema re-exports if needed.
-export type PriceDataValidity = z.infer<typeof publishedValiditySchema>;

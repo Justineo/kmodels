@@ -173,6 +173,7 @@ export function replayCatalogEvidence(
         previous_retail_meters: [...(previousRetailMeters ?? [])].sort(),
       }
     : catalogModels;
+  const replayCounts = findings.replayCounts();
   return {
     schema_version: 1,
     stage: "parse",
@@ -206,13 +207,13 @@ export function replayCatalogEvidence(
     pricing_inputs: result.pricing_inputs?.length ?? 0,
     commercial_facts: result.commercial_facts?.length ?? 0,
     ...findings.summary(),
-    ...(findings.replayCounts().total_findings === 0
+    ...(replayCounts.total_findings === 0
       ? {}
       : {
-          contract_findings_total: findings.replayCounts().total_findings,
-          contract_reject_findings: findings.replayCounts().reject_findings,
-          contract_diagnostic_counts: findings.replayCounts().diagnostic_counts,
-          contract_reject_diagnostic_counts: findings.replayCounts().reject_diagnostic_counts,
+          contract_findings_total: replayCounts.total_findings,
+          contract_reject_findings: replayCounts.reject_findings,
+          contract_diagnostic_counts: replayCounts.diagnostic_counts,
+          contract_reject_diagnostic_counts: replayCounts.reject_diagnostic_counts,
         }),
     reconciliation: isPricingDependencySource(source)
       ? sourcePricingReconciliation(result.models, reconciliation, true)

@@ -1,4 +1,5 @@
 import type { PriceApplicability } from "../catalog/pricing-schema.ts";
+import { PricingError } from "./errors.ts";
 import type {
   PriceDataBook,
   PriceDataEnvelope,
@@ -9,6 +10,7 @@ import type {
   PriceDataSelection,
   PriceDataTerm,
   ResolvedPriceOffer,
+  ResolvedPriceRateTerm,
   ResolvedPriceRaw,
   ResolvedPriceSelection,
   ResolvedPriceTerm,
@@ -65,10 +67,7 @@ export function resolveApplicability(
   return scope;
 }
 
-export function resolveRawVariant(
-  provider: PriceDataProvider,
-  variant: PriceDataRaw,
-): ResolvedPriceRaw {
+function resolveRawVariant(provider: PriceDataProvider, variant: PriceDataRaw): ResolvedPriceRaw {
   const { possible_scope_id, ...rest } = variant;
   return {
     ...rest,
@@ -76,6 +75,19 @@ export function resolveRawVariant(
       ? {}
       : { possible_scope: resolveApplicability(provider, possible_scope_id) }),
   };
+}
+
+function resolveQualifiedVariants<T extends { applicability_id: number }>(
+  provider: PriceDataProvider,
+  variants: readonly T[],
+  indexes?: readonly number[],
+): Array<Omit<T, "applicability_id"> & { applicability: PriceApplicability }> {
+  const selected =
+    indexes === undefined ? variants : variants.filter((_, index) => indexes.includes(index));
+  return selected.map(({ applicability_id, ...variant }) => ({
+    ...variant,
+    applicability: resolveApplicability(provider, applicability_id),
+  }));
 }
 
 export function resolveSelectionClaim(
@@ -113,37 +125,19 @@ export function resolveTerm(
       return {
         ...term,
         raw_variants,
-        variants: (variantIndexes === undefined
-          ? term.variants
-          : term.variants.filter((_, index) => variantIndexes.includes(index))
-        ).map(({ applicability_id, ...variant }) => ({
-          ...variant,
-          applicability: resolveApplicability(provider, applicability_id),
-        })),
+        variants: resolveQualifiedVariants(provider, term.variants, variantIndexes),
       };
     case "allowance":
       return {
         ...term,
         raw_variants,
-        variants: (variantIndexes === undefined
-          ? term.variants
-          : term.variants.filter((_, index) => variantIndexes.includes(index))
-        ).map(({ applicability_id, ...variant }) => ({
-          ...variant,
-          applicability: resolveApplicability(provider, applicability_id),
-        })),
+        variants: resolveQualifiedVariants(provider, term.variants, variantIndexes),
       };
     case "contribution":
       return {
         ...term,
         raw_variants,
-        variants: (variantIndexes === undefined
-          ? term.variants
-          : term.variants.filter((_, index) => variantIndexes.includes(index))
-        ).map(({ applicability_id, ...variant }) => ({
-          ...variant,
-          applicability: resolveApplicability(provider, applicability_id),
-        })),
+        variants: resolveQualifiedVariants(provider, term.variants, variantIndexes),
       };
   }
 }
@@ -158,25 +152,57 @@ export function resolveOffer(
   const { selection, ...rest } = offer;
   return {
     ...rest,
-    states: offer.states
-      .filter((_, index) => stateIndexes.includes(index))
-      .map(({ applicability_id, ...state }) => ({
-        ...state,
-        applicability: resolveApplicability(provider, applicability_id),
-      })),
+    states: resolveQualifiedVariants(provider, offer.states, stateIndexes),
     ...(selection === undefined
       ? {}
       : {
           selection: selection.map((claim) => resolveSelectionClaim(provider, claim)),
         }),
-    relations: offer.relations
-      .filter((_, index) => relationIndexes.includes(index))
-      .map(({ applicability_id, ...relation }) => ({
-        ...relation,
-        applicability: resolveApplicability(provider, applicability_id),
-      })),
+    relations: resolveQualifiedVariants(provider, offer.relations, relationIndexes),
     terms,
   };
+}
+
+export interface SelectedTermReference {
+  readonly id: string;
+  readonly variants?: readonly number[] | undefined;
+  readonly raw_variants?: readonly number[] | undefined;
+}
+
+export function resolveCandidateOffer(
+  snapshot: PricingSnapshot,
+  owner: IndexedOffer,
+  candidate: {
+    readonly states: readonly number[];
+    readonly relations: readonly number[];
+    readonly terms: readonly SelectedTermReference[];
+    readonly referenced_rates: readonly SelectedTermReference[];
+  },
+): { offer: ResolvedPriceOffer; referenced_rates: ResolvedPriceRateTerm[] } {
+  const offer = resolveOffer(
+    owner.provider,
+    owner.offer,
+    candidate.states,
+    candidate.relations,
+    owner.offer.terms.flatMap((term) => {
+      const selected = candidate.terms.find(({ id }) => id === term.id);
+      return selected === undefined
+        ? []
+        : [resolveTerm(owner.provider, term, selected.variants, selected.raw_variants)];
+    }),
+  );
+  const referenced_rates = candidate.referenced_rates.flatMap((selected) => {
+    const rate = snapshot.rates.get(selected.id);
+    if (rate === undefined) throw new PricingError("INVALID_DATA", "Missing referenced price");
+    const resolved = resolveTerm(
+      rate.provider,
+      rate.term,
+      selected.variants,
+      selected.raw_variants,
+    );
+    return resolved.kind === "rate" ? [resolved] : [];
+  });
+  return { offer, referenced_rates };
 }
 
 export function offerApplicabilities(

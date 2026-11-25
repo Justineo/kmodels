@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
+import { capabilityStatementsConflict } from "../src/catalog/model-claim-helpers.ts";
 import {
   capabilityDetailsSchema,
   capabilityStatementSchema,
-  capabilityStatementsConflict,
   type CapabilityDetailGroup,
 } from "../src/catalog/model-capability-details.ts";
 import { baseModel } from "../src/catalog/model.ts";

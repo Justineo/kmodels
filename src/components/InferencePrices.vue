@@ -56,7 +56,12 @@ const selectedOffer = ref("");
 // A condition value can exclude the selected ID while several compatible IDs remain.
 const idPending = ref(false);
 const commercialChoices = ref<CommercialChoice[]>([]);
-const { copiedValue: copiedId, copy: copyId, reset: resetCopyFeedback } = useClipboardCopy();
+const {
+  copiedValue: copiedId,
+  announcement: copyAnnouncement,
+  copy: copyId,
+  reset: resetCopyFeedback,
+} = useClipboardCopy();
 const inputs = ref<Record<string, string>>({});
 const { now: evaluatedAt, schedule: scheduleClock } = usePricingClock((nowMs) => {
   const data = selectedPrice.value?.matching;
@@ -531,7 +536,7 @@ function selectCommercial(choices: CommercialChoice[]): void {
           </button>
         </li>
       </ul>
-      <p class="visually-hidden" aria-live="polite">{{ copiedId ? `Copied ${copiedId}` : "" }}</p>
+      <p class="visually-hidden" aria-live="polite">{{ copyAnnouncement }}</p>
     </div>
     <p v-if="selected.unresolved_choices.length" class="fixed-conditions">
       Some offers have incomplete evidence for the selected commercial choices. They have not been

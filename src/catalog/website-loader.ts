@@ -1,6 +1,14 @@
 import { deliveryModes, modalities, modelScopes } from "./catalog-vocabulary.ts";
 import { priceStates, rawPricingImpacts } from "./pricing-vocabulary.ts";
-import { WEBSITE_DETAIL_CHUNK_MAX_BYTES } from "./website-core.ts";
+import {
+  detailRequiresWebsiteSchema13,
+  hasStructuredCapabilityStatements,
+  WEBSITE_CAPABILITY_KEYS,
+  WEBSITE_DETAIL_CHUNK_MAX_BYTES,
+  WEBSITE_INFERENCE_STATUSES,
+  WEBSITE_OFFER_GROUPS,
+  WEBSITE_SELECTOR_KINDS,
+} from "./website-core.ts";
 import { restoreInferencePrices } from "./website-inference-storage.ts";
 import type {
   WebsiteDetailChunk,
@@ -20,11 +28,6 @@ interface DetailTarget {
   chunk: number;
 }
 
-interface ParsedDetailChunkEntry {
-  chunk: WebsiteDetailChunk;
-  byModelRef: Map<string, WebsiteStoredModelDetail>;
-}
-
 const MAX_DETAIL_CHUNKS = 24;
 const MAX_MODEL_DETAILS = 128;
 const MAX_OFFER_CHUNKS = 48;
@@ -34,31 +37,10 @@ const hashPattern = /^[0-9a-f]{64}$/;
 const validModalities = new Set<string>(modalities);
 const validDeliveryModes = new Set<string>(deliveryModes);
 const validModelScopes = new Set<string>(modelScopes);
-const validOfferGroups = new Set([
-  "model_mechanism",
-  "optional_service",
-  "automatic_component",
-  "capacity",
-  "plan",
-  "standalone",
-]);
-const validInferenceStatuses = new Set(["matched", "candidates", "unknown"]);
-const requiredCapabilityKeys = [
-  "reasoning",
-  "tool_call",
-  "structured_output",
-  "streaming",
-  "batch",
-  "prompt_cache",
-  "fine_tuning",
-  "citations",
-  "code_execution",
-  "context_management",
-  "effort_control",
-  "computer_use",
-] as const;
+const validOfferGroups = new Set<string>(WEBSITE_OFFER_GROUPS);
+const validInferenceStatuses = new Set<string>(WEBSITE_INFERENCE_STATUSES);
 
-const parsedDetailChunks = new Map<string, Promise<ParsedDetailChunkEntry>>();
+const parsedDetailChunks = new Map<string, Promise<Map<string, WebsiteStoredModelDetail>>>();
 const modelDetails = new Map<string, Promise<WebsiteModelDetail>>();
 const offerChunks = new Map<string, Promise<WebsiteOfferChunk>>();
 const providerPricingChunks = new Map<string, Promise<WebsiteProviderPricingDetail>>();
@@ -148,7 +130,7 @@ function assertChunkEnvelope(
   providerId: string,
   chunk: number,
   mismatchMessage: string,
-): asserts value is Record<string, unknown> {
+): asserts value is Record<string, unknown> & { schema_version: number } {
   if (!isRecord(value)) throw new Error("Invalid website chunk payload");
   const version = value.schema_version;
   if (typeof version !== "number" || !expectedVersions.includes(version))
@@ -179,45 +161,6 @@ function normalizeClaimGroups(groups: unknown, filterEmpty: boolean): unknown {
   return normalized;
 }
 
-function hasStructuredCapability(groups: unknown): boolean {
-  return (
-    Array.isArray(groups) &&
-    groups.some(
-      (group) =>
-        isRecord(group) &&
-        Array.isArray(group.statements) &&
-        group.statements.some((s) => isRecord(s) && s.applicability !== undefined),
-    )
-  );
-}
-
-function detailRequiresV13(detail: Record<string, unknown>): boolean {
-  if (Array.isArray(detail.access_conditions) && detail.access_conditions.length > 0) return true;
-  if (
-    Array.isArray(detail.capability_details) &&
-    detail.capability_details.some(
-      (group) =>
-        isRecord(group) &&
-        Array.isArray(group.statements) &&
-        group.statements.some((s) => isRecord(s) && s.kind === "capability_support"),
-    )
-  )
-    return true;
-  if (
-    Array.isArray(detail.limit_details) &&
-    detail.limit_details.some(
-      (group) =>
-        isRecord(group) &&
-        Array.isArray(group.statements) &&
-        group.statements.some(
-          (s) => isRecord(s) && (Boolean(s.account_tier) || s.kind === "published_maximum_label"),
-        ),
-    )
-  )
-    return true;
-  return false;
-}
-
 function assertStoredModelDetail(detail: Record<string, unknown>): void {
   if (!isNonEmptyString(detail.model_ref)) throw new Error("Invalid model detail reference");
   if (!isRecord(detail.modalities)) throw new Error("Model detail modalities are required");
@@ -229,7 +172,7 @@ function assertStoredModelDetail(detail: Record<string, unknown>): void {
   )
     throw new Error("Invalid model detail modalities");
   if (!isRecord(detail.capabilities)) throw new Error("Model detail capabilities are required");
-  for (const key of requiredCapabilityKeys) {
+  for (const key of WEBSITE_CAPABILITY_KEYS) {
     const cap = detail.capabilities[key];
     if (typeof cap !== "boolean" && cap !== "unknown")
       throw new Error(`Invalid model detail capability: ${key}`);
@@ -271,12 +214,12 @@ function assertStoredModelDetail(detail: Record<string, unknown>): void {
   }
 }
 
-function isDetailChunk(
+function assertDetailChunk(
   value: unknown,
   dataVersion: string,
   providerId: string,
   chunk: number,
-): value is WebsiteDetailChunk {
+): asserts value is WebsiteDetailChunk {
   assertChunkEnvelope(
     value,
     [7, 8, 9, 10, 11, 12, 13],
@@ -293,13 +236,13 @@ function isDetailChunk(
     if (!isRecord(detail)) throw new Error("Invalid model detail record");
     if (version === 7 && detail.limit_details !== undefined)
       throw new Error("Limit details require schema 8 or newer");
-    if (typeof version === "number" && version <= 8 && detail.capability_details !== undefined)
+    if (version <= 8 && detail.capability_details !== undefined)
       throw new Error("Capability details require schema 9 or newer");
-    if (version === 9 && hasStructuredCapability(detail.capability_details))
+    if (version === 9 && hasStructuredCapabilityStatements(detail.capability_details))
       throw new Error("Structured capability applicability requires schema 10");
-    if (typeof version === "number" && version <= 12 && detail.access_conditions !== undefined)
+    if (version <= 12 && detail.access_conditions !== undefined)
       throw new Error("Access conditions require schema 13");
-    if (typeof version === "number" && version <= 11) {
+    if (version <= 11) {
       if (Array.isArray(detail.inference_prices))
         detail.inference_prices = detail.inference_prices.map(normalizeLegacyInferencePrice);
       const filterEmpty = version <= 10;
@@ -309,24 +252,17 @@ function isDetailChunk(
         detail.capability_details = normalizeClaimGroups(detail.capability_details, filterEmpty);
     }
     assertStoredModelDetail(detail);
-    const requiresV13 = detailRequiresV13(detail);
+    const requiresV13 = detailRequiresWebsiteSchema13(detail);
     if (version === 12 && requiresV13) throw new Error("Scoped support requires schema 13");
     if (requiresV13) anyRequiresV13 = true;
   }
   if (version === 13 && !anyRequiresV13)
     throw new Error("Version 13 requires scoped support, access or tier limits");
-  return true;
 }
 
 const validPriceStates = new Set<string>(priceStates);
 const validRawImpacts = new Set<string>(rawPricingImpacts);
-const validSelectorKinds = new Set([
-  "categorical",
-  "boolean",
-  "decimal_values",
-  "decimal_buckets",
-  "decimal_range",
-]);
+const validSelectorKinds = new Set<string>(WEBSITE_SELECTOR_KINDS);
 
 function assertApplicability(value: unknown, label: string): void {
   if (!isRecord(value) || !Array.isArray(value.any_of) || value.any_of.length === 0)
@@ -451,12 +387,12 @@ function assertPricingOffer(offer: unknown): void {
   }
 }
 
-function isOfferChunk(
+function assertOfferChunk(
   value: unknown,
   dataVersion: string,
   providerId: string,
   chunk: number,
-): value is WebsiteOfferChunk {
+): asserts value is WebsiteOfferChunk {
   assertChunkEnvelope(
     value,
     [3],
@@ -468,15 +404,14 @@ function isOfferChunk(
   if (!Array.isArray(value.offers) || value.offers.length === 0)
     throw new Error("Pricing offers must be a non-empty array");
   for (const offer of value.offers) assertPricingOffer(offer);
-  return true;
 }
 
-function isProviderPricingChunk(
+function assertProviderPricingChunk(
   value: unknown,
   dataVersion: string,
   providerId: string,
   chunk: number,
-): value is WebsiteProviderPricingDetail {
+): asserts value is WebsiteProviderPricingDetail {
   assertChunkEnvelope(
     value,
     [3],
@@ -513,19 +448,6 @@ function isProviderPricingChunk(
       assertBillingMode(offer.billing_mode);
     }
   }
-  return true;
-}
-
-function targetKey({ providerId, chunk }: DetailTarget): string {
-  return `${providerId}/${chunk}`;
-}
-
-function detailKey(dataVersion: string, target: DetailTarget): string {
-  return `${dataVersion}/${targetKey(target)}`;
-}
-
-function modelDetailKey(dataVersion: string, modelRef: string): string {
-  return `${dataVersion}/${modelRef}`;
 }
 
 function detailUrl(dataVersion: string, { providerId, chunk }: DetailTarget): string {
@@ -540,25 +462,31 @@ function providerPricingUrl(dataVersion: string, providerId: string, chunk: numb
   return `/ui/providers/${encodeURIComponent(providerId)}/pricing/${chunk}.json?v=${encodeURIComponent(dataVersion)}`;
 }
 
-async function responseSource(response: Response): Promise<string> {
+async function fetchJson(
+  url: string,
+  maxBytes?: number,
+  oversizeMessage?: string,
+): Promise<unknown> {
+  const response = await fetch(url, { headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error(`Website asset request failed with ${response.status}`);
-  return response.text();
+  const source = await response.text();
+  if (maxBytes !== undefined && textEncoder.encode(source).byteLength > maxBytes)
+    throw new Error(oversizeMessage ?? "Website asset exceeds the size limit");
+  return JSON.parse(source);
 }
 
 function parseDetailChunk(
   target: DetailTarget,
   dataVersion: string,
-): Promise<ParsedDetailChunkEntry> {
-  const key = detailKey(dataVersion, target);
+): Promise<Map<string, WebsiteStoredModelDetail>> {
+  const key = `${dataVersion}/${target.providerId}/${target.chunk}`;
   return cachedRequest(parsedDetailChunks, key, MAX_DETAIL_CHUNKS, async () => {
-    const source = await fetch(detailUrl(dataVersion, target), {
-      headers: { Accept: "application/json" },
-    }).then(responseSource);
-    if (textEncoder.encode(source).byteLength > WEBSITE_DETAIL_CHUNK_MAX_BYTES)
-      throw new Error("Model detail chunk exceeds the size limit");
-    const value: unknown = JSON.parse(source);
-    if (!isDetailChunk(value, dataVersion, target.providerId, target.chunk))
-      throw new Error("Model detail chunk does not match the catalog");
+    const value = await fetchJson(
+      detailUrl(dataVersion, target),
+      WEBSITE_DETAIL_CHUNK_MAX_BYTES,
+      "Model detail chunk exceeds the size limit",
+    );
+    assertDetailChunk(value, dataVersion, target.providerId, target.chunk);
     const byModelRef = new Map<string, WebsiteStoredModelDetail>();
     for (const detail of value.details) {
       const { pricing } = detail;
@@ -569,7 +497,7 @@ function parseDetailChunk(
           : { ...detail, pricing: { ...pricing, snapshot: value.snapshot } },
       );
     }
-    return { chunk: value, byModelRef };
+    return byModelRef;
   });
 }
 
@@ -580,12 +508,8 @@ function loadOfferChunk(
 ): Promise<WebsiteOfferChunk> {
   const key = `${dataVersion}/${providerId}/${chunk}`;
   return cachedRequest(offerChunks, key, MAX_OFFER_CHUNKS, async () => {
-    const response = await fetch(offerUrl(dataVersion, providerId, chunk), {
-      headers: { Accept: "application/json" },
-    });
-    const value: unknown = JSON.parse(await responseSource(response));
-    if (!isOfferChunk(value, dataVersion, providerId, chunk))
-      throw new Error("Pricing offers do not match the catalog");
+    const value = await fetchJson(offerUrl(dataVersion, providerId, chunk));
+    assertOfferChunk(value, dataVersion, providerId, chunk);
     return value;
   });
 }
@@ -628,7 +552,7 @@ export async function preloadWebsiteModelDetail(
   dataVersion: string,
   model: WebsiteModel,
 ): Promise<void> {
-  const { byModelRef } = await parseDetailChunk(
+  const byModelRef = await parseDetailChunk(
     { providerId: model.provider_id, chunk: model.detail_chunk },
     dataVersion,
   );
@@ -641,23 +565,13 @@ export async function preloadWebsiteModelDetail(
   );
 }
 
-export function preloadWebsiteModelDetailChunk(
-  dataVersion: string,
-  model: WebsiteModel,
-): Promise<void> {
-  return parseDetailChunk(
-    { providerId: model.provider_id, chunk: model.detail_chunk },
-    dataVersion,
-  ).then(() => undefined);
-}
-
 export async function loadWebsiteModelDetail(
   dataVersion: string,
   model: WebsiteModel,
 ): Promise<WebsiteModelDetail> {
-  const key = modelDetailKey(dataVersion, model.uid);
+  const key = `${dataVersion}/${model.uid}`;
   return cachedRequest(modelDetails, key, MAX_MODEL_DETAILS, async () => {
-    const { byModelRef } = await parseDetailChunk(
+    const byModelRef = await parseDetailChunk(
       { providerId: model.provider_id, chunk: model.detail_chunk },
       dataVersion,
     );
@@ -683,12 +597,8 @@ export function loadWebsiteProviderPricingChunk(
 ): Promise<WebsiteProviderPricingDetail> {
   const key = `${dataVersion}/${providerId}/${chunk}`;
   return cachedRequest(providerPricingChunks, key, MAX_PROVIDER_PRICING_CHUNKS, async () => {
-    const response = await fetch(providerPricingUrl(dataVersion, providerId, chunk), {
-      headers: { Accept: "application/json" },
-    });
-    const value: unknown = JSON.parse(await responseSource(response));
-    if (!isProviderPricingChunk(value, dataVersion, providerId, chunk))
-      throw new Error("Provider pricing does not match the catalog");
+    const value = await fetchJson(providerPricingUrl(dataVersion, providerId, chunk));
+    assertProviderPricingChunk(value, dataVersion, providerId, chunk);
     return value;
   });
 }

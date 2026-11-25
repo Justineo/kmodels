@@ -4,6 +4,87 @@ import type { WebsiteCatalogIndex, WebsitePricingSummaries } from "./website-sch
 export const WEBSITE_CORE_CHUNK_MAX_BYTES = 128 * 1024;
 export const WEBSITE_DETAIL_CHUNK_MAX_BYTES = 2 * 1024 * 1024;
 
+export const WEBSITE_OFFER_GROUPS = [
+  "model_mechanism",
+  "optional_service",
+  "automatic_component",
+  "capacity",
+  "plan",
+  "standalone",
+] as const;
+
+export const WEBSITE_INFERENCE_STATUSES = ["matched", "candidates", "unknown"] as const;
+
+export const WEBSITE_SELECTOR_KINDS = [
+  "categorical",
+  "boolean",
+  "decimal_values",
+  "decimal_buckets",
+  "decimal_range",
+] as const;
+
+export const WEBSITE_CAPABILITY_KEYS = [
+  "reasoning",
+  "tool_call",
+  "structured_output",
+  "streaming",
+  "batch",
+  "prompt_cache",
+  "fine_tuning",
+  "citations",
+  "code_execution",
+  "context_management",
+  "effort_control",
+  "computer_use",
+] as const;
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Shared Zod-free check for schema 10+ structured capability applicability. */
+export function hasStructuredCapabilityStatements(groups: unknown): boolean {
+  return (
+    Array.isArray(groups) &&
+    groups.some(
+      (group) =>
+        isPlainRecord(group) &&
+        Array.isArray(group.statements) &&
+        group.statements.some((s) => isPlainRecord(s) && s.applicability !== undefined),
+    )
+  );
+}
+
+/** Shared Zod-free check for schema 13+ detail fields (access, scoped support, tier/max labels). */
+export function detailRequiresWebsiteSchema13(detail: unknown): boolean {
+  if (!isPlainRecord(detail)) return false;
+  if (Array.isArray(detail.access_conditions) && detail.access_conditions.length > 0) return true;
+  if (
+    Array.isArray(detail.capability_details) &&
+    detail.capability_details.some(
+      (group) =>
+        isPlainRecord(group) &&
+        Array.isArray(group.statements) &&
+        group.statements.some((s) => isPlainRecord(s) && s.kind === "capability_support"),
+    )
+  )
+    return true;
+  if (
+    Array.isArray(detail.limit_details) &&
+    detail.limit_details.some(
+      (group) =>
+        isPlainRecord(group) &&
+        Array.isArray(group.statements) &&
+        group.statements.some(
+          (s) =>
+            isPlainRecord(s) && (Boolean(s.account_tier) || s.kind === "published_maximum_label"),
+        ),
+    )
+  )
+    return true;
+  return false;
+}
+
 interface WebsiteCoreChunk {
   schema_version: 1;
   data_version: string;

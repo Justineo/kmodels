@@ -102,9 +102,10 @@ export function createContractFindingCollector() {
       totalFindings += 1;
       if (evidence.disposition === "reject") rejectFindings += 1;
       const fullDiagnostics = unboundedDiagnosticsByEvidence.get(evidence) ?? evidence.diagnostics;
-      const findingHasDrift =
-        evidence.disposition === "reject" ||
-        fullDiagnostics.some(({ kind }) => kind !== "unknown_field");
+      const findingHasDrift = isContractDrift({
+        disposition: evidence.disposition,
+        diagnostics: fullDiagnostics,
+      });
       if (findingHasDrift) hasContractDrift = true;
       for (const diagnostic of fullDiagnostics) {
         const diagKey = `${diagnostic.kind}:${diagnostic.path}`;

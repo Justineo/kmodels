@@ -16,7 +16,6 @@ const nonPricingFields = new Set([
   "possible_scope",
   "possible_scope_id",
   "validity",
-  "selector_sources",
 ]);
 
 export interface Qualified {

@@ -19,7 +19,6 @@ import { defaultProjectionPaths, type ProjectionPaths } from "./projection-paths
 export interface PublishedAssetProfile {
   manifest: AssetPackManifest;
   pack: Uint8Array;
-  packPath: string;
 }
 
 export interface PublishedAssets {
@@ -36,7 +35,7 @@ export async function readPublishedAssetProfile(
   const [manifestBytes, pack] = await Promise.all([readFile(manifestPath), readFile(packPath)]);
   const { manifest } = decodeAssetPack(profile, manifestBytes, pack);
   if (profile === "exports") validateExportIdentity(manifest);
-  return { manifest, pack, packPath };
+  return { manifest, pack };
 }
 
 export async function readPublishedAssets(

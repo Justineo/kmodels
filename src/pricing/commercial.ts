@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { commercialChoiceSchema, priceMeterSchema } from "../catalog/pricing-schema.ts";
-import { prepareInferencePriceLookup, selectedTerm } from "./inference.ts";
+import { prepareInferencePriceLookup } from "./inference.ts";
 import { inferenceMatchData } from "./inference-matching-data.ts";
 import { matchInferencePrices } from "./inference-matching.ts";
-import { createPricingSnapshot, resolveOffer } from "./snapshot.ts";
+import { createPricingSnapshot, resolveCandidateOffer } from "./snapshot.ts";
 import { evaluationTimeSchema, selectorSchema } from "./schema.ts";
 import { parseEvaluationTime, parseRequest, validateSelectorVocabulary } from "./request.ts";
 import { PricingError } from "./errors.ts";
@@ -92,20 +92,7 @@ export function createCommercialPriceLookup(priceData: unknown, mappingData: unk
           missing_conditions: candidate.missing_conditions,
           gaps: candidate.gaps,
           evidence: owner.offer.selection?.flatMap(({ evidence }) => evidence) ?? [],
-          offer: resolveOffer(
-            owner.provider,
-            owner.offer,
-            candidate.states,
-            candidate.relations,
-            owner.offer.terms.flatMap((term) => {
-              const selected = candidate.terms.find(({ id }) => id === term.id);
-              return selected === undefined ? [] : [selectedTerm(owner.provider, term, selected)];
-            }),
-          ),
-          referenced_rates: candidate.referenced_rates.flatMap((selected) => {
-            const rate = snapshot.rates.get(selected.id);
-            return rate === undefined ? [] : [selectedTerm(rate.provider, rate.term, selected)];
-          }),
+          ...resolveCandidateOffer(snapshot, owner, candidate),
         };
       }),
     });

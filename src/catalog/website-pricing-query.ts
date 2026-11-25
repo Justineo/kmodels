@@ -54,11 +54,7 @@ export function projectWebsiteRateQuery(
       (possible_scope === undefined ||
         evaluate(possible_scope, modelRef, selections).state !== "false"),
   );
-  for (const group of groupsByTerm(offer.rates).values()) {
-    const possible = group.filter(
-      ({ applicability }) => evaluate(applicability, modelRef, selections).state !== "false",
-    );
-    if (possible.length === 0) continue;
+  for (const possible of groupsByTerm(possibleRates).values()) {
     const exact = possible.filter(
       ({ applicability }) => evaluate(applicability, modelRef, selections).state === "true",
     );

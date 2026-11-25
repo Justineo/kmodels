@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { manifests, type SourceManifest } from "./manifests.ts";
-import { compareUtf8 } from "./canonical-value.ts";
 import { contractFindings, isContractDrift, maxContractFindings } from "./source-contract.ts";
 import { dependencyFailureSchema, maxDependencyFailures } from "./source-failure.ts";
 
@@ -136,10 +135,7 @@ export interface CatalogRepairCandidate {
     | "source_contract_change"
     | "source_pricing_structure"
     | "provider_validation"
-    | "pricing_validation"
-    | "scheduled_provider_review"
-    | "scheduled_architecture_review"
-    | "semantic_coverage_review";
+    | "pricing_validation";
   /** All distinct triggers merged into this candidate when multiple obligations co-occur on the same subject. */
   triggers?: CatalogRepairCandidate["trigger"][];
   /** Individual dependency parse failures recorded alongside this source candidate. */
@@ -153,78 +149,6 @@ export interface CatalogRepairCandidate {
   message: string;
   diagnostics: z.infer<typeof diagnosticSchema>[];
   reconciliation_reasons?: Record<string, number>;
-}
-
-/** Keep incident and periodic reviews in separate runs with independent budgets. */
-export function catalogRepairBatch(
-  candidates: readonly CatalogRepairCandidate[],
-  at: Date,
-  mode: "incident" | "periodic" = "incident",
-): {
-  selected: CatalogRepairCandidate[];
-  deferred: CatalogRepairCandidate[];
-} {
-  if (!Number.isFinite(at.getTime())) throw new Error("Catalog repair batch requires a valid date");
-  if (mode === "periodic")
-    return { selected: [scheduledCatalogReview(at)], deferred: [...candidates] };
-  const pending = new Set(candidates.map(({ provider_id }) => provider_id));
-  const providers = manifests.map(({ provider }) => provider.id).sort(compareUtf8);
-  for (const providerId of pending)
-    if (!providers.includes(providerId))
-      throw new Error(`Unconfigured repair provider: ${providerId}`);
-  const slot = Math.floor(at.getTime() / 21_600_000);
-  const start = ((slot % providers.length) + providers.length) % providers.length;
-  const rotation = [...providers.slice(start), ...providers.slice(0, start)];
-  const providerId = rotation.find((id) => pending.has(id));
-  return {
-    selected: candidates.filter((candidate) => candidate.provider_id === providerId),
-    deferred: candidates.filter((candidate) => candidate.provider_id !== providerId),
-  };
-}
-
-/** Build commands from reviewed source IDs, never from provider IDs or report prose. */
-export function catalogRepairEvidenceCommands(
-  candidates: readonly CatalogRepairCandidate[],
-): string[] {
-  const sources = new Set(
-    candidates.flatMap((candidate) =>
-      candidate.trigger === "scheduled_provider_review"
-        ? (manifests
-            .find(({ provider }) => provider.id === candidate.provider_id)
-            ?.sources.map(({ id }) => id) ?? [])
-        : (candidate.source_id ?? []),
-    ),
-  );
-  return manifests.flatMap(({ sources: configured }) =>
-    configured.flatMap((source: SourceManifest) =>
-      sources.has(source.id) && source.access === "public" && !source.auth
-        ? [`vp node scripts/fetch-catalog-evidence.ts ${source.id}`]
-        : [],
-    ),
-  );
-}
-
-/** One provider per UTC day, followed by a global consistency review; independent of refresh errors. */
-export function scheduledCatalogReview(at: Date): CatalogRepairCandidate {
-  if (!Number.isFinite(at.getTime()))
-    throw new Error("Periodic catalog review requires a valid date");
-  const providers = manifests.map(({ provider }) => provider.id).sort(compareUtf8);
-  const day = Math.floor(at.getTime() / 86_400_000);
-  const cycleLength = providers.length + 1;
-  const slot = ((day % cycleLength) + cycleLength) % cycleLength;
-  const providerId = providers[slot];
-  return {
-    provider_id: providerId ?? "catalog",
-    scope: "provider",
-    subject_id: "scheduled-review",
-    trigger:
-      providerId === undefined ? "scheduled_architecture_review" : "scheduled_provider_review",
-    message:
-      providerId === undefined
-        ? "Review global price-model consistency, source/parse/publication boundaries, repair feedback and shared simplification using current provider evidence. A healthy refresh is not proof of semantic completeness."
-        : `Review ${providerId} end to end against current first-party evidence: discovery, identity/lifecycle, price inventory/scopes, accounting, retention/replay, calculator/display and simplicity. Do not limit investigation to existing error signals.`,
-    diagnostics: [],
-  };
 }
 
 function sourceIndex(): ReadonlyMap<string, ReadonlyMap<string, SourceManifest>> {
@@ -423,22 +347,12 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
           ),
           reconciliation_reasons: missingReasonMap,
         };
-        const key = `${value.provider_id}\0${value.subject_id}`;
-        const existing = candidates.get(key);
-        candidates.set(
-          key,
-          existing === undefined
-            ? value
-            : {
-                ...existing,
-                triggers: mergeTriggers(existing, value.trigger),
-                message: `${existing.message} ${value.message}`,
-                reconciliation_reasons: {
-                  ...existing.reconciliation_reasons,
-                  ...missingReasonMap,
-                },
-              },
-        );
+        upsertCandidate(candidates, value, value.message, {
+          reconciliation_reasons: (existing) => ({
+            ...existing.reconciliation_reasons,
+            ...missingReasonMap,
+          }),
+        });
         continue;
       }
       const findings = contractFindings(sourceAttempt);
@@ -462,18 +376,7 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
           sourceAttempt.message ??
             "The source contains unresolved contract evidence; investigate before deciding whether a code repair is needed.",
         );
-        const key = `${value.provider_id}\0${value.subject_id}`;
-        const existing = candidates.get(key);
-        candidates.set(
-          key,
-          existing === undefined
-            ? value
-            : {
-                ...existing,
-                triggers: mergeTriggers(existing, value.trigger),
-                message: `${existing.message} ${value.message}`,
-              },
-        );
+        upsertCandidate(candidates, value, value.message);
       }
     }
 
@@ -484,25 +387,15 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
       for (const sourceAttempt of changedSources) {
         const source = reviewedSource(sources, provider.provider_id, sourceAttempt.source_id);
         if (source === undefined) continue;
+        const issueMessage = `${attempt.validation_issue.code}: ${attempt.validation_issue.message}`;
         const value = sourceCandidate(
           provider.provider_id,
           source,
           sourceAttempt,
           "provider_validation",
-          `${attempt.validation_issue.code}: ${attempt.validation_issue.message}`,
+          issueMessage,
         );
-        const key = `${value.provider_id}\0${value.subject_id}`;
-        const existing = candidates.get(key);
-        candidates.set(
-          key,
-          existing === undefined
-            ? value
-            : {
-                ...existing,
-                triggers: mergeTriggers(existing, value.trigger),
-                message: `${existing.message} Provider validation: ${attempt.validation_issue.code}: ${attempt.validation_issue.message}`,
-              },
-        );
+        upsertCandidate(candidates, value, `Provider validation: ${issueMessage}`);
       }
       if (
         changedSources.length === 0 &&
@@ -540,47 +433,28 @@ export function catalogRepairCandidates(input: unknown): CatalogRepairCandidate[
   );
 }
 
-/** Transport failure is not a parser repair, but also cannot establish a healthy no-op. */
-export function catalogRepairEvidenceIncomplete(
-  input: unknown,
-  providerIds?: ReadonlySet<string>,
-  accountedRemovals?: ReadonlySet<string>,
-): boolean {
-  const sources = sourceIndex();
-  return refreshSummarySchema
-    .parse(input)
-    .providers.filter(
-      ({ provider_id }) => providerIds === undefined || providerIds.has(provider_id),
-    )
-    .some(
-      ({ provider_id, attempt }) =>
-        attempt?.sources.some((source) => {
-          const accounted = accountedRemovals?.has(`${provider_id}/${source.source_id}`);
-          const manifest = reviewedSource(sources, provider_id, source.source_id);
-          const inventoryAccessDenied =
-            attempt.outcome === "accepted" &&
-            attempt.pricing?.outcome !== "failed" &&
-            (source.http_status === 401 || source.http_status === 403) &&
-            manifest?.access === "authenticated" &&
-            manifest.scope === "account" &&
-            manifest.role === "inventory" &&
-            manifest.optional === true &&
-            manifest.pricingRequired !== true;
-          return (
-            (source.dependency_failures_omitted ?? 0) > 0 ||
-            (source.outcome === "fetch_failed" &&
-              !inventoryAccessDenied &&
-              !(accounted && repeatedMissingSource(source))) ||
-            source.dependency_failures?.some(
-              (failure) =>
-                failure.outcome === "fetch_failed" &&
-                !(accounted && repeatedMissingSource(failure)),
-            )
-          );
-        }) === true ||
-        (attempt?.pricing?.outcome === "failed" &&
-          attempt.pricing.failure_code === "source_unavailable"),
-    );
+function upsertCandidate(
+  candidates: Map<string, CatalogRepairCandidate>,
+  value: CatalogRepairCandidate,
+  mergedSuffix: string,
+  extra?: {
+    reconciliation_reasons?: (existing: CatalogRepairCandidate) => Record<string, number>;
+  },
+): void {
+  const key = `${value.provider_id}\0${value.subject_id}`;
+  const existing = candidates.get(key);
+  if (existing === undefined) {
+    candidates.set(key, value);
+    return;
+  }
+  candidates.set(key, {
+    ...existing,
+    triggers: mergeTriggers(existing, value.trigger),
+    message: `${existing.message} ${mergedSuffix}`,
+    ...(extra?.reconciliation_reasons === undefined
+      ? {}
+      : { reconciliation_reasons: extra.reconciliation_reasons(existing) }),
+  });
 }
 
 function repeatedMissingSource(

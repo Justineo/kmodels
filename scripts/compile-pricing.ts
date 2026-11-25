@@ -17,7 +17,7 @@ const changed = result.replayedProviders.length > 0 || result.candidate.pairId !
 if (changed) await commitCatalogPair(result.candidate);
 console.log(
   [
-    `${result.replayedProviders.length === 0 ? "Canonical pricing unchanged at" : "Compiled canonical pricing for"} pair ${result.candidate.pairId.slice(0, 12)}`,
+    `${!changed ? "Canonical pricing unchanged at" : "Compiled canonical pricing for"} pair ${result.candidate.pairId.slice(0, 12)}`,
     `${result.replayedProviders.length} replayed`,
     `${result.preservedProviders.length} preserved`,
   ].join("; "),

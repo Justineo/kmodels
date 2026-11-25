@@ -207,6 +207,21 @@ function exportRawVariant(
   };
 }
 
+function exportQualified(
+  variant: {
+    readonly applicability: PriceApplicability;
+    readonly validity?: PricingOffer["states"][number]["validity"];
+    readonly observations: Parameters<typeof toEvidence>[0];
+  },
+  intern: (scope: PriceApplicability) => number,
+) {
+  return {
+    applicability_id: intern(variant.applicability),
+    ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+    evidence: toEvidence(variant.observations),
+  };
+}
+
 function exportTerm(
   term: PricingTerm,
   intern: (scope: PriceApplicability) => number,
@@ -230,9 +245,7 @@ function exportTerm(
       meter: term.meter,
       variants: term.variants.map((variant) => ({
         price: variant.price,
-        applicability_id: intern(variant.applicability),
-        ...(variant.validity === undefined ? {} : { validity: variant.validity }),
-        evidence: toEvidence(variant.observations),
+        ...exportQualified(variant, intern),
       })),
       raw_variants,
     };
@@ -247,9 +260,7 @@ function exportTerm(
         benefit: variant.benefit,
         target: variant.target,
         reset: variant.reset,
-        applicability_id: intern(variant.applicability),
-        ...(variant.validity === undefined ? {} : { validity: variant.validity }),
-        evidence: toEvidence(variant.observations),
+        ...exportQualified(variant, intern),
       })),
       raw_variants,
     };
@@ -261,9 +272,7 @@ function exportTerm(
     kind: "contribution",
     variants: term.variants.map((variant) => ({
       target_rate_refs: variant.target_rate_refs,
-      applicability_id: intern(variant.applicability),
-      ...(variant.validity === undefined ? {} : { validity: variant.validity }),
-      evidence: toEvidence(variant.observations),
+      ...exportQualified(variant, intern),
     })),
     raw_variants,
   };
@@ -278,13 +287,11 @@ function exportOffer(
     ...(claim.target === undefined ? {} : { target: claim.target }),
     coverage: claim.coverage,
     ...(claim.excluded_values === undefined ? {} : { excluded_values: claim.excluded_values }),
-    applicability_id: intern(claim.applicability),
-    ...(claim.validity === undefined ? {} : { validity: claim.validity }),
     alternatives: claim.alternatives.map((alternative) => ({
       value: alternative.value,
       applicability_id: intern(alternative.applicability),
     })),
-    evidence: toEvidence(claim.observations),
+    ...exportQualified(claim, intern),
   }));
   return {
     id: offer.id,
@@ -294,18 +301,14 @@ function exportOffer(
     billing_mode: offer.billing_mode,
     states: offer.states.map((state) => ({
       state: state.state,
-      applicability_id: intern(state.applicability),
-      ...(state.validity === undefined ? {} : { validity: state.validity }),
-      evidence: toEvidence(state.observations),
+      ...exportQualified(state, intern),
     })),
     ...(selection === undefined ? {} : { selection }),
     terms: offer.terms.map((term) => exportTerm(term, intern)),
     relations: offer.relations.map((relation) => ({
       kind: relation.kind,
       target: relation.target,
-      applicability_id: intern(relation.applicability),
-      ...(relation.validity === undefined ? {} : { validity: relation.validity }),
-      evidence: toEvidence(relation.observations),
+      ...exportQualified(relation, intern),
     })),
     source_refs: offer.source_refs,
   };

@@ -55,7 +55,3 @@ export const legacyWebsiteLimitDetailsSchema = legacyWebsiteClaimDetailsSchema(
 export type LimitStatement = z.infer<typeof limitStatementSchema>;
 export type LimitDetailGroup = z.infer<typeof limitDetailGroupSchema>;
 export type WebsiteLimitDetailGroup = z.infer<typeof websiteLimitDetailGroupSchema>;
-
-export { limitScopeKey, limitStatementsConflict } from "./model-claim-helpers.ts";
-
-export { validateModelDetailSources as validateLimitDetailSources } from "./model-claim-details.ts";

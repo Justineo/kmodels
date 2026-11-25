@@ -7,7 +7,10 @@ import {
   projectWebsitePricingTimeline,
   projectWebsiteRateQuery,
 } from "../src/catalog/website-pricing-query.ts";
-import type { WebsiteDetailChunk, WebsiteOfferChunk } from "../src/catalog/website-schema.ts";
+import {
+  websiteDetailChunkSchema,
+  websiteOfferChunkSchema,
+} from "../src/catalog/website-schema.ts";
 
 const distDir = resolve("dist");
 const distIndex = join(distDir, "index.html");
@@ -27,9 +30,9 @@ for (const file of jsAssets) {
 
 // Identify the first model in Hugging Face detail chunk 0 (largest chunk > 1,000 models)
 // so we verify F04 never regresses on real production assets.
-const hfChunk0 = JSON.parse(
-  await readFile(join(distDir, "ui/details/huggingface/0.json"), "utf8"),
-) as { details: Array<{ model_ref: string }> };
+const hfChunk0 = websiteDetailChunkSchema.parse(
+  JSON.parse(await readFile(join(distDir, "ui/details/huggingface/0.json"), "utf8")),
+);
 const firstHfModelRef = hfChunk0.details[0]?.model_ref;
 assert(firstHfModelRef, "Expected at least one model in Hugging Face detail chunk 0");
 const firstHfModelId = firstHfModelRef.replace(/^huggingface\//, "");
@@ -39,26 +42,28 @@ const firstHfModelId = firstHfModelRef.replace(/^huggingface\//, "");
 const xaiDetailFiles = (await readdir(join(distDir, "ui/details/xai"))).filter((f) =>
   f.endsWith(".json"),
 );
+const evaluatedAt = new Date().toISOString();
 let foundXaiDefaultRate = false;
 for (const file of xaiDetailFiles) {
-  const chunk = JSON.parse(
-    await readFile(join(distDir, "ui/details/xai", file), "utf8"),
-  ) as WebsiteDetailChunk;
+  const chunk = websiteDetailChunkSchema.parse(
+    JSON.parse(await readFile(join(distDir, "ui/details/xai", file), "utf8")),
+  );
   const target = chunk.details.find((d) => d.model_ref === "xai/grok-imagine-image-pro");
-  if (target?.pricing?.offer_refs.length) {
-    for (const [offerChunkIdx, offerIdx] of target.pricing.offer_refs) {
-      const offerChunk = JSON.parse(
-        await readFile(join(distDir, `ui/offers/xai/${offerChunkIdx}.json`), "utf8"),
-      ) as WebsiteOfferChunk;
-      const offer = offerChunk.offers[offerIdx];
-      if (!offer) continue;
-      const current = projectWebsitePricingTimeline(offer, new Date().toISOString()).current;
-      const defaultRates = projectWebsiteRateQuery(current, target.model_ref, []).rates;
-      if (defaultRates.some(({ row }) => row.amount === "$0.01")) {
-        foundXaiDefaultRate = true;
-      }
+  if (!target?.pricing?.offer_refs.length) continue;
+  for (const [offerChunkIdx, offerIdx] of target.pricing.offer_refs) {
+    const offerChunk = websiteOfferChunkSchema.parse(
+      JSON.parse(await readFile(join(distDir, `ui/offers/xai/${offerChunkIdx}.json`), "utf8")),
+    );
+    const offer = offerChunk.offers[offerIdx];
+    if (!offer) continue;
+    const current = projectWebsitePricingTimeline(offer, evaluatedAt).current;
+    const defaultRates = projectWebsiteRateQuery(current, target.model_ref, []).rates;
+    if (defaultRates.some(({ row }) => row.amount === "$0.01")) {
+      foundXaiDefaultRate = true;
+      break;
     }
   }
+  if (foundXaiDefaultRate) break;
 }
 assert(
   foundXaiDefaultRate,
@@ -113,40 +118,31 @@ try {
   const resizedCount = await rows.count();
   assert(resizedCount > 0, "Expected table rows to remain rendered after zero-results recovery");
 
-  // 3. Verify opening the FIRST model in Hugging Face's >1,000-model chunk 0 succeeds (F04 guard).
-  await page.goto(`${origin}?m=${encodeURIComponent(firstHfModelRef)}`, {
-    waitUntil: "networkidle",
-  });
   const dialog = page.locator("dialog.details-dialog[open]");
-  await dialog.waitFor({ state: "visible", timeout: 10_000 });
-  await dialog.locator("#pricing-heading").waitFor({ state: "visible", timeout: 15_000 });
-  const hfDrawerText = await dialog.innerText();
-  assert(
-    hfDrawerText.includes(firstHfModelId) && !hfDrawerText.includes("does not contain this model"),
-    `Expected first Hugging Face chunk-0 model (${firstHfModelRef}) to load cleanly`,
-  );
-  await page.keyboard.press("Escape");
-  await dialog.waitFor({ state: "hidden", timeout: 10_000 });
+  const withModelDrawer = async (modelRef: string, verify: () => Promise<void>) => {
+    await page.goto(`${origin}?m=${encodeURIComponent(modelRef)}`, { waitUntil: "networkidle" });
+    await dialog.waitFor({ state: "visible", timeout: 10_000 });
+    await dialog.locator("#pricing-heading").waitFor({ state: "visible", timeout: 15_000 });
+    await verify();
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "hidden", timeout: 10_000 });
+  };
+
+  // 3. Verify opening the FIRST model in Hugging Face's >1,000-model chunk 0 succeeds (F04 guard).
+  await withModelDrawer(firstHfModelRef, async () => {
+    const hfDrawerText = await dialog.innerText();
+    assert(
+      hfDrawerText.includes(firstHfModelId) &&
+        !hfDrawerText.includes("does not contain this model"),
+      `Expected first Hugging Face chunk-0 model (${firstHfModelRef}) to load cleanly`,
+    );
+  });
 
   // 4. Verify xai/grok-imagine-image-pro displays its $0.01 input image rate after selecting a resolution (F05 guard).
-  await page.goto(`${origin}?m=${encodeURIComponent("xai/grok-imagine-image-pro")}`, {
-    waitUntil: "networkidle",
+  await withModelDrawer("xai/grok-imagine-image-pro", async () => {
+    await dialog.getByText("1K", { exact: true }).click();
+    await dialog.getByText("$0.01").first().waitFor({ state: "visible", timeout: 15_000 });
   });
-  await dialog.waitFor({ state: "visible", timeout: 10_000 });
-  await dialog.locator("#pricing-heading").waitFor({ state: "visible", timeout: 15_000 });
-  await dialog.getByText("1K", { exact: true }).click();
-  await page.waitForFunction(
-    () => document.querySelector("dialog.details-dialog[open]")?.textContent?.includes("$0.01"),
-    undefined,
-    { timeout: 15_000 },
-  );
-  const xaiDrawerText = await dialog.innerText();
-  assert(
-    xaiDrawerText.includes("$0.01"),
-    "Expected xai/grok-imagine-image-pro drawer to display $0.01 input image rate",
-  );
-  await page.keyboard.press("Escape");
-  await dialog.waitFor({ state: "hidden", timeout: 10_000 });
 
   assert.equal(consoleErrors.length, 0, `Unexpected console errors: ${consoleErrors.join("; ")}`);
   assert.equal(pageErrors.length, 0, `Unexpected page errors: ${pageErrors.join("; ")}`);

@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   loadWebsiteModelDetail,
   preloadWebsiteModelDetail,
-  preloadWebsiteModelDetailChunk,
 } from "../src/catalog/website-loader.ts";
 import { loadWebsiteCatalog } from "../src/catalog/website-runtime.ts";
 import type { WebsiteModel, WebsitePricingOffer } from "../src/catalog/website-schema.ts";
@@ -143,10 +142,10 @@ describe("website loader regressions (F04, F14, F15, F20)", () => {
     globalThis.fetch = fetchMock as typeof fetch;
 
     // Start an in-flight chunk request for race-provider/0.json
-    const pendingFirst = preloadWebsiteModelDetailChunk(version, makeModel("race-provider", "m0"));
+    const pendingFirst = preloadWebsiteModelDetail(version, makeModel("race-provider", "m0"));
     // Evict it from parsedDetailChunks (>24 distinct chunks)
     for (let i = 0; i < 26; i += 1) {
-      await preloadWebsiteModelDetailChunk(version, makeModel(`p${i}`, "m0"));
+      await preloadWebsiteModelDetail(version, makeModel(`p${i}`, "m0"));
     }
     // Load race-provider/m0 — triggers a NEW chunk request in parsedDetailChunks and succeeds
     const second = await loadWebsiteModelDetail(version, makeModel("race-provider", "m0"));

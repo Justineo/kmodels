@@ -39,7 +39,6 @@ import {
 import {
   checkedUrl,
   cloudJson,
-  curlResponse,
   curlTransportFailure,
   readLimited,
   retryDelay,
@@ -66,8 +65,6 @@ import {
 } from "./dashscope-market.ts";
 import { linkedBundleSchema } from "./bundle.ts";
 import { xaiLanguageCardPaths } from "./xai.ts";
-
-export { curlResponse };
 
 type AzurePortalModelsTransport = Extract<
   NonNullable<SourceManifest["transport"]>,

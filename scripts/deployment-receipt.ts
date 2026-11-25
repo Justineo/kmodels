@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sha256 } from "../src/catalog/io.ts";
 
-const directory = process.env.DEPLOYMENT_RECEIPT_DIR ?? process.env.MAINTENANCE_OUTPUT;
+const directory = process.env.DEPLOYMENT_RECEIPT_DIR;
 if (!directory) throw new Error("Missing deployment receipt directory");
 const runAttempt = Number(process.env.GITHUB_RUN_ATTEMPT ?? "1");
 await mkdir(directory, { recursive: true });

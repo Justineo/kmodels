@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { baseModel } from "../src/catalog/model.ts";
+import { validateModelDetailSources as validateLimitDetailSources } from "../src/catalog/model-claim-details.ts";
+import { limitStatementsConflict } from "../src/catalog/model-claim-helpers.ts";
 import {
   limitDetailGroupSchema,
   limitDetailsSchema,
   limitStatementSchema,
-  limitStatementsConflict,
-  validateLimitDetailSources,
 } from "../src/catalog/model-limit-details.ts";
 import { providerModelSchema } from "../src/catalog/schema.ts";
 import { validateProvider } from "../src/catalog/validation.ts";

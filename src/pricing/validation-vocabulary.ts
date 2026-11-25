@@ -127,6 +127,20 @@ function validateBookProperties(book: PriceDataBook, index: VocabularyIndex): vo
   for (const offer of book.offers) validateOfferProperties(offer, index, bookModels);
 }
 
+function validateQualifiedEntry(
+  entry: {
+    readonly applicability_id: number;
+    readonly validity?: Parameters<typeof validateValidity>[0];
+    readonly evidence: Parameters<typeof validateEvidence>[0];
+  },
+  index: VocabularyIndex,
+  bookModels: ReadonlySet<string>,
+): void {
+  validateApplicabilityRef(entry.applicability_id, index, bookModels);
+  validateValidity(entry.validity);
+  validateEvidence(entry.evidence, index);
+}
+
 function validateOfferProperties(
   offer: PriceDataOffer,
   index: VocabularyIndex,
@@ -134,24 +148,14 @@ function validateOfferProperties(
 ): void {
   validateAtom(offer.billing_mode, "billing_mode", index);
   validateSourceRefs(offer.source_refs, index);
-  for (const state of offer.states) {
-    validateApplicabilityRef(state.applicability_id, index, bookModels);
-    validateValidity(state.validity);
-    validateEvidence(state.evidence, index);
-  }
+  for (const state of offer.states) validateQualifiedEntry(state, index, bookModels);
   for (const claim of offer.selection ?? []) {
-    validateApplicabilityRef(claim.applicability_id, index, bookModels);
-    validateValidity(claim.validity);
-    validateEvidence(claim.evidence, index);
+    validateQualifiedEntry(claim, index, bookModels);
     for (const alternative of claim.alternatives) {
       validateApplicabilityRef(alternative.applicability_id, index, bookModels);
     }
   }
-  for (const relation of offer.relations) {
-    validateApplicabilityRef(relation.applicability_id, index, bookModels);
-    validateValidity(relation.validity);
-    validateEvidence(relation.evidence, index);
-  }
+  for (const relation of offer.relations) validateQualifiedEntry(relation, index, bookModels);
   for (const term of offer.terms) validateTermProperties(term, index, bookModels);
 }
 
@@ -182,9 +186,7 @@ function validateTermProperties(
   if (term.kind === "rate") {
     validateAtom(term.meter, "meter", index);
     for (const rate of term.variants) {
-      validateApplicabilityRef(rate.applicability_id, index, bookModels);
-      validateValidity(rate.validity);
-      validateEvidence(rate.evidence, index);
+      validateQualifiedEntry(rate, index, bookModels);
       validateCreditDenomination(rate.price.denomination, index);
       validateUnitExpressionAtoms(rate.price.per, index);
     }
@@ -192,9 +194,7 @@ function validateTermProperties(
   }
   if (term.kind === "allowance") {
     for (const allowance of term.variants) {
-      validateApplicabilityRef(allowance.applicability_id, index, bookModels);
-      validateValidity(allowance.validity);
-      validateEvidence(allowance.evidence, index);
+      validateQualifiedEntry(allowance, index, bookModels);
       if (allowance.reset !== undefined) validateAtom(allowance.reset, "allowance_reset", index);
       if (allowance.benefit.kind === "quantity") {
         validateUnitExpressionAtoms(allowance.benefit.quantity.unit, index);
@@ -204,11 +204,7 @@ function validateTermProperties(
     }
     return;
   }
-  for (const contribution of term.variants) {
-    validateApplicabilityRef(contribution.applicability_id, index, bookModels);
-    validateValidity(contribution.validity);
-    validateEvidence(contribution.evidence, index);
-  }
+  for (const contribution of term.variants) validateQualifiedEntry(contribution, index, bookModels);
 }
 
 function validateApplicabilityEntry(scope: PriceApplicability, index: VocabularyIndex): string {
@@ -328,7 +324,7 @@ function validateCreditDenomination(value: PriceDenomination, index: VocabularyI
 }
 
 export function unitKey(unit: UnitExpression): string {
-  if (canonicalJson(normalizeUnitExpression(unit)) !== canonicalJson(unit))
-    throw new Error("Noncanonical unit");
-  return canonicalJson(unit);
+  const key = canonicalJson(unit);
+  if (canonicalJson(normalizeUnitExpression(unit)) !== key) throw new Error("Noncanonical unit");
+  return key;
 }

@@ -54,20 +54,6 @@ function environment(name: string): string {
   return value;
 }
 
-export function isAuthenticatedSource(
-  source: Pick<TransportSource, "auth"> & { transport?: { kind: string } | undefined },
-): boolean {
-  if (source.auth !== undefined) return true;
-  const kind = source.transport?.kind;
-  return (
-    kind === "aws-bedrock" ||
-    kind === "aws-sagemaker" ||
-    kind === "azure-models" ||
-    kind === "databricks" ||
-    kind === "google-model-garden"
-  );
-}
-
 const DATABRICKS_HOST_SUFFIXES = [
   ".cloud.databricks.com",
   ".azuredatabricks.net",
@@ -94,7 +80,10 @@ const CREDENTIAL_HOST_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   XAI_API_KEY: ["api.x.ai"],
 };
 
-function assertCredentialDestinationAllowed(url: URL, auth: TransportAuth): void {
+function assertCredentialDestinationAllowed(
+  url: URL,
+  auth: TransportAuth,
+): asserts auth is Extract<TransportAuth, { scheme: "bearer" | "header" }> {
   if (url.protocol !== "https:" || url.port !== "" || url.username !== "" || url.password !== "") {
     throw new Error("Authenticated transport requires a clean HTTPS origin");
   }
@@ -118,14 +107,7 @@ function assertCredentialDestinationAllowed(url: URL, auth: TransportAuth): void
   }
 }
 
-function authHeaderFor(auth: TransportAuth): string {
-  if (
-    auth.scheme === "aws" ||
-    auth.scheme === "azure" ||
-    auth.scheme === "google-service-account"
-  ) {
-    throw new Error("Cloud sources require their reviewed authenticated transport");
-  }
+function authHeaderFor(auth: Extract<TransportAuth, { scheme: "bearer" | "header" }>): string {
   const credential = environment(auth.env);
   return auth.scheme === "bearer"
     ? `Authorization: Bearer ${credential}`
@@ -161,9 +143,7 @@ export function databricksSource<T extends TransportSource>(source: T, hostEnv: 
     (origin.pathname !== "" && origin.pathname !== "/") ||
     origin.search !== "" ||
     origin.hash !== "" ||
-    ![".cloud.databricks.com", ".azuredatabricks.net", ".gcp.databricks.com"].some((suffix) =>
-      hostname.endsWith(suffix),
-    )
+    !DATABRICKS_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix))
   )
     throw new Error("DATABRICKS_HOST is not a reviewed Databricks workspace origin");
   const url = new URL("/api/2.0/serving-endpoints", origin);

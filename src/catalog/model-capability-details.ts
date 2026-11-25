@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { hasStructuredCapabilityStatements } from "./website-core.ts";
 import {
   legacyWebsiteClaimDetailsSchema,
   modelClaimGroupSchema,
@@ -101,9 +102,5 @@ export type WebsiteCapabilityDetailGroup = z.infer<typeof websiteCapabilityDetai
 export function hasStructuredCapabilityDetails(
   groups: readonly Pick<CapabilityDetailGroup, "statements">[] | undefined,
 ): boolean {
-  return (
-    groups?.some(({ statements }) => statements.some((s) => s.applicability !== undefined)) ?? false
-  );
+  return hasStructuredCapabilityStatements(groups);
 }
-
-export { capabilityStatementsConflict } from "./model-claim-helpers.ts";

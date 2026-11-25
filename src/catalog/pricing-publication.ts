@@ -273,6 +273,45 @@ function buildPairCandidate(
   return candidate;
 }
 
+function pricingChunkPair(
+  catalog: Catalog,
+  envelope: PricingCatalogEnvelope,
+  canonicalDataChunks: readonly string[],
+): { storageChunks: string[]; assetChunks: string[] } {
+  const storageChunks = pricingCatalogJsonChunks(envelope, canonicalDataChunks);
+  const publicCatalog = legacyCatalog(catalog);
+  const assetChunks =
+    publicCatalog === catalog
+      ? storageChunks
+      : pricingCatalogJsonChunks(
+          createPricingCatalogEnvelopeFromValidatedData(
+            envelope.data,
+            publicCatalog,
+            envelope.pricing_data_version,
+          ),
+          canonicalDataChunks,
+        );
+  return { storageChunks, assetChunks };
+}
+
+async function assertPricingSnapshotMatchesManifest(
+  manifest: AcceptedPairManifest,
+  pricingFile: FileHandle,
+  coreDataSha256: string,
+  pricingAssetSha256: string,
+  storageChunks: readonly string[],
+  assetChunks: readonly string[],
+): Promise<void> {
+  if (manifest.version === 1 && storageChunks !== assetChunks)
+    throw new Error("Legacy accepted manifest cannot bind private catalog details");
+  if (manifest.version === 2 && manifest.core_data_sha256 !== coreDataSha256)
+    throw new Error("Accepted catalog pair complete core does not match its manifest");
+  if (pricingAssetSha256 !== manifest.pricing_asset_sha256)
+    throw new Error("Accepted catalog pair snapshot does not match its manifest");
+  if (!(await fileHandleMatchesCanonicalChunks(pricingFile, storageChunks)))
+    throw new Error("Accepted canonical pricing asset bytes do not match the snapshot envelope");
+}
+
 function catalogPairCandidate(
   parsedCatalog: Catalog,
   envelope: PricingCatalogEnvelope,
@@ -286,18 +325,11 @@ function catalogPairCandidate(
       : inferencePricingPublication(parsedCatalog, envelope, inferenceInput);
   const publicCatalog = legacyCatalog(parsedCatalog);
   const catalogAssetSource = catalogJson(publicCatalog);
-  const pricingStorageChunks = pricingCatalogJsonChunks(envelope, canonicalDataChunks);
-  const pricingChunks =
-    publicCatalog === parsedCatalog
-      ? pricingStorageChunks
-      : pricingCatalogJsonChunks(
-          createPricingCatalogEnvelopeFromValidatedData(
-            envelope.data,
-            publicCatalog,
-            envelope.pricing_data_version,
-          ),
-          canonicalDataChunks,
-        );
+  const { storageChunks: pricingStorageChunks, assetChunks: pricingChunks } = pricingChunkPair(
+    parsedCatalog,
+    envelope,
+    canonicalDataChunks,
+  );
   let pricingBytes = 0;
   for (const chunk of pricingChunks) {
     pricingBytes += Buffer.byteLength(chunk);
@@ -388,29 +420,16 @@ async function readSnapshotCandidate(
         : migrateLegacyInferenceMapping(pricing, rawInference, catalog);
     if (migration.pricingMigrated) {
       const originalDataChunks = canonicalJsonChunksFromValidated(pricing.data);
-      const originalStorageChunks = pricingCatalogJsonChunks(pricing, originalDataChunks);
-      const publicCatalog = legacyCatalog(catalog);
-      const originalPublicChunks =
-        publicCatalog === catalog
-          ? originalStorageChunks
-          : pricingCatalogJsonChunks(
-              createPricingCatalogEnvelopeFromValidatedData(
-                pricing.data,
-                publicCatalog,
-                pricing.pricing_data_version,
-              ),
-              originalDataChunks,
-            );
-      if (manifest.version === 1 && originalStorageChunks !== originalPublicChunks)
-        throw new Error("Legacy accepted manifest cannot bind private catalog details");
-      if (manifest.version === 2 && manifest.core_data_sha256 !== pricing.core_data_sha256)
-        throw new Error("Accepted catalog pair complete core does not match its manifest");
-      if (sha256Chunks(originalPublicChunks) !== manifest.pricing_asset_sha256)
-        throw new Error("Accepted catalog pair snapshot does not match its manifest");
-      if (!(await fileHandleMatchesCanonicalChunks(pricingFile, originalStorageChunks)))
-        throw new Error(
-          "Accepted canonical pricing asset bytes do not match the snapshot envelope",
-        );
+      const { storageChunks: originalStorageChunks, assetChunks: originalPublicChunks } =
+        pricingChunkPair(catalog, pricing, originalDataChunks);
+      await assertPricingSnapshotMatchesManifest(
+        manifest,
+        pricingFile,
+        pricing.core_data_sha256,
+        sha256Chunks(originalPublicChunks),
+        originalStorageChunks,
+        originalPublicChunks,
+      );
     }
     const candidate = await prepareStructurallyValidatedPair(
       catalog,
@@ -419,19 +438,14 @@ async function readSnapshotCandidate(
       "recovery",
     );
     if (!migration.pricingMigrated) {
-      if (manifest.version === 1 && candidate.pricingStorageChunks !== candidate.pricingAssetChunks)
-        throw new Error("Legacy accepted manifest cannot bind private catalog details");
-      if (
-        manifest.version === 2 &&
-        manifest.core_data_sha256 !== candidate.pricing.core_data_sha256
-      )
-        throw new Error("Accepted catalog pair complete core does not match its manifest");
-      if (candidate.identity.pricing_asset_sha256 !== manifest.pricing_asset_sha256)
-        throw new Error("Accepted catalog pair snapshot does not match its manifest");
-      if (!(await fileHandleMatchesCanonicalChunks(pricingFile, candidate.pricingStorageChunks)))
-        throw new Error(
-          "Accepted canonical pricing asset bytes do not match the snapshot envelope",
-        );
+      await assertPricingSnapshotMatchesManifest(
+        manifest,
+        pricingFile,
+        candidate.pricing.core_data_sha256,
+        candidate.identity.pricing_asset_sha256,
+        candidate.pricingStorageChunks,
+        candidate.pricingAssetChunks,
+      );
     }
     if (candidate.identity.catalog_asset_sha256 !== manifest.catalog_asset_sha256)
       throw new Error("Accepted catalog pair snapshot does not match its manifest");
