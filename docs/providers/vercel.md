@@ -322,7 +322,8 @@ or page content, including results filtered before delivery. Failed, timed-out a
 are unbilled. Generic successful-call telemetry does not prove that nonempty condition, so the
 caller supplies the billable count. Fetch remains retrieval rather than model inference or search.
 
-Exa and Parallel base and excess-result charges are additive terms on one offer. Their excess
+Exa and Parallel base and excess-result charges are additive terms on one offer, with excess-result
+terms labeled `Additional results` so simultaneous charges remain distinct. Their excess
 quantity is the exact calculation `max(0, requested_results - 10)`, represented with a
 unit-qualified constant and a zero-floor subtraction. Tako effort is the dedicated
 `search_effort` selector rather than an overloaded operation or service tier. Tako inline-data

@@ -67,7 +67,7 @@ export function websiteDataVersionForPair(
     input.pricing.pricing_data_version,
     input.inference?.source,
   );
-  return input.pricing.data.books.length ? sha256(`${version}\0service-prices-v1`) : version;
+  return input.pricing.data.books.length ? sha256(`${version}\0pricing-display-v2`) : version;
 }
 
 export async function projectCatalogPair(input: ProjectionInput): Promise<PairProjections> {

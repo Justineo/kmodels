@@ -6,7 +6,7 @@ import { linkedBundleSchema } from "../src/catalog/bundle.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
 import { capturePricingReplaySources } from "../src/catalog/pricing-compilation.ts";
-import { rateVariantIdentity } from "../src/catalog/pricing-canonical.ts";
+import { applicabilitiesOverlap, rateVariantIdentity } from "../src/catalog/pricing-canonical.ts";
 import type { PricingReconciliationItem } from "../src/catalog/pricing-reconciliation.ts";
 import type { SourceParseResult } from "../src/catalog/source-parse.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
@@ -187,7 +187,23 @@ describe("Bedrock native request services", () => {
     });
     expect(image.label).toBe("Image content filters");
     const check = rate(parsed, "guardrails", "guardrailcontentchecks");
-    expect(check.label).toBe("Text content filters · InvokeGuardrailChecks");
+    expect(check.label).toBe("Text content filters");
+    expect(
+      applicabilitiesOverlap(
+        content.applicability,
+        check.variants[0]?.applicability ?? content.applicability,
+      ),
+    ).toBe(false);
+    expect(content.applicability.any_of[0]?.all_of).toContainEqual({
+      kind: "categorical",
+      dimension: { namespace: "kmodels", value: "operation" },
+      values: [{ namespace: "provider", provider_id: provider.id, value: "ApplyGuardrail" }],
+    });
+    expect(check.variants[0]?.applicability.any_of[0]?.all_of).toContainEqual({
+      kind: "categorical",
+      dimension: { namespace: "kmodels", value: "operation" },
+      values: [{ namespace: "provider", provider_id: provider.id, value: "InvokeGuardrailChecks" }],
+    });
     expect(check.variants[0]?.charge_binding?.quantity_methods).toMatchObject([
       {
         input_sources: [

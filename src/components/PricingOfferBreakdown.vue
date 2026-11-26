@@ -276,34 +276,53 @@ const rateSelectors = computed(() =>
     return remainingDimensions(others).has(key);
   }),
 );
+function rowQualifier(...parts: (string | undefined)[]): string | undefined {
+  return parts.filter(Boolean).join(" · ") || undefined;
+}
+// A published minimum changes the charge; other driver metadata stays in canonical audit data.
+function minimumNote(rate: WebsitePricingOffer["rates"][number]): string | undefined {
+  return rate.driver?.minimum === undefined ? undefined : `Minimum ${rate.driver.minimum}`;
+}
 const visibleRates = computed(() =>
   props.showCandidateRates
-    ? displayOffer.value.rates
-        .filter(({ key, applicability }) => selectedRow(key) && applies(applicability))
-        .map((row) => ({
-          ...row,
-          qualifier:
-            [
-              evaluate(row.applicability).state === "missing"
-                ? applicabilityLabel(row.applicability, true)
-                : undefined,
-              validityNote(row.validity),
-            ]
-              .filter(Boolean)
-              .join(" · ") || undefined,
-        }))
+    ? matchingRows(displayOffer.value.rates, minimumNote)
     : rateProjection.value.rates.map(({ row }) => ({
         ...row,
-        qualifier: validityNote(row.validity),
+        qualifier: rowQualifier(minimumNote(row), validityNote(row.validity)),
       })),
 );
-const chargeDrivers = computed(() => [
-  ...new Map(
-    visibleRates.value.flatMap(({ driver }) =>
-      driver !== undefined ? [[canonicalJson(driver), driver] as const] : [],
-    ),
-  ).values(),
-]);
+interface RateGroup {
+  key: string;
+  unitHeading?: string;
+  rows: typeof visibleRates.value;
+}
+const rateGroups = computed((): RateGroup[] => {
+  const byUnit = new Map<string, typeof visibleRates.value>();
+  for (const rate of visibleRates.value) {
+    const rows = byUnit.get(rate.unit);
+    if (rows === undefined) byUnit.set(rate.unit, [rate]);
+    else rows.push(rate);
+  }
+
+  const groups: RateGroup[] = [];
+  for (const [unit, rows] of byUnit) {
+    if (rows.length > 1) {
+      const heading = unit.trim();
+      groups.push({
+        key: `unit:${unit}`,
+        unitHeading: `${heading.charAt(0).toUpperCase()}${heading.slice(1)}`,
+        rows,
+      });
+      continue;
+    }
+    const [rate] = rows;
+    if (rate === undefined) continue;
+    const previous = groups.at(-1);
+    if (previous !== undefined && previous.unitHeading === undefined) previous.rows.push(rate);
+    else groups.push({ key: `inline:${rate.key}`, rows });
+  }
+  return groups;
+});
 const visibleAllowances = computed(() => matchingRows(displayOffer.value.allowances));
 const visibleContributions = computed(() => matchingRows(displayOffer.value.contributions));
 const visibleUnnormalized = computed(() =>
@@ -463,10 +482,6 @@ function selectedRow(key: string): boolean {
   return props.matchedRows === undefined || props.matchedRows.includes(key);
 }
 
-function matches(applicability: WebsitePriceApplicability): boolean {
-  return evaluate(applicability).state === "true";
-}
-
 function evaluate(
   applicability: WebsitePriceApplicability,
   selections: readonly PricingSelection[] = selectionValues.value,
@@ -482,25 +497,25 @@ function matchingRows<
     key: string;
     validity?: WebsitePublishedValidity | undefined;
   },
->(rows: readonly T[]): Array<T & { qualifier: string | undefined }> {
-  return rows
-    .filter(
-      ({ key, applicability }) =>
-        selectedRow(key) &&
-        (props.showCandidateRates ? applies(applicability) : matches(applicability)),
-    )
-    .map((row) => ({
+>(
+  rows: readonly T[],
+  note?: (row: T) => string | undefined,
+): Array<T & { qualifier: string | undefined }> {
+  const matched: Array<T & { qualifier: string | undefined }> = [];
+  for (const row of rows) {
+    if (!selectedRow(row.key)) continue;
+    const { state } = evaluate(row.applicability);
+    if (state === "false" || (state === "missing" && !props.showCandidateRates)) continue;
+    matched.push({
       ...row,
-      qualifier:
-        [
-          props.showCandidateRates && evaluate(row.applicability).state === "missing"
-            ? applicabilityLabel(row.applicability, true)
-            : undefined,
-          validityNote(row.validity),
-        ]
-          .filter(Boolean)
-          .join(" · ") || undefined,
-    }));
+      qualifier: rowQualifier(
+        state === "missing" ? applicabilityLabel(row.applicability, true) : undefined,
+        note?.(row),
+        validityNote(row.validity),
+      ),
+    });
+  }
+  return matched;
 }
 
 function scopeCopy(
@@ -690,18 +705,28 @@ function showNoteScope(scope: ScopeCopy): boolean {
       class="offer-section"
       aria-label="Published rates"
     >
-      <dl v-if="visibleRates.length > 0" class="rate-grid fact-grid">
-        <div v-for="rate in visibleRates" :key="rate.key">
-          <dt>
-            <span class="rate-name">{{ rate.label }}</span>
-            <small v-if="rate.qualifier">{{ rate.qualifier }}</small>
-          </dt>
-          <dd class="numeric" :aria-label="rate.accessible_text">
-            <span class="exact-rate">{{ rate.amount }}</span>
-            <small>{{ formatRateUnit(rate.unit) }}</small>
-          </dd>
+      <div v-if="rateGroups.length > 0" class="rate-groups">
+        <div v-for="group in rateGroups" :key="group.key" class="rate-group">
+          <p v-if="group.unitHeading" class="rate-group-unit">{{ group.unitHeading }}</p>
+          <dl
+            class="rate-list"
+            :class="{ 'rate-list-shared-unit': group.unitHeading !== undefined }"
+          >
+            <div v-for="rate in group.rows" :key="rate.key">
+              <dt>
+                <span>{{ rate.label }}</span>
+                <small v-if="rate.qualifier">{{ rate.qualifier }}</small>
+              </dt>
+              <dd class="numeric" :aria-label="rate.accessible_text">
+                <span class="exact-rate">{{ rate.amount }}</span>
+                <small v-if="group.unitHeading === undefined">{{
+                  formatRateUnit(rate.unit)
+                }}</small>
+              </dd>
+            </div>
+          </dl>
         </div>
-      </dl>
+      </div>
       <p v-else class="context-prompt">No rates match the selected context.</p>
     </section>
 
@@ -810,13 +835,6 @@ function showNoteScope(scope: ScopeCopy): boolean {
           </div>
         </details>
       </div>
-    </details>
-
-    <details v-if="service && chargeDrivers.length > 0" class="pricing-disclosure">
-      <summary>
-        <span><UiIcon name="chevron-right" />Billing details</span>
-      </summary>
-      <ChargeDriverFacts v-for="(driver, index) in chargeDrivers" :key="index" :driver />
     </details>
   </component>
 </template>
@@ -1016,31 +1034,93 @@ function showNoteScope(scope: ScopeCopy): boolean {
   font-size: var(--font-size-meta);
 }
 
-.rate-grid {
+.rate-groups {
   margin-top: var(--space-2);
-  padding: 0;
+  border: var(--stroke-hairline) solid var(--color-border-subtle);
+  border-radius: var(--list-surface-radius);
+  background: var(--color-surface);
+  overflow: hidden;
 }
 
-.rate-grid dt > * {
-  display: block;
+.rate-group + .rate-group {
+  border-top: var(--stroke-hairline) solid var(--color-border-subtle);
 }
 
-.rate-grid dt small {
-  margin-top: var(--space-0-5);
+.rate-group-unit {
+  margin: 0;
+  padding: var(--space-1-5) var(--space-2-5);
+  border-bottom: var(--stroke-hairline) solid var(--color-border-subtle);
+  color: var(--color-text-muted);
+  background: var(--color-surface-subtle);
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-medium);
+}
+
+.rate-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  margin: 0;
+}
+
+.rate-list-shared-unit {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+/* Rows share the list's columns so amounts align across charges. */
+.rate-list > div {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+  padding: var(--space-2) var(--space-2-5);
+}
+
+.rate-list > div + div {
+  border-top: var(--stroke-hairline) solid var(--color-border-subtle);
+}
+
+.rate-list dt {
+  display: grid;
+  gap: var(--space-0-5);
+  min-width: 0;
+  overflow-wrap: break-word;
+  color: var(--color-text-primary);
+}
+
+.rate-list small {
   color: var(--color-text-muted);
   font-size: var(--font-size-meta);
 }
 
-.rate-grid dd {
-  display: flex;
+.rate-list dd {
+  display: grid;
+  grid-column: 2 / -1;
+  grid-template-columns: subgrid;
   align-items: baseline;
-  gap: var(--space-1);
+  margin: 0;
   white-space: nowrap;
 }
 
-.rate-grid dd small {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-meta);
+.rate-list .exact-rate {
+  padding-inline-start: var(--space-3);
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium);
+  text-align: end;
+}
+
+.rate-list dd small {
+  padding-inline-start: var(--space-1);
+}
+
+/* Narrow inline-unit rows give the name its own line; shared-unit rows keep name and amount together. */
+@media (width <= 580px) {
+  .rate-list:not(.rate-list-shared-unit) dt {
+    grid-column: 1 / -1;
+  }
+
+  .rate-list:not(.rate-list-shared-unit) dd {
+    margin-top: var(--space-0-5);
+  }
 }
 
 .pricing-disclosure {

@@ -518,19 +518,16 @@ function mergeSearchComponents(book: AtomicPricingBook): AtomicPricingBook {
     ...search,
     terms: [
       ...search.terms,
-      ...additions.flatMap((offer) =>
-        offer.terms.map((term) => ({
+      ...additions.flatMap(({ offer_key, terms }) => {
+        if (offer_key !== "additional-results") return terms;
+        const operation =
+          resourceKey === "exa-search" ? "additional_requested_results" : "additional_results";
+        return terms.map((term) => ({
           ...term,
-          term_key:
-            offer.offer_key === "additional-results"
-              ? `${term.term_key}:${
-                  resourceKey === "exa-search"
-                    ? "additional_requested_results"
-                    : "additional_results"
-                }`
-              : term.term_key,
-        })),
-      ),
+          ...(term.kind === "rate" ? { label: "Additional results" } : {}),
+          term_key: `${term.term_key}:${operation}`,
+        }));
+      }),
     ],
     source_refs: unique([
       ...search.source_refs,

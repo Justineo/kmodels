@@ -274,7 +274,7 @@ describe("DeepSeek native Search and Fetch charges", () => {
               { kind: "categorical", dimension: currency.dimension, value: quote.value },
             ]);
             expect(result(".exact-rate").text()).toBe(quote.label === "USD" ? "$0.75" : "CNY 5");
-            expect(result(".charge-driver-facts").text()).toContain("HTTP 200");
+            expect(result(".charge-driver-facts")).toHaveLength(0);
           }
         }
       }

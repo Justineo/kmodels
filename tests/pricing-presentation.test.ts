@@ -681,6 +681,54 @@ describe("canonical pricing presentation", () => {
       displayUnit: "1M tokens·hour",
       accessibleText: "USD 1 per 1M tokens·hour",
     });
+
+    expect(
+      displayUnitPrice(
+        {
+          value: { numerator: "1", denominator: "1000" },
+          denomination: { kind: "fiat", currency: "USD" },
+          per: { factors: [{ unit: { namespace: "kmodels", value: "item" }, power: 1 }] },
+        },
+        [{ ...source, raw: { amount: "1", denomination: "USD", unit: "thousand_items" } }],
+      ),
+    ).toEqual({
+      amount: "$1",
+      displayUnit: "1K items",
+      accessibleText: "USD 1 per 1K items",
+    });
+    expect(
+      displayUnitPrice(
+        {
+          value: { numerator: "9", denominator: "400000" },
+          denomination: { kind: "fiat", currency: "USD" },
+          per: { factors: [{ unit: { namespace: "kmodels", value: "character" }, power: 1 }] },
+        },
+        [
+          {
+            ...source,
+            raw: { amount: "0.225", denomination: "USD", unit: "Per 10,000 characters" },
+          },
+        ],
+      ),
+    ).toEqual({
+      amount: "$0.225",
+      displayUnit: "10K characters",
+      accessibleText: "USD 0.225 per 10K characters",
+    });
+    expect(
+      displayUnitPrice(
+        {
+          value: { numerator: "7", denominator: "100000000" },
+          denomination: { kind: "fiat", currency: "USD" },
+          per: { factors: [{ unit: { namespace: "kmodels", value: "pixel" }, power: 1 }] },
+        },
+        [{ ...source, raw: { amount: "0.07", denomination: "USD", unit: "megapixel" } }],
+      ),
+    ).toEqual({
+      amount: "$0.07",
+      displayUnit: "megapixel",
+      accessibleText: "USD 0.07 per megapixel",
+    });
   });
 
   it("stops at a present conditional higher-priority meter", () => {

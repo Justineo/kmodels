@@ -196,7 +196,7 @@ describe("provider pricing details", () => {
         );
         expect(view("fieldset")).toHaveLength(0);
         expect(view(".exact-rate").text()).toBe(i === 0 ? "CNY 1.5" : "$0.225");
-        expect(view(".rate-grid dd small").text()).toBe(i === 0 ? "/ 1K pages" : "/ page");
+        expect(view(".rate-list dd small").text()).toBe(i === 0 ? "/ 1K pages" : "/ page");
       }
     }
   });
@@ -522,6 +522,7 @@ describe("provider pricing details", () => {
         definition: index === 0 ? "Current billing qualification" : "Future billing qualification",
         aggregation: "Request",
         resolution_phase: "outcome",
+        ...(index === 0 ? {} : { minimum: "60 seconds per session" }),
       },
     }));
     vi.setSystemTime(new Date("2026-10-20T00:00:00.000Z"));
@@ -530,16 +531,16 @@ describe("provider pricing details", () => {
     expect(before).toContain(`datetime="${transition}"`);
     expect(before).toContain("Upcoming rates");
     expect(before).not.toContain("$0.75");
-    expect(before).toContain("Current billing qualification");
-    expect(before).not.toContain("Future billing qualification");
+    expect(before).not.toContain("billing qualification");
+    expect(before).not.toContain("Minimum 60 seconds per session");
 
     vi.setSystemTime(new Date(transition));
     const after = await renderComponent(PricingOfferBreakdown, { offer, service: true });
     expect(after).toContain("$0.75");
     expect(after).not.toContain("Upcoming rates");
     expect(after).not.toContain("Validity-qualified");
-    expect(after).toContain("Future billing qualification");
-    expect(after).not.toContain("Current billing qualification");
+    expect(after).not.toContain("billing qualification");
+    expect(load(after)(".rate-list dt small").text()).toBe("Minimum 60 seconds per session");
   });
 
   it("renders one informational note for all supported billing currencies", async () => {
@@ -694,7 +695,7 @@ describe("provider pricing details", () => {
     } satisfies WebsiteProviderPricingOffer;
     const pending = await renderComponent(PricingServiceOffer, { offer: summary });
     expect(pending).toContain("Loading pricing…");
-    expect(pending).not.toContain('class="rate-grid fact-grid"');
+    expect(pending).not.toContain('class="rate-list"');
     const failed = await renderComponent(PricingServiceOffer, {
       offer: summary,
       error: "Pricing is temporarily unavailable.",
@@ -703,7 +704,7 @@ describe("provider pricing details", () => {
     expect(failed).toContain("Pricing is temporarily unavailable.");
     expect(failed).toContain("Pricing unavailable");
     expect(failed).toContain("Refresh page");
-    expect(failed).not.toContain('class="rate-grid fact-grid"');
+    expect(failed).not.toContain('class="rate-list"');
   });
 
   it("keeps raw-only provider facts in the common service list", async () => {

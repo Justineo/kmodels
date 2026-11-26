@@ -90,6 +90,14 @@ const outputMeters = [
   "embedding",
   "rerank",
 ] as const;
+const requestMeterOrder: readonly string[] = [...inputMeters, ...cacheMeters, ...outputMeters];
+
+/** Orders standard request meters as input, cache, then output; other meters follow. */
+export function rateMeterRank(meter: PriceMeter): number {
+  const index = meter.namespace === "kmodels" ? requestMeterOrder.indexOf(meter.value) : -1;
+  return index === -1 ? requestMeterOrder.length : index;
+}
+
 const wholeNumberDimensions = new Set([
   "cache_ttl_seconds",
   "context_tokens",
@@ -583,7 +591,20 @@ function displayUnits(value: UnitExpression): DisplayUnit[] {
         return [million, base, scaled("1000", "1K tokens")];
       }
       case "character":
-        return [base, scaled("1000", "1K characters"), scaled("1000000", "1M characters")];
+        return [
+          base,
+          scaled("1000", "1K characters"),
+          scaled("10000", "10K characters"),
+          scaled("1000000", "1M characters"),
+        ];
+      case "event":
+        return [base, scaled("1000", "1K events")];
+      case "frame":
+        return [base, scaled("1000", "1K frames")];
+      case "item":
+        return [base, scaled("1000", "1K items")];
+      case "pixel":
+        return [base, scaled("1000000", "megapixel")];
       case "request":
         return [base, scaled("1000", "1K requests")];
       case "page":

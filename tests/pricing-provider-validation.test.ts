@@ -8,8 +8,11 @@ import {
   adoptedTopologies,
   validateAdoptedTopology,
 } from "../src/catalog/pricing-adopted-topology.ts";
+import { applicabilitiesOverlap } from "../src/catalog/pricing-canonical.ts";
+import { formatSentenceCase } from "../src/catalog/presentation.ts";
 import { providerPartition } from "../src/catalog/pricing-transition.ts";
 import { rationalFromDecimal } from "../src/catalog/pricing-rational.ts";
+import type { PriceRateTerm } from "../src/catalog/pricing-schema.ts";
 import { validatePricingCatalogInParallel } from "../src/catalog/pricing-validation-parallel.ts";
 import { generatedData } from "./generated-data-context.ts";
 
@@ -110,8 +113,31 @@ describe("provider pricing validation", () => {
             configured?.sources.find(({ id }) => id === source.id)?.extractorVersion !==
             source.extractor_version,
         );
-      if (!obsolete && partition.snapshot.publication === "fresh")
+      if (!obsolete && partition.snapshot.publication === "fresh") {
         validateAdoptedTopology(partition);
+        for (const book of partition.books)
+          for (const offer of book.offers) {
+            const ratesByLabel = new Map<string, PriceRateTerm[]>();
+            for (const rate of offer.terms) {
+              if (rate.kind !== "rate") continue;
+              const label = rate.label ?? formatSentenceCase(rate.meter.value);
+              const previous = ratesByLabel.get(label) ?? [];
+              for (const sibling of previous) {
+                const overlaps = rate.variants.some(({ applicability }) =>
+                  sibling.variants.some((variant) =>
+                    applicabilitiesOverlap(applicability, variant.applicability),
+                  ),
+                );
+                expect(
+                  overlaps,
+                  `${providerId}/${book.book_key}/${offer.offer_key}: overlapping rate terms ${sibling.term_key} and ${rate.term_key} share label "${label}"`,
+                ).toBe(false);
+              }
+              previous.push(rate);
+              ratesByLabel.set(label, previous);
+            }
+          }
+      }
     }
   });
 

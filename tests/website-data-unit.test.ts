@@ -10,6 +10,7 @@ import type {
   ChargeBinding,
   PriceApplicability,
   PriceCondition,
+  PriceMeter,
   PricingCatalog,
   PricingOffer,
   ProviderAtomRegistryEntry,
@@ -66,6 +67,7 @@ function detail(
   atoms: ProviderAtomRegistryEntry[] = [],
   options: {
     rateLabel?: string;
+    extraRates?: { key: string; meter: PriceMeter; label?: string }[];
     rateBinding?: ChargeBinding;
     contributionBindings?: ChargeBinding[];
     enrollment?: PricingOffer["enrollment"];
@@ -109,6 +111,26 @@ function detail(
               },
             ],
             terms: [
+              ...(options.extraRates ?? []).map(({ key, meter, label }) => ({
+                id: pricingTermId(offerId, "rate", key),
+                term_key: key,
+                kind: "rate" as const,
+                ...(label === undefined ? {} : { label }),
+                meter,
+                source_refs: [sourceId],
+                variants: [
+                  {
+                    price: {
+                      value: { numerator: "1", denominator: "1" },
+                      denomination: { kind: "fiat" as const, currency: "USD" },
+                      per: secondUnit,
+                    },
+                    applicability: unconditionalApplicability,
+                    observations: [normalizedObservation(unconditionalApplicability)],
+                  },
+                ],
+                raw_variants: [],
+              })),
               {
                 id: pricingTermId(offerId, "rate", "input"),
                 term_key: "input",
@@ -184,6 +206,38 @@ describe("website data projection", () => {
     const legacy = detail([condition]).pricing?.offers[0];
     expect(named?.rates[0]).toEqual({ ...legacy?.rates[0], label: "Reviewed charge" });
     expect(legacy?.rates[0]?.label).toBe("Input text");
+  });
+
+  it("orders request meters before other charges, which follow by name", () => {
+    const condition = {
+      kind: "decimal_range",
+      dimension: durationDimension,
+      unit: secondUnit,
+      lower: { value: "10", inclusive: true },
+    } satisfies PriceCondition;
+    const rates = detail([condition], [], {
+      extraRates: [
+        {
+          key: "word",
+          meter: { namespace: "kmodels", value: "web_search" },
+          label: "Word filters",
+        },
+        { key: "output", meter: { namespace: "kmodels", value: "output_text" } },
+        {
+          key: "denied",
+          meter: { namespace: "kmodels", value: "web_search" },
+          label: "Denied topics",
+        },
+        { key: "cache", meter: { namespace: "kmodels", value: "cache_read_text" } },
+      ],
+    }).pricing?.offers[0]?.rates;
+    expect(rates?.map(({ label }) => label)).toEqual([
+      "Input text",
+      "Cache read text",
+      "Output text",
+      "Denied topics",
+      "Word filters",
+    ]);
   });
 
   it("summarizes broad offer relations instead of repeating every target", () => {

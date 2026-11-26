@@ -118,7 +118,7 @@ describe("design token contract", () => {
 
   it("keeps every fact-grid item in one column with its own surface", () => {
     expect(`${globalStyles}\n${componentStyles}`).not.toMatch(
-      /\.(?:fact-grid|rate-grid)\s*>[^{}]*\{[^}]*grid-column:/s,
+      /\.fact-grid\s*>[^{}]*\{[^}]*grid-column:/s,
     );
     expect(globalStyles).toMatch(
       /\.fact-grid\s*>\s*div\s*\{[^}]*border:\s*var\(--stroke-hairline\) solid var\(--color-border-subtle\);[^}]*background:\s*var\(--color-surface\);/s,

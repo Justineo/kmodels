@@ -22,6 +22,7 @@ import {
   offerRawVariants,
   pricingViewIndex,
   projectPricingTableCellFromView,
+  rateMeterRank,
   type ModelPricingView,
 } from "./pricing-presentation.ts";
 import { evaluateApplicability, evaluateModelApplicability } from "./pricing-applicability.ts";
@@ -980,7 +981,7 @@ function websiteOffer(
     label: stateLabel(state.state),
     ...scopeFields(state, labels),
   }));
-  const rates: WebsitePricingOffer["rates"] = [];
+  const rateTerms: { rank: number; label: string; rows: WebsitePricingOffer["rates"] }[] = [];
   const allowances: WebsitePricingOffer["allowances"] = [];
   const contributions: WebsitePricingOffer["contributions"] = [];
   const unnormalized: WebsitePricingOffer["unnormalized"] = [];
@@ -993,12 +994,12 @@ function websiteOffer(
           ? "Allowance"
           : formatSentenceCase(term.term_key.replaceAll("-", "_"));
     if (term.kind === "rate") {
-      term.variants.forEach((variant, index) => {
+      const rows = term.variants.map((variant, index) => {
         const price = displayUnitPrice(variant.price, variant.observations, {
           tokenDisplay: "source",
         });
         const key = `${term.id}:rate:${index}`;
-        rates.push({
+        return {
           key,
           term_ref: term.id,
           label,
@@ -1009,8 +1010,9 @@ function websiteOffer(
             ? {}
             : { driver: chargeDriver(variant.charge_binding, atoms) }),
           ...scopeFields(variant, labels),
-        });
+        };
       });
+      rateTerms.push({ rank: rateMeterRank(term.meter), label, rows });
     } else if (term.kind === "allowance") {
       term.variants.forEach((variant, index) => {
         const terms = [...new Set(variant.observations.flatMap(({ raw }) => raw.fragment ?? []))];
@@ -1050,6 +1052,8 @@ function websiteOffer(
     });
   }
 
+  rateTerms.sort((left, right) => left.rank - right.rank || compareUtf8(left.label, right.label));
+
   return {
     id: offer.id,
     ...(offer.selection === undefined || options.observedAt === undefined
@@ -1068,7 +1072,7 @@ function websiteOffer(
     state_summary: offerStateSummary(offer, modelRef),
     selectors: pricingSelectors(offer, labels),
     states,
-    rates,
+    rates: rateTerms.flatMap(({ rows }) => rows),
     allowances,
     contributions,
     enrollment: offer.enrollment.map((variant, index) => ({

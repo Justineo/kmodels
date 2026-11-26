@@ -325,12 +325,60 @@ describe("model pricing details", () => {
     expect(html).toContain("/ 1M tokens");
     expect(html).not.toContain(">per 1M tokens<");
     expect(html).not.toContain(">Rates<");
-    expect(html).toContain('<dl class="rate-grid fact-grid"');
+    expect(html).toContain('<dl class="rate-list"');
     expect(html).not.toContain("<table");
     expect(html).not.toContain("<thead");
     expect(html).not.toContain("Region");
     expect(html).not.toContain("Pricing offer");
     expect(html).not.toContain("On-demand inference");
+  });
+
+  it("hoists a shared billing unit once across rows while keeping singleton units inline", async () => {
+    const pricedOffer = offer([]);
+    pricedOffer.rates = [
+      {
+        key: "rate:text-1",
+        term_ref: "1".repeat(64),
+        label: "Denied topics",
+        amount: "$0.15",
+        unit: "per 1K units",
+        accessible_text: "USD 0.15 per 1K units",
+        applicability: region("us", "eu"),
+        applicability_label: "Region",
+      },
+      {
+        key: "rate:image",
+        term_ref: "2".repeat(64),
+        label: "Image content filters",
+        amount: "$0.00075",
+        unit: "per image",
+        accessible_text: "USD 0.00075 per image",
+        applicability: region("us", "eu"),
+        applicability_label: "Region",
+      },
+      {
+        key: "rate:text-2",
+        term_ref: "3".repeat(64),
+        label: "Text content filters",
+        amount: "$0.15",
+        unit: "per 1K units",
+        accessible_text: "USD 0.15 per 1K units",
+        applicability: region("us", "eu"),
+        applicability_label: "Region",
+      },
+    ];
+
+    const html = await render([pricedOffer]);
+
+    expect(html.match(/class="rate-group-unit"/g)).toHaveLength(1);
+    expect(html).toContain("Per 1K units");
+    expect(html).not.toContain("/ 1K units");
+    expect(html).toContain("/ image");
+    expect(html).toContain('aria-label="USD 0.15 per 1K units"');
+    expect(html.indexOf("Denied topics")).toBeLessThan(html.indexOf("Text content filters"));
+    expect(html.indexOf("Text content filters")).toBeLessThan(
+      html.indexOf("Image content filters"),
+    );
   });
 
   it("shows only context that changes the price", async () => {

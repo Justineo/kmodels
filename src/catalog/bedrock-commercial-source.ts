@@ -141,27 +141,35 @@ export function bedrockServiceTerm(input: ServiceRateInput): PriceRateTerm | und
       key: meter.value,
       definition: "Amazon Bedrock intelligent prompt-routing requests",
     });
-  const region = input.attributes.regionCode;
+  const { regionCode: region, operation } = input.attributes;
+  const conditions: Extract<ProviderAtomRegistryEntry, { kind: "categorical_value" }>[] = [];
   if (region !== undefined)
-    vocabulary.push({
+    conditions.push({
       kind: "categorical_value",
       key: region,
       dimension: { namespace: "kmodels", value: "region" },
       definition: `Provider-published region value ${JSON.stringify(region)}`,
     });
+  if (
+    resourceKey === "guardrails" &&
+    (operation === "ApplyGuardrail" || operation === "InvokeGuardrailChecks")
+  )
+    conditions.push({
+      kind: "categorical_value",
+      key: operation,
+      dimension: { namespace: "kmodels", value: "operation" },
+      label: operation,
+      definition: `Amazon Bedrock Guardrails ${operation} API operation`,
+    });
+  vocabulary.push(...conditions);
   const applicability = canonicalizeApplicability({
     any_of: [
       {
-        all_of:
-          region === undefined
-            ? []
-            : [
-                {
-                  kind: "categorical",
-                  dimension: { namespace: "kmodels", value: "region" },
-                  values: [{ namespace: "provider", provider_id: providerId, value: region }],
-                },
-              ],
+        all_of: conditions.map(({ dimension, key }) => ({
+          kind: "categorical",
+          dimension,
+          values: [{ namespace: "provider", provider_id: providerId, value: key }],
+        })),
       },
     ],
   });
@@ -249,7 +257,7 @@ function serviceCharge(
       (fact) => fact.key === factKey && fact.source_ref === input.observation.source_ref,
     );
     return {
-      label: invokeChecks ? `${label} · InvokeGuardrailChecks` : label,
+      label,
       binding: binding(
         key,
         `Amazon Bedrock Guardrails billable ${field}`,

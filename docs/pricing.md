@@ -688,7 +688,7 @@ similar selectors stay in applicability rather than being encoded inside a
 signal name unless the source exposes a genuinely distinct counter.
 When source evidence identifies a single nominal duration as part of a charge, bind its billable
 quantity directly. Reserve duration selectors for evidence that duration changes applicability.
-A usage signal may carry a display label for the named quantity in billing details.
+A usage signal may carry a display label for the named quantity.
 The portable vocabulary retains the reviewed identity, definition and label.
 
 Fixed units canonicalize to reviewed bases with exact scaling. For example,
@@ -1258,9 +1258,9 @@ whose applicability is still unresolved remain hidden, and the rate section prom
 those missing dimensions. Resolved rows do not repeat the chosen context. A single offer state stays
 in the offer summary, while offers with several possible states show the resolved state after
 context selection. The UI does not multiply usage, apply allowances, estimate a request, or
-calculate a total. The model rate table omits cost-driver metadata; it remains available in provider
-details and canonical pricing. An unbound rate remains visible. Contribution bindings are read-only
-commercial facts. Generic
+calculate a total. Model and service rate rows show published minimum billable quantities.
+Cost-driver metadata remains available in canonical pricing and exports. An unbound rate remains
+visible. Contribution bindings are read-only commercial facts. Generic
 usage-based billing is omitted from the model UI because the meter, unit, and rate already
 communicate it. Raw provider facts appear as plain-language Pricing notes rather than source or
 normalization exceptions; internal reason and impact labels remain out of UI copy. Possibly

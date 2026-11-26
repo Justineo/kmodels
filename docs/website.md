@@ -216,16 +216,16 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   offered, and the first option is not treated as a default. The model rates are primary for request pricing. Services,
   automatic charges, included features, and independently callable services are grouped behind one
   closed disclosure by default because they do not change the base model rates. It expands them
-  in that order. Each offer keeps its price-changing options and meters. Exact rates use the same compact, bordered
-  two-column definition-grid structure as Overview and collapse to one column on narrow screens.
-  In one column, only the first and last rows have rounded outer edges.
-  Every rate occupies one column, so an unpaired final rate remains in the left column rather than
-  stretching across the row. Each data item owns its own border and surface, so the unused right
-  half remains outside the card instead of appearing as part of it. Rate cards omit self-evident
-  headings, use the same left-aligned label-over-value hierarchy, and keep each numeric value and
-  slash-prefixed unit together. Rates are billed
-  separately and never combined
-  into a total. When Pricing offer is selectable, the selected choice already names the active base
+  in that order. Each offer keeps its price-changing options and meters. Exact rates form one bordered
+  list with a row per charge: the charge name and qualification on the left, then the amount and
+  unit. When two or more visible charges share the same billing unit, they group together under one
+  shared unit header (such as `Per 1M tokens` or `Per 1K requests`) and omit the repeated
+  unit suffix from each row while preserving the complete accessible unit text; singleton-unit charges
+  keep their slash-prefixed unit inline. Amounts align within each group. On narrow screens
+  inline-unit rows give the name its own line above the amount, while shared-unit rows keep the
+  name and amount together. Standard request meters follow input, cache, then output, and other
+  charges follow by name. Rates are billed separately. When Pricing offer is selectable, the
+  selected choice already names the active base
   mechanism and its rate block does not repeat that title. Supplementary offers use the user-facing
   relationship as a group heading. Independently offered services share one provider heading and
   compatibility note. The closed service row shows the relevant conditions or a resolved price.
@@ -309,8 +309,10 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   snapshot, so an unchanged canonical price book cannot retain stale cached controls.
 - The rate matrix shows the charge name, rate, unit, and unresolved validity qualification. A
   reviewed rate-term label names the charge when available, with the meter name as the fallback.
-  Pricing notes and references to that term use the same name. Driver metadata remains in the
-  canonical audit; a missing driver never hides a rate. TTL and other rate-changing facts remain conditions. Selecting
+  Pricing notes and references to that term use the same name. Driver definitions, aggregation and
+  resolution phase remain available in canonical pricing. A published minimum billable quantity
+  qualifies its rate row.
+  A missing driver never hides a rate. TTL and other rate-changing facts remain conditions. Selecting
   geography must not hide a still-required TTL; a sole published value resolves internally.
   The UI must not interpret provider-specific term keys.
   Contribution rows expose the same driver metadata without copying the target rate. Generic
@@ -380,7 +382,9 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   spellings cannot make distinct atoms equivalent. Public copy uses the reviewed
   native unit label or credit code. Exact token rates may
   use the same bounded per-million display scaling in the table and detail
-  matrix; overflow falls back to the canonical per-token rational.
+  matrix, while other standard units retain reviewed source-native scales (such as `1K items`,
+  `10K characters`, `1K events`, `1K frames`, or `megapixel`) when they match the observed source
+  quote; overflow falls back to the canonical per-unit rational.
 - Right-align numeric headings and cells with a shared sort-control gutter.
 - The table date column shows `Released`, backed only by `release_date`.
   Provider API `created` timestamps are not treated as model release dates

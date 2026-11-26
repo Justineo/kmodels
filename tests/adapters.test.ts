@@ -8470,6 +8470,7 @@ describe("Vercel adapter", () => {
       expect(terms.flatMap(({ variants }) => variants)).toHaveLength(2);
       expect(terms.flatMap(({ raw_variants }) => raw_variants)).toEqual([]);
       const additional = terms.find(({ term_key: key }) => key === `web_search:${operation}`);
+      expect(additional?.label).toBe("Additional results");
       expect(additional?.variants[0]).toEqual(
         expect.objectContaining({
           charge_binding: expect.any(Object),
