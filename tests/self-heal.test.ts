@@ -18,9 +18,11 @@ vi.unmock("node:child_process");
 import {
   appendBudgetEntry,
   buildSettledBudgetEntry,
+  defaultBudgetLimits,
   emptyBudgetLedger,
   evaluateBudget,
   readBudgetLedger,
+  type BudgetLedger,
   type BudgetLimits,
 } from "../scripts/self-heal/budget.ts";
 import {
@@ -63,7 +65,6 @@ function git(args: readonly string[], cwd: string): string {
 const strictLimits: BudgetLimits = {
   maxRunUsd: 1.5,
   maxWindowUsd: 5.0,
-  maxWindowRuns: 3,
   windowHours: 24,
   providerCooldownHours: 6,
 };
@@ -234,6 +235,46 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
       { provider_id: "fireworks", reason: "open_pr" },
       expect.objectContaining({ provider_id: "anthropic", reason: "cooldown" }),
     ]);
+  });
+
+  it("admits another repair after six inexpensive runs when the USD reservation fits", () => {
+    const nowMs = Date.parse("2026-11-23T12:00:00.000Z");
+    const report = makeRefreshReport([
+      { id: "cohere", sourceId: "cohere-models", outcome: "parse_failed" },
+    ]);
+    const ledger: BudgetLedger = {
+      version: 1,
+      entries: Array.from({ length: 6 }, (_, index) =>
+        buildSettledBudgetEntry({
+          run_id: `run-${index + 1}`,
+          provider_id: "anthropic",
+          recorded_at: "2026-11-23T11:00:00.000Z",
+          usage: {
+            usage_known: true,
+            input_tokens: 20_000,
+            output_tokens: 5_000,
+            estimated_usd: 0.2,
+          },
+          outcome: "generate_failed",
+        }),
+      ),
+    };
+
+    const options = { nowMs, budgetLedger: ledger };
+    expect(selectSelfHealTarget(report, [], options)).toMatchObject({
+      status: "actionable",
+      target: { provider_id: "cohere" },
+    });
+    expect(
+      selectSelfHealTarget(report, [], {
+        ...options,
+        budgetLimits: { ...defaultBudgetLimits, maxWindowUsd: 3 },
+      }),
+    ).toMatchObject({
+      status: "idle",
+      idle_reason: "budget_exhausted",
+      budget_reasons: [expect.stringContaining("spend")],
+    });
   });
 
   it("reserves conservative maxRunUsd for unknown usage and blocks when rolling cap would be exceeded", () => {
@@ -3521,7 +3562,7 @@ describe("self-heal zero-cost end-to-end 4-job pipeline", () => {
     expect(ledger.entries[0]?.estimated_usd).toBe(0.25);
 
     // Re-running generate itself when provider is in cooldown (even with plenty of rolling budget) MUST stop at $0 (0 attempts)
-    // AND piping that zero-call refusal into publish MUST NOT extend cooldown or consume a rolling window run slot.
+    // Publishing that zero-call refusal must leave the ledger and cooldown untouched.
     const beforeCooldownLedger = await readBudgetLedger(ledgerPath);
     const beforeCooldownRecordedAt = beforeCooldownLedger.entries[0]?.recorded_at;
     const cooldownBlockedDir = join(artifactsDir, "cooldown-blocked-gen");

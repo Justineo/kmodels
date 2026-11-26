@@ -201,7 +201,7 @@ export async function runPublish(options: {
       (parsedUsage.status === "deferred" || parsedUsage.status === "no_patch")
     ) {
       // Pre-call refusal (cooldown, rolling budget exhausted, or missing evidence) never invoked
-      // the paid agent: do NOT append a ledger entry, restart cooldown, or consume a window run slot.
+      // the paid agent: leave the spend ledger and provider cooldown untouched.
       const outcome: BudgetOutcome = parsedUsage.status === "deferred" ? "deferred" : "no_patch";
       return finish(
         outcome,

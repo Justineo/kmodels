@@ -49,7 +49,7 @@ verification gate**.
    - **`generate`** (`contents: read`, `persist-credentials: false`, **no write `GH_TOKEN`**):
      Holds only `SELF_HEAL_API_KEY`. Re-checks both the rolling budget ledger AND provider cooldowns
      before invoking any paid agent (emitting `status: "deferred"`, `attempts: 0`, `$0` when
-     blocked pre-call so cooldowns and rolling run slots are never disturbed) and refuses
+     blocked pre-call so cooldowns and the spend ledger stay untouched) and refuses
      unsupported/unverifiable triggers or missing/hash-mismatched/invalid replay context at `$0`.
      Checks out pinned `base_sha`, passes only hash-matched evidence into the agent prompt, strips
      `GH_TOKEN`/`GITHUB_TOKEN` from the agent subprocess, runs at most 2 bounded generation attempts
@@ -133,8 +133,10 @@ Before enabling automated self-heal in production, configure and verify in GitHu
   pre-execution HTTP rejections restore known spend), and atomically settles verified Responses SSE
   usage into `SELF_HEAL_USAGE_FILE`.
 - Repository secret `SELF_HEAL_API_KEY` (only passed to the isolated `generate` job).
-- Optional budget override variables: `SELF_HEAL_MAX_RUN_USD`, `SELF_HEAL_MAX_WINDOW_USD`,
-  `SELF_HEAL_MAX_WINDOW_RUNS`, `SELF_HEAL_COOLDOWN_HOURS`.
+- The USD budget defaults to $2 per run and $10 per rolling 24 hours. Triage and generation reserve
+  the full per-run ceiling against the rolling spend budget before admitting a paid attempt.
+  Override the ceilings with `SELF_HEAL_MAX_RUN_USD` and `SELF_HEAL_MAX_WINDOW_USD`. Configure
+  provider cooldown separately with `SELF_HEAL_COOLDOWN_HOURS`.
 
 When `SELF_HEAL_AGENT_CMD` is unset, `triage` still detects actionable drift and uploads the
 triage packet, emits a workflow warning and job summary explaining the missing configuration, and

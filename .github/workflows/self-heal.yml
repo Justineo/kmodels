@@ -133,7 +133,6 @@ jobs:
           TRIGGER_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           SELF_HEAL_MAX_RUN_USD: ${{ vars.SELF_HEAL_MAX_RUN_USD }}
           SELF_HEAL_MAX_WINDOW_USD: ${{ vars.SELF_HEAL_MAX_WINDOW_USD }}
-          SELF_HEAL_MAX_WINDOW_RUNS: ${{ vars.SELF_HEAL_MAX_WINDOW_RUNS }}
           SELF_HEAL_COOLDOWN_HOURS: ${{ vars.SELF_HEAL_COOLDOWN_HOURS }}
         run: |
           WORK="$RUNNER_TEMP/self-heal/triage-input"
@@ -272,7 +271,6 @@ jobs:
           SELF_HEAL_AGENT_CMD: ${{ vars.SELF_HEAL_AGENT_CMD }}
           SELF_HEAL_MAX_RUN_USD: ${{ vars.SELF_HEAL_MAX_RUN_USD }}
           SELF_HEAL_MAX_WINDOW_USD: ${{ vars.SELF_HEAL_MAX_WINDOW_USD }}
-          SELF_HEAL_MAX_WINDOW_RUNS: ${{ vars.SELF_HEAL_MAX_WINDOW_RUNS }}
           SELF_HEAL_COOLDOWN_HOURS: ${{ vars.SELF_HEAL_COOLDOWN_HOURS }}
         run: |
           vp node scripts/self-heal/generate.ts \
@@ -422,7 +420,6 @@ jobs:
           GENERATE_RUN_ATTEMPT: ${{ needs.generate.outputs.generate_attempt }}
           SELF_HEAL_MAX_RUN_USD: ${{ vars.SELF_HEAL_MAX_RUN_USD }}
           SELF_HEAL_MAX_WINDOW_USD: ${{ vars.SELF_HEAL_MAX_WINDOW_USD }}
-          SELF_HEAL_MAX_WINDOW_RUNS: ${{ vars.SELF_HEAL_MAX_WINDOW_RUNS }}
           SELF_HEAL_COOLDOWN_HOURS: ${{ vars.SELF_HEAL_COOLDOWN_HOURS }}
         run: |
           args=(--triage-file "$RUNNER_TEMP/self-heal/triage-packet/target.json" --budget-ledger "$RUNNER_TEMP/self-heal/budget-ledger.json")

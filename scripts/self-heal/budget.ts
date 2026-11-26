@@ -47,7 +47,6 @@ export type BudgetLedger = z.infer<typeof budgetLedgerSchema>;
 export interface BudgetLimits {
   maxRunUsd: number;
   maxWindowUsd: number;
-  maxWindowRuns: number;
   windowHours: number;
   providerCooldownHours: number;
 }
@@ -55,7 +54,6 @@ export interface BudgetLimits {
 export const defaultBudgetLimits: BudgetLimits = {
   maxRunUsd: 2.0,
   maxWindowUsd: 10.0,
-  maxWindowRuns: 6,
   windowHours: 24,
   providerCooldownHours: 6,
 };
@@ -103,10 +101,6 @@ export function parseBudgetLimitsFromEnv(env: NodeJS.ProcessEnv = process.env): 
     maxWindowUsd: parsePositiveNumber(
       env.SELF_HEAL_MAX_WINDOW_USD,
       defaultBudgetLimits.maxWindowUsd,
-    ),
-    maxWindowRuns: parsePositiveNumber(
-      env.SELF_HEAL_MAX_WINDOW_RUNS,
-      defaultBudgetLimits.maxWindowRuns,
     ),
     windowHours: parsePositiveNumber(env.SELF_HEAL_WINDOW_HOURS, defaultBudgetLimits.windowHours),
     providerCooldownHours: parsePositiveNumber(
@@ -162,7 +156,7 @@ export function buildSettledBudgetEntry(params: {
 }
 
 /**
- * Evaluate rolling-window spend/run limits and pre-call reservation or post-run actual usage.
+ * Evaluate per-run and rolling-window spend limits with pre-call reservation or post-run actual usage.
  * Pre-call checks reserve `limits.maxRunUsd` so a run cannot start unless the rolling window
  * can absorb a full per-run ceiling.
  */
@@ -209,7 +203,6 @@ export function evaluateBudget(
       : windowUsd;
   const maxWindowUsd = roundUsd(limits.maxWindowUsd);
   const maxRunUsd = roundUsd(limits.maxRunUsd);
-  const windowRuns = recentEntries.length;
   const reasons: string[] = [];
 
   const runKnownUsd =
@@ -258,11 +251,6 @@ export function evaluateBudget(
       `Rolling ${limits.windowHours}h spend (${projectedUsd.toFixed(4)} USD) exceeds cap (${limits.maxWindowUsd.toFixed(2)} USD)`,
     );
   }
-  if (options.runUsage === undefined && windowRuns >= limits.maxWindowRuns) {
-    reasons.push(
-      `Rolling ${limits.windowHours}h run count (${windowRuns}) reached cap (${limits.maxWindowRuns})`,
-    );
-  }
   if (options.runUsage !== undefined && effectiveObservedUsd > maxRunUsd) {
     reasons.push(
       `Run spend (${effectiveObservedUsd.toFixed(4)} USD) exceeds per-run cap (${limits.maxRunUsd.toFixed(2)} USD)`,
@@ -287,8 +275,8 @@ export function evaluateBudget(
   return {
     allowed: reasons.length === 0,
     reasons,
-    window_usd: Number(windowUsd.toFixed(6)),
-    window_runs: windowRuns,
+    window_usd: windowUsd,
+    window_runs: recentEntries.length,
     cooldown_providers: cooldownProviders,
   };
 }
