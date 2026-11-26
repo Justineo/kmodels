@@ -13,13 +13,15 @@ import { providerModelSchema } from "../../src/catalog/schema.ts";
 import { sourceErrorMessage } from "../../src/catalog/source-failure.ts";
 import { parseReplayContext, verifiedCatalogEvidence } from "../replay-catalog-evidence.ts";
 import {
+  defaultBudgetLimits,
   evaluateBudget,
+  findRecentIncompleteRepairRun,
   parseBudgetLimitsFromEnv,
   readBudgetLedger,
   type BudgetLedger,
   type BudgetLimits,
 } from "./budget.ts";
-import { parseCliFlag } from "./runtime.ts";
+import { parseCliFlag, runGit } from "./runtime.ts";
 
 /**
  * Only source-level parse/contract/pricing-structure triggers can be verified offline via
@@ -431,13 +433,14 @@ export interface SelfHealTarget {
   quarantine_reason?: string;
   trigger_run_id?: string;
   trigger_run_attempt?: number;
+  incident_fingerprint?: string;
   candidates: CatalogRepairCandidate[];
   evidence_files: BoundEvidenceFile[];
 }
 
 export interface SkippedProvider {
   provider_id: string;
-  reason: "open_pr" | "cooldown" | "missing_evidence";
+  reason: "open_pr" | "cooldown" | "recent_incomplete_repair" | "missing_evidence";
   detail?: string;
 }
 
@@ -486,6 +489,7 @@ export function selectSelfHealTarget(
     nowMs?: number;
     budgetLedger?: BudgetLedger;
     budgetLimits?: BudgetLimits;
+    repairRevision?: string;
     triggerRunId?: string;
     triggerRunAttempt?: number;
   } = {},
@@ -563,20 +567,6 @@ export function selectSelfHealTarget(
 
   const openPrProviders = options.openPrProviders ?? new Set<string>();
   const skipped: SkippedProvider[] = [];
-  const selectEvidenceForProvider = (
-    providerId: string,
-    providerCandidates: readonly CatalogRepairCandidate[],
-  ): BoundEvidenceFile[] => {
-    const ownedSources = providerOwnedSources.get(providerId) ?? new Set<string>();
-    return filterEvidenceForTargetCandidates(
-      providerCandidates,
-      options.evidenceFiles ?? [],
-      ownedSources,
-    );
-  };
-
-  let winner: [string, CatalogRepairCandidate[], BoundEvidenceFile[]] | undefined;
-
   for (const [providerId, providerCandidates] of ranked) {
     // Explicit --provider filter bypasses cooldown/open-PR deferral for manual dispatch.
     if (options.providerFilter === undefined) {
@@ -590,7 +580,11 @@ export function selectSelfHealTarget(
         continue;
       }
     }
-    const evidenceFiles = selectEvidenceForProvider(providerId, providerCandidates);
+    const evidenceFiles = filterEvidenceForTargetCandidates(
+      providerCandidates,
+      options.evidenceFiles ?? [],
+      providerOwnedSources.get(providerId) ?? new Set<string>(),
+    );
     if (options.requireSourceEvidence === true) {
       const readiness = inspectTargetReplayReadiness(providerCandidates, evidenceFiles);
       if (readiness.hasUnboundProviderCandidate || readiness.unsupportedTriggers.length > 0) {
@@ -622,39 +616,66 @@ export function selectSelfHealTarget(
         continue;
       }
     }
-    winner = [providerId, providerCandidates, evidenceFiles];
-    break;
-  }
-
-  if (winner === undefined) {
-    const onlyMissingEvidence =
-      skipped.length > 0 && skipped.every((item) => item.reason === "missing_evidence");
+    // Source-body hashes stay stable across captures whose metadata or compression changes.
+    const incidentFingerprint =
+      options.repairRevision === undefined || evidenceFiles.length === 0
+        ? undefined
+        : sha256(
+            JSON.stringify([
+              options.repairRevision,
+              providerId,
+              providerCandidates.map((candidate) => JSON.stringify(candidate)).sort(),
+              evidenceFiles
+                .map((file) =>
+                  JSON.stringify([file.source_id, file.source_hash, file.context_sha256]),
+                )
+                .sort(),
+            ]),
+          );
+    const previousRun =
+      options.providerFilter !== undefined
+        ? undefined
+        : findRecentIncompleteRepairRun(
+            options.budgetLedger,
+            incidentFingerprint,
+            nowMs,
+            (options.budgetLimits ?? defaultBudgetLimits).windowHours,
+          );
+    if (previousRun !== undefined) {
+      skipped.push({
+        provider_id: providerId,
+        reason: "recent_incomplete_repair",
+        detail: `Run ${previousRun} did not complete a repair for these inputs`,
+      });
+      continue;
+    }
+    const quarantineReason = quarantined.get(providerId);
     return {
-      status: "idle",
-      idle_reason: onlyMissingEvidence ? "missing_evidence" : "all_deferred",
+      status: "actionable",
       total_candidates: candidates.length,
       skipped_providers: skipped,
+      target: {
+        provider_id: providerId,
+        quarantined: quarantineReason !== undefined,
+        ...(quarantineReason === undefined ? {} : { quarantine_reason: quarantineReason }),
+        ...(options.triggerRunId === undefined ? {} : { trigger_run_id: options.triggerRunId }),
+        ...(options.triggerRunAttempt === undefined
+          ? {}
+          : { trigger_run_attempt: options.triggerRunAttempt }),
+        ...(incidentFingerprint === undefined ? {} : { incident_fingerprint: incidentFingerprint }),
+        candidates: providerCandidates,
+        evidence_files: evidenceFiles,
+      },
     };
   }
 
-  const [providerId, providerCandidates, evidenceFiles] = winner;
-
-  const quarantineReason = quarantined.get(providerId);
+  const onlyMissingEvidence =
+    skipped.length > 0 && skipped.every((item) => item.reason === "missing_evidence");
   return {
-    status: "actionable",
+    status: "idle",
+    idle_reason: onlyMissingEvidence ? "missing_evidence" : "all_deferred",
     total_candidates: candidates.length,
     skipped_providers: skipped,
-    target: {
-      provider_id: providerId,
-      quarantined: quarantineReason !== undefined,
-      ...(quarantineReason === undefined ? {} : { quarantine_reason: quarantineReason }),
-      ...(options.triggerRunId === undefined ? {} : { trigger_run_id: options.triggerRunId }),
-      ...(options.triggerRunAttempt === undefined
-        ? {}
-        : { trigger_run_attempt: options.triggerRunAttempt }),
-      candidates: providerCandidates,
-      evidence_files: evidenceFiles,
-    },
   };
 }
 
@@ -910,6 +931,15 @@ async function main(): Promise<void> {
     triggerRunAttemptRaw !== undefined && Number.isInteger(Number(triggerRunAttemptRaw))
       ? Number(triggerRunAttemptRaw)
       : undefined;
+  const repairRevision =
+    triggerRunId === undefined || budgetLedger === undefined
+      ? undefined
+      : sha256(
+          runGit(["ls-tree", "HEAD"], process.cwd())
+            .split("\n")
+            .filter((entry) => !entry.endsWith("\tdata"))
+            .join("\n"),
+        );
 
   const result = selectSelfHealTarget(refreshTelemetry, JSON.parse(quarantineRaw), {
     ...(providerFilter === undefined ? {} : { providerFilter }),
@@ -921,6 +951,7 @@ async function main(): Promise<void> {
       : { budgetLedger, budgetLimits: parseBudgetLimitsFromEnv() }),
     ...(triggerRunId === undefined ? {} : { triggerRunId }),
     ...(triggerRunAttempt === undefined ? {} : { triggerRunAttempt }),
+    ...(repairRevision === undefined ? {} : { repairRevision }),
   });
 
   console.log(JSON.stringify(result, null, 2));

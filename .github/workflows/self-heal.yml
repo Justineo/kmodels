@@ -174,7 +174,13 @@ jobs:
             vp node scripts/self-heal/triage.ts "${args[@]}" --require-source-evidence | tee "$PACKET/target.json"
             status="$(jq -r '.status // ""' "$PACKET/target.json")"
           fi
-          cp -r "$WORK/evidence/." "$PACKET/evidence/" 2>/dev/null || true
+          if [[ "$status" == "actionable" ]]; then
+            jq --raw-output0 '.target.evidence_files[] | (.relative_path, .context_relative_path) | strings' "$PACKET/target.json" |
+              (
+                cd "$WORK/evidence"
+                xargs -0 -r cp --parents -t "$PACKET/evidence" --
+              )
+          fi
           provider="$(jq -r '.target.provider_id // ""' "$PACKET/target.json")"
           echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
           echo "actionable=$([[ "$status" == "actionable" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
@@ -265,7 +271,6 @@ jobs:
           SELF_HEAL_MODEL: ${{ vars.SELF_HEAL_MODEL }}
           SELF_HEAL_AGENT_CMD: ${{ vars.SELF_HEAL_AGENT_CMD }}
           SELF_HEAL_MAX_RUN_USD: ${{ vars.SELF_HEAL_MAX_RUN_USD }}
-          SELF_HEAL_MAX_RUN_TOKENS: ${{ vars.SELF_HEAL_MAX_RUN_TOKENS }}
           SELF_HEAL_MAX_WINDOW_USD: ${{ vars.SELF_HEAL_MAX_WINDOW_USD }}
           SELF_HEAL_MAX_WINDOW_RUNS: ${{ vars.SELF_HEAL_MAX_WINDOW_RUNS }}
           SELF_HEAL_COOLDOWN_HOURS: ${{ vars.SELF_HEAL_COOLDOWN_HOURS }}
@@ -416,7 +421,6 @@ jobs:
           VERIFY_JOB_RESULT: ${{ needs.verify.result }}
           GENERATE_RUN_ATTEMPT: ${{ needs.generate.outputs.generate_attempt }}
           SELF_HEAL_MAX_RUN_USD: ${{ vars.SELF_HEAL_MAX_RUN_USD }}
-          SELF_HEAL_MAX_RUN_TOKENS: ${{ vars.SELF_HEAL_MAX_RUN_TOKENS }}
           SELF_HEAL_MAX_WINDOW_USD: ${{ vars.SELF_HEAL_MAX_WINDOW_USD }}
           SELF_HEAL_MAX_WINDOW_RUNS: ${{ vars.SELF_HEAL_MAX_WINDOW_RUNS }}
           SELF_HEAL_COOLDOWN_HOURS: ${{ vars.SELF_HEAL_COOLDOWN_HOURS }}

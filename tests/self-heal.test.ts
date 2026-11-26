@@ -62,7 +62,6 @@ function git(args: readonly string[], cwd: string): string {
 
 const strictLimits: BudgetLimits = {
   maxRunUsd: 1.5,
-  maxRunTokens: 200_000,
   maxWindowUsd: 5.0,
   maxWindowRuns: 3,
   windowHours: 24,
@@ -135,6 +134,59 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
       total_candidates: 0,
       skipped_providers: [],
     });
+  });
+
+  it("defers an unchanged paid failure within the rolling window and advances to another provider", () => {
+    const nowMs = Date.parse("2026-11-23T12:00:00.000Z");
+    const report = makeRefreshReport([
+      { id: "anthropic", sourceId: "anthropic-models", outcome: "parse_failed" },
+      { id: "cohere", sourceId: "cohere-models", outcome: "parse_failed" },
+    ]);
+    const evidenceFiles = [
+      {
+        source_id: "anthropic-models",
+        relative_path: "first/anthropic-models.json.gz",
+        source_hash: "a".repeat(64),
+        sha256: "b".repeat(64),
+      },
+    ];
+    const options = { nowMs, repairRevision: "base-tree", evidenceFiles };
+    const first = selectSelfHealTarget(report, [], options);
+    expect(first.target?.provider_id).toBe("anthropic");
+    const fingerprint = first.target?.incident_fingerprint;
+    if (fingerprint === undefined) throw new Error("Expected a fingerprint for bound evidence");
+
+    const paidFailure = buildSettledBudgetEntry({
+      run_id: "previous-paid-run",
+      provider_id: "anthropic",
+      incident_fingerprint: fingerprint,
+      recorded_at: "2026-11-23T05:00:00.000Z",
+      usage: { usage_known: true, input_tokens: 600_000, output_tokens: 2000, estimated_usd: 0.2 },
+      outcome: "budget_rejected",
+    });
+    const budgetLedger = appendBudgetEntry(emptyBudgetLedger(), paidFailure, { nowMs });
+    const recapturedEvidence = evidenceFiles.map((file) => ({
+      ...file,
+      relative_path: "next/anthropic-models.json.gz",
+      sha256: "c".repeat(64),
+    }));
+    const repeated = { ...options, budgetLedger, evidenceFiles: recapturedEvidence };
+    expect(selectSelfHealTarget(report, [], repeated)).toMatchObject({
+      target: { provider_id: "cohere" },
+      skipped_providers: [{ provider_id: "anthropic", reason: "recent_incomplete_repair" }],
+    });
+    for (const change of [
+      { repairRevision: "new-code" },
+      {
+        evidenceFiles: recapturedEvidence.map((file) => ({ ...file, source_hash: "d".repeat(64) })),
+      },
+      { providerFilter: "anthropic" },
+      { nowMs: Date.parse("2026-11-24T06:00:00.000Z") },
+    ]) {
+      expect(selectSelfHealTarget(report, [], { ...repeated, ...change }).target?.provider_id).toBe(
+        "anthropic",
+      );
+    }
   });
 
   it("advances past persistently failing providers that have an open PR or active cooldown", () => {
@@ -247,6 +299,18 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
     });
     expect(postCheck.allowed).toBe(false);
     expect(postCheck.reasons.some((r) => r.includes("per-run cap"))).toBe(true);
+    expect(
+      evaluateBudget(emptyBudgetLedger(), {
+        nowMs,
+        limits: floorLimits,
+        runUsage: {
+          usage_known: true,
+          input_tokens: 600_000,
+          output_tokens: 5_000,
+          estimated_usd: 1.3,
+        },
+      }).allowed,
+    ).toBe(true);
   });
 
   it("scopes provider-level evidence strictly to sources owned by the selected provider and skips missing source evidence when required", () => {

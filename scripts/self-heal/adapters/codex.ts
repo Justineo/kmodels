@@ -426,25 +426,21 @@ export function parseSseUsage(
   return matches[0] ?? null;
 }
 
-export function estimateRequestReservation(
+export function estimateRequestReservationUsd(
   model: string,
   bodyBytes: number,
   maxOutputTokens: number,
   lookup: OpenAIInferencePriceLookup,
-): { estimated_input_tokens: number; reserved_tokens: number; reserved_usd: number } {
+): number {
   // Byte-level BPE tokenizers emit at most 1 token per UTF-8 byte; adding framing overhead
   // guarantees pre-request reservation never underestimates dense lockfiles, JSON, or hashes.
   const estimatedInputTokens = bodyBytes + INPUT_TOKEN_FRAMING_OVERHEAD;
   const rates = resolveOpenAIRateBand(model, estimatedInputTokens, lookup);
   const worstInputRate = rationalMax(rates.input, rates.cacheWrite12h ?? rates.input);
-  return {
-    estimated_input_tokens: estimatedInputTokens,
-    reserved_tokens: estimatedInputTokens + maxOutputTokens,
-    reserved_usd: sumTokenChargesUsd([
-      { tokens: estimatedInputTokens, rate: worstInputRate },
-      { tokens: maxOutputTokens, rate: rates.output },
-    ]),
-  };
+  return sumTokenChargesUsd([
+    { tokens: estimatedInputTokens, rate: worstInputRate },
+    { tokens: maxOutputTokens, rate: rates.output },
+  ]);
 }
 
 const toolListSchema = z.array(z.unknown()).max(100);
@@ -537,7 +533,7 @@ export interface MeteredProxyHandle {
   readonly baseUrl: string;
   readonly proxyToken: string;
   readonly usage: () => AdapterUsageReport;
-  readonly budgetExceeded: () => boolean;
+  readonly budgetStopReason: () => string | undefined;
   readonly close: () => Promise<void>;
 }
 
@@ -545,7 +541,6 @@ export async function startMeteredOpenAIProxy(options: {
   apiKey: string;
   model: string;
   maxRunUsd: number;
-  maxRunTokens: number;
   usageFile?: string;
   upstreamUrl?: string;
   fetcher?: typeof fetch;
@@ -563,7 +558,7 @@ export async function startMeteredOpenAIProxy(options: {
   let estimatedUsd = 0;
   let inFlightUnsettled = false;
   let usageIncomplete = false;
-  let budgetHit = false;
+  let stopReason: string | undefined;
   let running: Promise<void> | undefined;
   const queue: Array<() => void> = [];
 
@@ -602,25 +597,17 @@ export async function startMeteredOpenAIProxy(options: {
       return;
     }
 
-    const reservation = estimateRequestReservation(
+    const reservedUsd = estimateRequestReservationUsd(
       options.model,
       Buffer.byteLength(sanitized.body, "utf8"),
       sanitized.maxOutputTokens,
       pricingLookup,
     );
-    const totalTokens = inputTokens + outputTokens;
-    if (
-      usageIncomplete ||
-      roundUsd(estimatedUsd + reservation.reserved_usd) > options.maxRunUsd ||
-      totalTokens + reservation.reserved_tokens > options.maxRunTokens
-    ) {
-      budgetHit = true;
-      sendJsonError(
-        res,
-        429,
-        `Self-heal per-run budget cap reached (${roundUsd(estimatedUsd).toFixed(4)}/${options.maxRunUsd.toFixed(2)} USD, ${totalTokens}/${options.maxRunTokens} tokens)`,
-        "budget_exceeded",
-      );
+    if (usageIncomplete || roundUsd(estimatedUsd + reservedUsd) > options.maxRunUsd) {
+      stopReason = usageIncomplete
+        ? "Self-heal cannot reserve spend while previous usage is unsettled"
+        : `Self-heal USD cap: ${estimatedUsd.toFixed(6)} settled + ${reservedUsd.toFixed(6)} requested > ${options.maxRunUsd.toFixed(6)}`;
+      sendJsonError(res, 429, stopReason, "budget_exceeded");
       return;
     }
 
@@ -768,7 +755,7 @@ export async function startMeteredOpenAIProxy(options: {
     baseUrl: `http://127.0.0.1:${address.port}/v1`,
     proxyToken,
     usage: currentReport,
-    budgetExceeded: () => budgetHit,
+    budgetStopReason: () => stopReason,
     close: async () => {
       await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
     },
@@ -973,16 +960,14 @@ export async function runCodexAdapter(options: {
   usageFile: string;
   model?: string;
   maxRunUsd?: number;
-  maxRunTokens?: number;
   codexBin?: string;
   upstreamUrl?: string;
   fetcher?: typeof fetch;
   pricingLookup?: OpenAIInferencePriceLookup;
-}): Promise<{ exitCode: number; usage: AdapterUsageReport; budgetExceeded: boolean }> {
+}): Promise<{ exitCode: number; usage: AdapterUsageReport; budgetStopReason: string | undefined }> {
   const cwd = resolve(options.cwd ?? process.env.SELF_HEAL_WORKDIR ?? ".");
   const model = options.model?.trim() || DEFAULT_CODEX_MODEL;
   const maxRunUsd = options.maxRunUsd ?? defaultBudgetLimits.maxRunUsd;
-  const maxRunTokens = options.maxRunTokens ?? defaultBudgetLimits.maxRunTokens;
   const promptText = await readFile(options.promptFile, "utf8");
 
   // Record zero spend up front so pre-call setup errors (e.g. unsupported model, missing catalog
@@ -1006,7 +991,6 @@ export async function runCodexAdapter(options: {
     apiKey: options.apiKey,
     model,
     maxRunUsd,
-    maxRunTokens,
     usageFile: options.usageFile,
     pricingLookup,
     ...(options.upstreamUrl === undefined ? {} : { upstreamUrl: options.upstreamUrl }),
@@ -1061,7 +1045,7 @@ export async function runCodexAdapter(options: {
 
     const usage = proxy.usage();
     await writeUsageAtomically(options.usageFile, usage);
-    return { exitCode, usage, budgetExceeded: proxy.budgetExceeded() };
+    return { exitCode, usage, budgetStopReason: proxy.budgetStopReason() };
   } finally {
     await proxy.close();
     await rm(runPrivateDir, { recursive: true, force: true });
@@ -1085,13 +1069,10 @@ async function main(): Promise<void> {
       process.env.SELF_HEAL_MAX_RUN_USD,
       defaultBudgetLimits.maxRunUsd,
     ),
-    maxRunTokens: Math.floor(
-      parsePositiveNumber(process.env.SELF_HEAL_MAX_RUN_TOKENS, defaultBudgetLimits.maxRunTokens),
-    ),
   });
 
-  if (result.budgetExceeded) {
-    console.error("[self-heal/codex] Stopped because per-run budget cap was reached.");
+  if (result.budgetStopReason !== undefined) {
+    console.error(`[self-heal/codex] ${result.budgetStopReason}`);
     process.exitCode = 1;
     return;
   }

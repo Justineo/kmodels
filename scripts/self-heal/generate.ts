@@ -15,6 +15,7 @@ import {
 } from "./adapters/codex.ts";
 import {
   evaluateBudget,
+  findRecentIncompleteRepairRun,
   isValidUsd,
   parseBudgetLimitsFromEnv,
   readBudgetLedger,
@@ -80,11 +81,12 @@ function buildTaskPrompt(target: SelfHealTarget, evidenceRoot: string, feedback?
     `Repair actionable catalog drift for provider "${target.provider_id}".`,
     "",
     "Rules:",
-    `1. Read docs/self-heal.md and docs/providers/${target.provider_id}.md first.`,
-    "2. Inspect the bound official public evidence bytes (or fetch reviewed public source via `vp node scripts/fetch-catalog-evidence.ts <source-id>`).",
+    `1. Read the relevant sections of docs/self-heal.md and docs/providers/${target.provider_id}.md. Use targeted excerpts to keep model context small.`,
+    "2. Inspect the bound official public evidence for the listed sources. Extract the relevant sections or fields before printing them.",
     "3. Fix only the demonstrated root cause in this provider's parser/manifest and add a focused regression fixture & test.",
     "4. Never weaken or remove minModels/minDocuments thresholds, skip tests, use `any`, or touch `src/catalog/transport/`, `.github/`, `scripts/self-heal/`, `packages/`, or `data/`.",
     "5. Missing source facts must stay unknown (never zero/free).",
+    "6. Prioritize a small working patch and its focused regression. The workflow independently replays the evidence and runs full validation.",
     "",
     `Quarantined: ${target.quarantined ? `yes (${target.quarantine_reason})` : "no"}`,
     "Failure candidates:",
@@ -92,7 +94,12 @@ function buildTaskPrompt(target: SelfHealTarget, evidenceRoot: string, feedback?
     ...(evidenceLines.length > 0 ? ["", "Bound official evidence:", ...evidenceLines] : []),
     ...(feedback === undefined
       ? []
-      : ["", "Previous local gate feedback (fix all issues):", feedback]),
+      : [
+          "",
+          "The previous attempt's edits are in this checkout. Inspect the diff before repeating any investigation.",
+          "Previous local gate feedback (fix all issues):",
+          feedback,
+        ]),
   ].join("\n");
 }
 
@@ -249,12 +256,21 @@ export async function runGenerate(options: {
     const budgetCheck = evaluateBudget(ledger, { nowMs, limits, reserveRun: true });
     const cooldownUntil = budgetCheck.cooldown_providers[target.provider_id];
     const inCooldown = cooldownUntil !== undefined && Date.parse(cooldownUntil) > nowMs;
-    if (!budgetCheck.allowed || inCooldown) {
+    const previousRun = findRecentIncompleteRepairRun(
+      ledger,
+      target.incident_fingerprint,
+      nowMs,
+      limits.windowHours,
+    );
+    if (!budgetCheck.allowed || inCooldown || previousRun !== undefined) {
       const reasons = [
         ...budgetCheck.reasons,
         ...(inCooldown
           ? [`Provider ${target.provider_id} is in cooldown until ${cooldownUntil}`]
           : []),
+        ...(previousRun === undefined
+          ? []
+          : [`Run ${previousRun} did not complete a repair for these inputs`]),
       ];
       const usage: SelfHealUsageReport = usageReportSchema.parse({
         status: "deferred",
@@ -264,7 +280,7 @@ export async function runGenerate(options: {
         output_tokens: 0,
         estimated_usd: 0,
         attempts: 0,
-        error: `Rolling budget or cooldown blocked generation: ${reasons.join("; ")}`,
+        error: `Generation deferred: ${reasons.join("; ")}`,
       });
       await writeFile(join(resolvedOut, "usage.json"), `${JSON.stringify(usage, null, 2)}\n`);
       return { hasPatch: false, usage };
@@ -333,15 +349,9 @@ export async function runGenerate(options: {
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const roundedTotalUsd = roundUsd(totalEstimatedUsd);
       const remainingUsd = roundUsd(Math.max(0, maxRunUsd - roundedTotalUsd));
-      const remainingTokens = Math.max(
-        0,
-        limits.maxRunTokens - (totalInputTokens + totalOutputTokens),
-      );
-      if (attempt > 1 && (!allUsageKnown || remainingUsd <= 0 || remainingTokens <= 0)) {
-        if (allUsageKnown && (remainingUsd <= 0 || remainingTokens <= 0)) {
-          finalStatus = "budget_exceeded";
-          finalError = `No remaining per-run budget before attempt ${attempt} (${roundedTotalUsd.toFixed(4)}/${limits.maxRunUsd.toFixed(2)} USD, ${totalInputTokens + totalOutputTokens}/${limits.maxRunTokens} tokens)`;
-        }
+      if (attempt > 1 && remainingUsd <= 0) {
+        finalStatus = "budget_exceeded";
+        finalError = `No remaining USD budget before attempt ${attempt}.`;
         break;
       }
 
@@ -356,6 +366,7 @@ export async function runGenerate(options: {
 
       let exitStatus: number | null = 0;
       let agentFailureDetail: string | undefined;
+      let budgetStopReason: string | undefined;
       if (usesBuiltinCodex && builtinApiKey !== undefined && codexBin !== undefined) {
         try {
           const codexResult = await runCodexAdapter({
@@ -367,15 +378,10 @@ export async function runGenerate(options: {
             ...(codexPricingLookup === undefined ? {} : { pricingLookup: codexPricingLookup }),
             ...(codexModel === undefined ? {} : { model: codexModel }),
             maxRunUsd: remainingUsd,
-            maxRunTokens: remainingTokens,
             ...(options.codexFetcher === undefined ? {} : { fetcher: options.codexFetcher }),
           });
-          if (codexResult.budgetExceeded) {
-            exitStatus = 1;
-            agentFailureDetail = "Codex adapter stopped because per-run budget cap was reached";
-          } else {
-            exitStatus = codexResult.exitCode;
-          }
+          budgetStopReason = codexResult.budgetStopReason;
+          exitStatus = budgetStopReason === undefined ? codexResult.exitCode : 1;
         } catch (error) {
           exitStatus = 1;
           agentFailureDetail = error instanceof Error ? error.message : String(error);
@@ -391,7 +397,6 @@ export async function runGenerate(options: {
         agentEnv.SELF_HEAL_USAGE_FILE = usageFile;
         agentEnv.SELF_HEAL_WORKDIR = cwd;
         agentEnv.SELF_HEAL_MAX_RUN_USD = String(remainingUsd);
-        agentEnv.SELF_HEAL_MAX_RUN_TOKENS = String(remainingTokens);
 
         const agent = spawnSync("bash", ["-c", agentCommand], {
           cwd,
@@ -420,19 +425,19 @@ export async function runGenerate(options: {
       // Enforce per-run cap on the 6-decimal-rounded cumulative sum (avoiding both IEEE-754 drift
       // and premature per-attempt truncation on sub-microdollar fractions).
       const cumulativeUsd = roundUsd(totalEstimatedUsd);
-      if (
-        !isValidUsd(totalEstimatedUsd) ||
-        cumulativeUsd > maxRunUsd ||
-        totalInputTokens + totalOutputTokens > limits.maxRunTokens
-      ) {
+      if (!isValidUsd(totalEstimatedUsd) || cumulativeUsd > maxRunUsd) {
         finalStatus = "budget_exceeded";
-        finalError = `Per-run budget exceeded (${cumulativeUsd.toFixed(4)} USD, ${totalInputTokens + totalOutputTokens} tokens)`;
+        finalError = `Per-run budget exceeded (${cumulativeUsd.toFixed(4)} USD)`;
         break;
       }
 
-      if (exitStatus !== 0) {
+      const checkStoppedPatch = budgetStopReason !== undefined && allUsageKnown;
+      if (exitStatus !== 0 && !checkStoppedPatch) {
         finalStatus = "generate_failed";
-        feedback = agentFailureDetail ?? `Agent command exited with status ${exitStatus}`;
+        feedback =
+          budgetStopReason ??
+          agentFailureDetail ??
+          `Agent command exited with status ${exitStatus}`;
         finalError = feedback;
         if (!allUsageKnown) {
           finalError = `${feedback} (retry skipped because usage was unreported)`;
@@ -454,7 +459,12 @@ export async function runGenerate(options: {
               env.GIT_TERMINAL_PROMPT = "0";
               return {
                 command: codexBin,
-                args: buildCodexSandboxArgs({ cwd, command: ["vp", ...replayArgs] }),
+                // Replay has installed dependencies and a pinned Node runtime. The Vite+ shim
+                // can try to take a package-store lock inside the read-only sandbox.
+                args: buildCodexSandboxArgs({
+                  cwd,
+                  command: [process.execPath, ...replayArgs.slice(1)],
+                }),
                 env,
               };
             }
@@ -475,15 +485,8 @@ export async function runGenerate(options: {
         skipValidation: true,
       });
 
-      if (verdict.ok) {
-        const patch = captureCandidatePatch(cwd, baseSha, verdict.changed_files);
-        if (patch.trim().length === 0) {
-          finalStatus = "no_patch";
-          feedback = "Captured candidate patch was empty";
-          finalError = feedback;
-          if (!allUsageKnown) break;
-          continue;
-        }
+      const patch = verdict.ok ? captureCandidatePatch(cwd, baseSha, verdict.changed_files) : "";
+      if (patch.trim().length > 0) {
         const patchBytes = Buffer.from(patch, "utf8");
         producedProposal = proposalSchema.parse({
           version: 1,
@@ -509,13 +512,15 @@ export async function runGenerate(options: {
         break;
       }
 
-      finalStatus = "no_patch";
-      feedback = `Local gate feedback:\n${verdict.violations.join("\n")}`;
-      finalError = feedback;
-      if (!allUsageKnown) {
+      finalStatus = checkStoppedPatch ? "budget_exceeded" : "no_patch";
+      feedback = verdict.ok
+        ? "Captured candidate patch was empty"
+        : `Local gate feedback:\n${verdict.violations.join("\n")}`;
+      finalError = budgetStopReason === undefined ? feedback : `${budgetStopReason}\n${feedback}`;
+      if (!allUsageKnown && !verdict.ok) {
         finalError = `${feedback}\n(retry skipped because usage was unreported)`;
-        break;
       }
+      if (checkStoppedPatch || !allUsageKnown) break;
     }
   } finally {
     await rm(workDir, { recursive: true, force: true });

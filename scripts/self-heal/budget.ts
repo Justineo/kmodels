@@ -22,6 +22,10 @@ export const budgetUsageEntrySchema = z.strictObject({
   run_id: z.string().min(1),
   run_attempt: z.number().int().positive().optional(),
   provider_id: z.string().min(1),
+  incident_fingerprint: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
   recorded_at: z.string().min(1),
   usage_known: z.boolean(),
   input_tokens: z.number().int().nonnegative().nullable(),
@@ -42,7 +46,6 @@ export type BudgetLedger = z.infer<typeof budgetLedgerSchema>;
 
 export interface BudgetLimits {
   maxRunUsd: number;
-  maxRunTokens: number;
   maxWindowUsd: number;
   maxWindowRuns: number;
   windowHours: number;
@@ -51,7 +54,6 @@ export interface BudgetLimits {
 
 export const defaultBudgetLimits: BudgetLimits = {
   maxRunUsd: 2.0,
-  maxRunTokens: 500_000,
   maxWindowUsd: 10.0,
   maxWindowRuns: 6,
   windowHours: 24,
@@ -98,10 +100,6 @@ export function parsePositiveNumber(raw: string | undefined, fallback: number): 
 export function parseBudgetLimitsFromEnv(env: NodeJS.ProcessEnv = process.env): BudgetLimits {
   return {
     maxRunUsd: parsePositiveNumber(env.SELF_HEAL_MAX_RUN_USD, defaultBudgetLimits.maxRunUsd),
-    maxRunTokens: parsePositiveNumber(
-      env.SELF_HEAL_MAX_RUN_TOKENS,
-      defaultBudgetLimits.maxRunTokens,
-    ),
     maxWindowUsd: parsePositiveNumber(
       env.SELF_HEAL_MAX_WINDOW_USD,
       defaultBudgetLimits.maxWindowUsd,
@@ -128,6 +126,7 @@ export function buildSettledBudgetEntry(params: {
   run_id: string;
   run_attempt?: number;
   provider_id: string;
+  incident_fingerprint?: string;
   recorded_at?: string;
   usage: RunUsageInput;
   outcome: BudgetOutcome;
@@ -149,6 +148,9 @@ export function buildSettledBudgetEntry(params: {
     run_id: params.run_id,
     ...(params.run_attempt === undefined ? {} : { run_attempt: params.run_attempt }),
     provider_id: params.provider_id,
+    ...(params.incident_fingerprint === undefined
+      ? {}
+      : { incident_fingerprint: params.incident_fingerprint }),
     recorded_at: params.recorded_at ?? new Date().toISOString(),
     usage_known: known,
     input_tokens: params.usage.input_tokens,
@@ -227,8 +229,6 @@ export function evaluateBudget(
 
   let projectedUsd: number;
   let effectiveObservedUsd = runKnownUsd;
-  let effectiveTotalTokens =
-    (options.runUsage?.input_tokens ?? 0) + (options.runUsage?.output_tokens ?? 0);
   if (existingMatch !== undefined && options.runUsage !== undefined) {
     const candidateEntry = buildSettledBudgetEntry({
       run_id: existingMatch.run_id,
@@ -246,14 +246,9 @@ export function evaluateBudget(
     projectedUsd = existingInWindow
       ? roundUsd(otherWindowUsd + mergedRun.estimated_usd)
       : windowUsd;
-    // Enforce per-run caps against the merged observed spend (never a pure conservative reserve)
-    // and merged token counts regardless of whether the original entry aged out of the rolling window.
+    // Enforce the merged observed spend even if the original entry aged out of the window.
     effectiveObservedUsd = roundUsd(
       mergedRun.observed_usd ?? (mergedRun.usage_known ? mergedRun.estimated_usd : 0),
-    );
-    effectiveTotalTokens = Math.max(
-      effectiveTotalTokens,
-      (mergedRun.input_tokens ?? 0) + (mergedRun.output_tokens ?? 0),
     );
   } else {
     projectedUsd = roundUsd(windowUsd + additionalUsd);
@@ -268,18 +263,10 @@ export function evaluateBudget(
       `Rolling ${limits.windowHours}h run count (${windowRuns}) reached cap (${limits.maxWindowRuns})`,
     );
   }
-  if (options.runUsage !== undefined) {
-    // Enforce per-run caps on any merged observed spend/tokens (ignoring pure conservative reserves).
-    if (effectiveObservedUsd > maxRunUsd) {
-      reasons.push(
-        `Run spend (${effectiveObservedUsd.toFixed(4)} USD) exceeds per-run cap (${limits.maxRunUsd.toFixed(2)} USD)`,
-      );
-    }
-    if (effectiveTotalTokens > limits.maxRunTokens) {
-      reasons.push(
-        `Run token count (${effectiveTotalTokens}) exceeds per-run cap (${limits.maxRunTokens})`,
-      );
-    }
+  if (options.runUsage !== undefined && effectiveObservedUsd > maxRunUsd) {
+    reasons.push(
+      `Run spend (${effectiveObservedUsd.toFixed(4)} USD) exceeds per-run cap (${limits.maxRunUsd.toFixed(2)} USD)`,
+    );
   }
 
   const cooldownProviders: Record<string, string> = {};
@@ -306,6 +293,26 @@ export function evaluateBudget(
   };
 }
 
+export function findRecentIncompleteRepairRun(
+  ledger: BudgetLedger | undefined,
+  fingerprint: string | undefined,
+  nowMs: number,
+  windowHours: number,
+): string | undefined {
+  if (ledger === undefined || fingerprint === undefined) return undefined;
+  const cutoff = nowMs - windowHours * 3_600_000;
+  return ledger.entries.findLast(
+    (entry) =>
+      entry.incident_fingerprint === fingerprint &&
+      (entry.outcome === "budget_rejected" ||
+        entry.outcome === "no_patch" ||
+        entry.outcome === "generate_failed" ||
+        entry.outcome === "rejected") &&
+      (entry.observed_usd ?? (entry.usage_known ? entry.estimated_usd : 0)) > 0 &&
+      Date.parse(entry.recorded_at) >= cutoff,
+  )?.run_id;
+}
+
 function maxOptionalInt(a: number | null, b: number | null): number | null {
   if (a === null) return b;
   if (b === null) return a;
@@ -320,7 +327,12 @@ function mergeBudgetEntries(
     Date.parse(existingMatch.recorded_at) <= Date.parse(validated.recorded_at)
       ? existingMatch.recorded_at
       : validated.recorded_at;
-  const base = { ...validated, recorded_at: earliestRecordedAt };
+  const fingerprint = validated.incident_fingerprint ?? existingMatch.incident_fingerprint;
+  const base = {
+    ...validated,
+    recorded_at: earliestRecordedAt,
+    ...(fingerprint === undefined ? {} : { incident_fingerprint: fingerprint }),
+  };
   const mergedInputTokens = maxOptionalInt(existingMatch.input_tokens, validated.input_tokens);
   const mergedOutputTokens = maxOptionalInt(existingMatch.output_tokens, validated.output_tokens);
   if (existingMatch.usage_known && validated.usage_known) {

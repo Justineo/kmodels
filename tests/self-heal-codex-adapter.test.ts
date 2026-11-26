@@ -15,7 +15,7 @@ import {
   buildCodexArgs,
   buildCodexSandboxArgs,
   calculateUsageCostUsd,
-  estimateRequestReservation,
+  estimateRequestReservationUsd,
   parseSseUsage,
   resolveCodexBinary,
   resolveOpenAIRateBand,
@@ -770,21 +770,20 @@ describe("self-heal Codex request sanitizer", () => {
 });
 
 describe("self-heal metered OpenAI proxy", () => {
-  it("enforces pre-request USD/token caps before forwarding and persists exact settled usage", async () => {
+  it("enforces the USD cap before forwarding and persists exact settled usage", async () => {
     const dir = await makeTempDir("self-heal-proxy-");
     const usageFile = join(dir, "usage.json");
     let upstreamCalls = 0;
     let lastUpstreamAuth = "";
 
-    const reservation = estimateRequestReservation("gpt-6.2-sol", 256, 200, syntheticLookup);
+    const reservation = estimateRequestReservationUsd("gpt-6.2-sol", 256, 200, syntheticLookup);
     // Allow exactly 1 request whose conservative reservation fits, then block turn 2 pre-request.
-    const maxRunUsd = Number((reservation.reserved_usd + 0.005).toFixed(6));
+    const maxRunUsd = Number((reservation + 0.005).toFixed(6));
 
     const proxy = await startMeteredOpenAIProxy({
       apiKey: "sk-real-secret",
       model: "gpt-6.2-sol",
       maxRunUsd,
-      maxRunTokens: 100_000,
       usageFile,
       pricingLookup: syntheticLookup,
       fetcher: async (_url, init) => {
@@ -845,7 +844,7 @@ describe("self-heal metered OpenAI proxy", () => {
         JSON.stringify({ input: [{ role: "user", content: "turn 2" }], max_output_tokens: 200 }),
       );
       expect(turn2.status).toBe(429);
-      expect(proxy.budgetExceeded()).toBe(true);
+      expect(proxy.budgetStopReason()).toMatch(/USD cap.*settled.*requested/);
       expect(upstreamCalls).toBe(1);
     } finally {
       await proxy.close();
@@ -861,7 +860,6 @@ describe("self-heal metered OpenAI proxy", () => {
       apiKey: "sk-real-secret",
       model: "gpt-6.2-sol",
       maxRunUsd: 2.0,
-      maxRunTokens: 500_000,
       usageFile,
       pricingLookup: syntheticLookup,
       fetcher: async () => {
@@ -905,7 +903,7 @@ describe("self-heal metered OpenAI proxy", () => {
     }
   });
 
-  it("blocks dense lockfile payloads whose real BPE token count exceeds maxRunTokens before forwarding", async () => {
+  it("keeps recording usage past the old 500,000-token limit while the USD reservation fits", async () => {
     const lockPrefix = (await readFile(resolve("pnpm-lock.yaml"), "utf8")).slice(0, 120_000);
     let upstreamCalls = 0;
 
@@ -913,7 +911,6 @@ describe("self-heal metered OpenAI proxy", () => {
       apiKey: "sk-real-secret",
       model: "gpt-5-mini",
       maxRunUsd: 2.0,
-      maxRunTokens: 48_000,
       pricingLookup: syntheticLookup,
       fetcher: async () => {
         upstreamCalls += 1;
@@ -925,20 +922,23 @@ describe("self-heal metered OpenAI proxy", () => {
     });
 
     try {
-      const res = await postLoopback(
-        `${proxy.baseUrl}/responses`,
-        {
-          authorization: `Bearer ${proxy.proxyToken}`,
-          "content-type": "application/json",
-        },
-        JSON.stringify({
-          input: [{ role: "user", content: lockPrefix }],
-          max_output_tokens: 1024,
-        }),
-      );
-      expect(res.status).toBe(429);
-      expect(proxy.budgetExceeded()).toBe(true);
-      expect(upstreamCalls).toBe(0);
+      for (let turn = 0; turn < 10; turn += 1) {
+        const res = await postLoopback(
+          `${proxy.baseUrl}/responses`,
+          {
+            authorization: `Bearer ${proxy.proxyToken}`,
+            "content-type": "application/json",
+          },
+          JSON.stringify({
+            input: [{ role: "user", content: lockPrefix }],
+            max_output_tokens: 1024,
+          }),
+        );
+        expect(res.status).toBe(200);
+      }
+      expect(proxy.usage()).toMatchObject({ input_tokens: 589_530, output_tokens: 1000 });
+      expect(proxy.budgetStopReason()).toBeUndefined();
+      expect(upstreamCalls).toBe(10);
     } finally {
       await proxy.close();
     }
@@ -954,7 +954,6 @@ describe("self-heal metered OpenAI proxy", () => {
       apiKey: "sk-real-secret",
       model: "gpt-6.2-sol",
       maxRunUsd: 2.0,
-      maxRunTokens: 500_000,
       usageFile,
       pricingLookup: syntheticLookup,
       fetcher: async () => {
@@ -1019,7 +1018,6 @@ describe("self-heal metered OpenAI proxy", () => {
         apiKey: "sk-real-secret",
         model: "gpt-6.2-sol",
         maxRunUsd: 2.0,
-        maxRunTokens: 500_000,
         usageFile,
         pricingLookup: syntheticLookup,
         fetcher: async () => {
@@ -1061,7 +1059,7 @@ describe("self-heal metered OpenAI proxy", () => {
           JSON.stringify({ input: [{ role: "user", content: "turn 2" }], max_output_tokens: 100 }),
         );
         expect(res2.status).toBe(429);
-        expect(proxy.budgetExceeded()).toBe(true);
+        expect(proxy.budgetStopReason()).toContain("previous usage is unsettled");
         expect(upstreamCalls).toBe(1);
       } finally {
         await proxy.close();
@@ -1077,7 +1075,6 @@ describe("self-heal metered OpenAI proxy", () => {
       apiKey: "sk-real-secret",
       model: "gpt-6.2-sol",
       maxRunUsd: 2.0,
-      maxRunTokens: 500_000,
       usageFile,
       pricingLookup: syntheticLookup,
       fetcher: async () =>
@@ -1186,7 +1183,7 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
       });
 
       expect(result.exitCode).toBe(0);
-      expect(result.budgetExceeded).toBe(false);
+      expect(result.budgetStopReason).toBeUndefined();
       expect(result.usage).toEqual({
         input_tokens: 500,
         output_tokens: 100,
@@ -1272,8 +1269,7 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
     ]);
   });
 
-  it("feeds sandboxed candidate replay failures from attempt 1 into attempt 2 while keeping secrets and host files isolated", async () => {
-    // 1. Unit checks on sanitizedUntrustedEnv, selfHealPrivateBaseDir, and isBuiltinCodexAdapterCommand.
+  it("classifies the built-in command and keeps secrets and trusted state out of agent tools", () => {
     const clean = sanitizedUntrustedEnv({
       PATH: "/usr/bin",
       HOME: "/tmp/home",
@@ -1291,16 +1287,13 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
     expect(isBuiltinCodexAdapterCommand("node ./scripts/self-heal/adapters/codex.ts")).toBe(true);
     expect(isBuiltinCodexAdapterCommand("node scripts/self-heal/adapters/other.ts")).toBe(false);
     expect(selfHealPrivateBaseDir("runs").startsWith("/tmp/")).toBe(false);
+  });
 
-    // 2. End-to-end check:
-    //    - Attempt 1 produces a statically valid edit (only touching allowed `src/catalog/openai.ts`,
-    //      leaving the parser broken!) and tampers with gitignored `node_modules/zod/index.js`.
-    //    - `generate.ts` runs candidate replay inside `codex sandbox` (read-only, network-disabled,
-    //      zero `SELF_HEAL_API_KEY`). Attempt 1's replay fails, so `generate.ts` does NOT emit
-    //      `patch_ready` on attempt 1 and feeds the exact replay failure into attempt 2's prompt.
-    //    - Attempt 2 runs in-process (never reloading tampered `node_modules/zod/index.js`), reads the
-    //      replay failure feedback, fixes `src/catalog/openai.ts`, passes sandboxed replay, and emits
-    //      `patch_ready` on attempt 2.
+  const replayScenarios = ["retry", "accept stopped patch", "reject stopped patch"] as const;
+  it.each(replayScenarios)("keeps candidate replay isolated: %s", async (scenario) => {
+    const budgetStop = scenario !== "retry";
+    // On retry, the first edit fails replay and tampers with gitignored Zod. The second
+    // attempt must receive the replay error without reloading the candidate's dependency.
     const root = await makeTempDir("self-heal-isolation-");
     const repo = join(root, "repo");
     const ext = join(root, "ext");
@@ -1370,6 +1363,23 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
         "});",
         "if (!res.ok) process.exit(92);",
         "await res.text();",
+        ...(budgetStop
+          ? [
+              `writeFileSync(join(process.cwd(), 'src/catalog/openai.ts'), ${JSON.stringify(
+                scenario === "accept stopped patch"
+                  ? "export const v = 3; // FIXED_PARSER\n"
+                  : "export const v = 2; // still broken\n",
+              )});`,
+              "const blocked = await fetch(`${baseUrl}/responses`, {",
+              "  method: 'POST',",
+              "  headers: { authorization: `Bearer ${process.env.CODEX_API_KEY}`, 'content-type': 'application/json' },",
+              "  body: JSON.stringify({ input: [{ role: 'user', content: 'x'.repeat(120000) }], max_output_tokens: 64 }),",
+              "});",
+              "if (blocked.status !== 429) process.exit(93);",
+              "await blocked.text();",
+              "process.exit(1);",
+            ]
+          : []),
         "if (attempt === 1) {",
         "  writeFileSync(join(process.cwd(), 'src/catalog/openai.ts'), 'export const v = 2; // still broken\\n');",
         "  writeFileSync(join(process.cwd(), 'node_modules/zod/index.js'), 'throw new Error(\"TAMPERED_ZOD\");\\n');",
@@ -1436,8 +1446,10 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
 
     const prevKey = process.env.SELF_HEAL_API_KEY;
     const prevCodexBin = process.env.SELF_HEAL_CODEX_BIN;
+    const prevMaxUsd = process.env.SELF_HEAL_MAX_RUN_USD;
     process.env.SELF_HEAL_API_KEY = "sk-top-secret-must-never-leak-to-replay";
     process.env.SELF_HEAL_CODEX_BIN = fakeCodexBin;
+    if (budgetStop) process.env.SELF_HEAL_MAX_RUN_USD = "0.1";
     try {
       const genResult = await runGenerate({
         cwd: repo,
@@ -1458,32 +1470,49 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
             { status: 200, headers: { "content-type": "text/event-stream" } },
           ),
       });
-      expect(genResult.usage.error).toBeUndefined();
-      expect(genResult.hasPatch).toBe(true);
-      expect(genResult.usage.attempts).toBe(2);
+      const attempts = budgetStop ? 1 : 2;
+      expect(genResult.hasPatch).toBe(scenario !== "reject stopped patch");
+      expect(genResult.usage.attempts).toBe(attempts);
       expect(genResult.usage.usage_known).toBe(true);
-      expect(genResult.usage.input_tokens).toBe(200);
-      expect(genResult.usage.output_tokens).toBe(100);
+      expect(genResult.usage.input_tokens).toBe(attempts * 100);
+      expect(genResult.usage.output_tokens).toBe(attempts * 50);
+      if (scenario === "reject stopped patch") {
+        expect(genResult.usage.status).toBe("budget_exceeded");
+        expect(genResult.usage.error).toContain("Self-heal USD cap");
+        expect(genResult.usage.error).toContain("Evidence replay failed for openai-pricing");
+        await expect(readFile(join(ext, "out", "candidate.patch"))).rejects.toThrow(/ENOENT/);
+      } else {
+        expect(genResult.usage.status).toBe("patch_ready");
+        expect(genResult.usage.error).toBeUndefined();
+        expect(await readFile(join(ext, "out", "candidate.patch"), "utf8")).toContain(
+          "FIXED_PARSER",
+        );
+      }
 
       // Verify attempt 2 received the exact sandboxed replay failure from attempt 1.
-      const attempt2Prompt = await readFile(promptAttempt2Dump, "utf8");
-      expect(attempt2Prompt).toContain(
-        "Evidence replay failed for openai-pricing: Simulated parse error on attempt 1",
-      );
+      if (!budgetStop) {
+        const attempt2Prompt = await readFile(promptAttempt2Dump, "utf8");
+        expect(attempt2Prompt).toContain(
+          "Evidence replay failed for openai-pricing: Simulated parse error on attempt 1",
+        );
+      }
 
       // Verify both replay runs went through read-only, network-disabled, secret-free `codex sandbox`.
       const sandboxCalls = (await readFile(sandboxInvocations, "utf8"))
         .trim()
         .split("\n")
         .map((line) => JSON.parse(line) as Record<string, unknown>);
-      expect(sandboxCalls).toHaveLength(2);
+      expect(sandboxCalls).toHaveLength(attempts);
       for (const call of sandboxCalls) {
         expect(call.hasSelfHealApiKey).toBe(false);
         expect(call.hasRunnerTemp).toBe(false);
         expect(call.flags).toContain('permissions.ro.filesystem={":root"="read"}');
         expect(call.flags).toContain("permissions.ro.network={enabled=false}");
         expect(call.flags).toContain("ro");
+        expect(call.cmd).toEqual(expect.arrayContaining([process.execPath]));
       }
+
+      if (budgetStop) return;
 
       // Verify direct runSelfHealGate (used in verify) also strips SELF_HEAL_API_KEY.
       runSelfHealGate({
@@ -1564,6 +1593,8 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
       else process.env.SELF_HEAL_API_KEY = prevKey;
       if (prevCodexBin === undefined) delete process.env.SELF_HEAL_CODEX_BIN;
       else process.env.SELF_HEAL_CODEX_BIN = prevCodexBin;
+      if (prevMaxUsd === undefined) delete process.env.SELF_HEAL_MAX_RUN_USD;
+      else process.env.SELF_HEAL_MAX_RUN_USD = prevMaxUsd;
     }
   });
 });

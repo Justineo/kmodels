@@ -144,6 +144,9 @@ export async function runPublish(options: {
       run_id: resolvedRunId,
       ...(resolvedRunAttempt === undefined ? {} : { run_attempt: resolvedRunAttempt }),
       provider_id: target.provider_id,
+      ...(target.incident_fingerprint === undefined
+        ? {}
+        : { incident_fingerprint: target.incident_fingerprint }),
       usage: runUsage,
       outcome,
       limits,
