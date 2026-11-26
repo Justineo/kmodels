@@ -528,7 +528,10 @@ contracts are joined. Its meaning cannot depend on another modality's price bein
 Services, acquisition contracts and provider vocabulary return independently of model rows. Native
 Price List service dimensions establish canonical rate terms at the parser boundary, including
 exact provider units, policy/API usage signals and region. Guardrail inputs must belong to the same
-source as their rate. A missing accounting field withholds only its acquisition method. Nova
+source as their rate. Guardrail rate terms use the reviewed safeguard name for the native operation
+and policy type. The [Guardrails pricing tables](https://aws.amazon.com/bedrock/pricing/#Guardrails)
+distinguish the `InvokeGuardrailChecks` tariffs by API, so their names carry that qualification.
+A missing accounting field withholds only its acquisition method. Nova
 Grounding is a source-owned service with its exact compatible model reference; it is not recovered
 by interpreting a model-local raw marker during assembly.
 

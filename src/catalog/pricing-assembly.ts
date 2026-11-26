@@ -101,6 +101,8 @@ interface AtomicTermBase {
 export interface AtomicRateTerm extends AtomicTermBase {
   kind: "rate";
   meter: PriceMeter;
+  // Null records a disagreement between source labels.
+  label?: string | null;
   variants: AtomicRateVariant[];
   raw_variants: AtomicRawVariant[];
 }
@@ -393,6 +395,7 @@ function assembleTerm(prepared: PreparedTerm): PricingTerm {
       ...base,
       kind: "rate",
       meter: input.meter,
+      ...optional("label", input.label ?? undefined),
       variants,
       raw_variants: groupRaw([...input.raw_variants, ...raw]),
     };

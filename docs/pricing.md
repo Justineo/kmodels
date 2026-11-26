@@ -534,6 +534,10 @@ A term is one stable commercial component. Its key does not include price,
 validity, region, or array position.
 
 - A `rate` term owns one meter and contains normalized and raw variants.
+  An optional reviewed `label` names that commercial component across its variants.
+  Labels do not participate in identity, applicability, or price selection. Assembly retains a
+  single agreed label, ignoring omissions, and omits disagreeing labels while preserving rates.
+  The portable v3.0 projection omits the label.
 - An `allowance` term contains normalized benefits and raw variants.
 - A `contribution` term points to exact rate terms used to price usage generated
   by this offer, without copying their amounts.
@@ -684,8 +688,8 @@ similar selectors stay in applicability rather than being encoded inside a
 signal name unless the source exposes a genuinely distinct counter.
 When source evidence identifies a single nominal duration as part of a charge, bind its billable
 quantity directly. Reserve duration selectors for evidence that duration changes applicability.
-A usage signal may carry a display label for the named quantity, which the website uses on the
-corresponding rate row. The portable vocabulary retains the reviewed identity, definition and label.
+A usage signal may carry a display label for the named quantity in billing details.
+The portable vocabulary retains the reviewed identity, definition and label.
 
 Fixed units canonicalize to reviewed bases with exact scaling. For example,
 `USD 60/hour` and `USD 1/minute` normalize to the same per-second value. A price

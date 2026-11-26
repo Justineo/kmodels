@@ -39,6 +39,20 @@ const rows = [
     description: "$0.00008 per TextUnit",
   },
   {
+    id: "WORD",
+    attributes: { operation: "ApplyGuardrail", policyType: "WordPolicy" },
+    unit: "TextUnit",
+    amount: "0",
+    description: "$0 per 1K text units for WordPolicyUnitsConsumed",
+  },
+  {
+    id: "REGEX",
+    attributes: { operation: "ApplyGuardrail", policyType: "SensitiveInfoFree" },
+    unit: "TextUnit",
+    amount: "0",
+    description: "$0 per 1K text units for SensitiveInformationPolicyFreeUnitsConsumed",
+  },
+  {
     id: "SEARCH",
     attributes: { usagetype: "USE1-Bedrock-Websearch-Queries" },
     unit: "Queries",
@@ -134,7 +148,12 @@ describe("Bedrock native request services", () => {
       ),
     ).toBe(true);
     expect(parsed.pricing_inputs).toHaveLength(32);
-    const content = rate(parsed, "guardrails", "content").variants[0];
+    const contentTerm = rate(parsed, "guardrails", "content");
+    expect(contentTerm).toMatchObject({
+      label: "Text content filters",
+      meter: { namespace: "kmodels", value: "content_safety" },
+    });
+    const content = contentTerm.variants[0];
     expect(content?.price).toMatchObject({
       value: { numerator: "3", denominator: "20000" },
       per: {
@@ -161,14 +180,15 @@ describe("Bedrock native request services", () => {
     });
     if (content === undefined || content.charge_binding === undefined)
       throw new Error("Missing content binding");
-    expect(rate(parsed, "guardrails", "contentpolicyimage").variants[0]?.price.value).toEqual({
+    const image = rate(parsed, "guardrails", "contentpolicyimage");
+    expect(image.variants[0]?.price.value).toEqual({
       numerator: "1",
       denominator: "1250",
     });
-    expect(
-      rate(parsed, "guardrails", "guardrailcontentchecks").variants[0]?.charge_binding
-        ?.quantity_methods,
-    ).toMatchObject([
+    expect(image.label).toBe("Image content filters");
+    const check = rate(parsed, "guardrails", "guardrailcontentchecks");
+    expect(check.label).toBe("Text content filters · InvokeGuardrailChecks");
+    expect(check.variants[0]?.charge_binding?.quantity_methods).toMatchObject([
       {
         input_sources: [
           expect.objectContaining({
@@ -177,13 +197,23 @@ describe("Bedrock native request services", () => {
         ],
       },
     ]);
+    for (const [key, label] of [
+      ["wordpolicy", "Word filters"],
+      ["sensitiveinfofree", "Sensitive information filters (regex)"],
+    ] as const) {
+      const term = rate(parsed, "guardrails", key);
+      expect(term.label).toBe(label);
+      expect(term.variants[0]?.price.value).toEqual({ numerator: "0", denominator: "1" });
+    }
     for (const [resource, key] of [
       ["web-search", "queries"],
       ["prompt-routing", "prompt-router"],
       ["reranking", "reranker"],
     ]) {
       if (resource === undefined || key === undefined) throw new Error("Missing test service");
-      expect(rate(parsed, resource, key).variants[0]?.charge_binding).toMatchObject({
+      const term = rate(parsed, resource, key);
+      expect(term.label).toBeUndefined();
+      expect(term.variants[0]?.charge_binding).toMatchObject({
         aggregation: "request",
       });
     }
@@ -204,10 +234,31 @@ describe("Bedrock native request services", () => {
       rate(changed, "guardrails", "contentpolicyimage").variants.map(rateVariantIdentity),
     ).toEqual(rate(parsed, "guardrails", "contentpolicyimage").variants.map(rateVariantIdentity));
   });
+  it("preserves the price when source terms disagree on its display label", async () => {
+    const parsed = parse(await bundle());
+    const fact = parsed.commercial_facts?.find(
+      ({ resource_key, terms }) =>
+        resource_key === "guardrails" && terms?.some(({ term_key }) => term_key === "content"),
+    );
+    const term = fact?.terms?.find(({ term_key }) => term_key === "content");
+    if (term?.kind !== "rate" || fact?.terms === undefined)
+      throw new Error("Missing Guardrail content terms");
+    const original = rate(parsed, "guardrails", "content");
+    const { label: _sourceLabel, ...unlabeled } = term;
+    fact.terms.push(unlabeled);
+    expect(rate(parsed, "guardrails", "content")).toEqual(original);
+    fact.terms.push({ ...term, label: "Alternative label" }, term);
+    const changed = rate(parsed, "guardrails", "content");
+    const { label, ...expected } = original;
+    expect(label).toBe("Text content filters");
+    expect(changed).toEqual(expected);
+  });
   it("withholds a missing acquisition contract without changing service rates or quantities", async () => {
     const input = await bundle();
     input.documents = input.documents.filter(({ url }) => !url.endsWith("GuardrailUsage.html"));
-    const variant = rate(parse(input), "guardrails", "content").variants[0];
+    const term = rate(parse(input), "guardrails", "content");
+    expect(term.label).toBe("Text content filters");
+    const variant = term.variants[0];
     expect(variant?.price.value).toEqual({ numerator: "3", denominator: "20000" });
     expect(variant?.charge_binding).toMatchObject({
       signal: { value: "guardrail_content_policy_units" },

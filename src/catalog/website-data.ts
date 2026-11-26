@@ -33,7 +33,7 @@ import type {
   PriceCategoricalValue,
   PriceCondition,
   PriceDimension,
-  PriceMeter,
+  PriceRateTerm,
   PricingBook,
   PricingCatalog,
   PricingOffer,
@@ -986,6 +986,12 @@ function websiteOffer(
   const unnormalized: WebsitePricingOffer["unnormalized"] = [];
 
   for (const term of offer.terms) {
+    const label =
+      term.kind === "rate"
+        ? rateTermLabel(term, atoms)
+        : term.kind === "allowance"
+          ? "Allowance"
+          : formatSentenceCase(term.term_key.replaceAll("-", "_"));
     if (term.kind === "rate") {
       term.variants.forEach((variant, index) => {
         const price = displayUnitPrice(variant.price, variant.observations, {
@@ -995,7 +1001,7 @@ function websiteOffer(
         rates.push({
           key,
           term_ref: term.id,
-          label: meterLabel(term.meter, atoms),
+          label,
           amount: price.amount,
           unit: `per ${price.displayUnit}`,
           accessible_text: price.accessibleText,
@@ -1021,7 +1027,7 @@ function websiteOffer(
       term.variants.forEach((variant, index) => {
         contributions.push({
           key: `${term.id}:contribution:${index}`,
-          label: formatSentenceCase(term.term_key.replaceAll("-", "_")),
+          label,
           target: contributionTarget(books, variant.target_rate_refs, atoms),
           drivers: variant.charge_bindings.map((binding) => chargeDriver(binding, atoms)),
           ...scopeFields(variant, labels),
@@ -1030,12 +1036,6 @@ function websiteOffer(
     }
 
     const variants = term.kind === "raw" ? term.variants : term.raw_variants;
-    const label =
-      term.kind === "rate"
-        ? meterLabel(term.meter, atoms)
-        : term.kind === "allowance"
-          ? "Allowance"
-          : formatSentenceCase(term.term_key.replaceAll("-", "_"));
     variants.forEach((variant, index) => {
       const details = [...new Set(variant.observations.flatMap(({ raw }) => rawFactDetails(raw)))];
       unnormalized.push({
@@ -1640,7 +1640,7 @@ function allowanceTarget(
   if (target.kind === "offers") return `${target.offer_refs.length} offer target`;
   const labels = target.term_refs.map((ref) => {
     const term = offer.terms.find(({ id }) => id === ref);
-    return term?.kind === "rate" ? meterLabel(term.meter, atoms) : "Rate term";
+    return term?.kind === "rate" ? rateTermLabel(term, atoms) : "Rate term";
   });
   return `Applies to ${[...new Set(labels)].join(", ")}`;
 }
@@ -1654,9 +1654,7 @@ function contributionTarget(
     offers.flatMap((offer) =>
       offer.terms.flatMap((term) =>
         term.kind === "rate" && termRefs.includes(term.id)
-          ? [
-              `${offer.name ?? formatSentenceCase(offer.offer_key)} · ${meterLabel(term.meter, atoms)}`,
-            ]
+          ? [`${offer.name ?? formatSentenceCase(offer.offer_key)} · ${rateTermLabel(term, atoms)}`]
           : [],
       ),
     ),
@@ -1839,10 +1837,9 @@ function resetLabel(reset: AllowanceReset): string {
     : `${reset.provider_id} · ${reset.value}`;
 }
 
-function meterLabel(meter: PriceMeter, atoms: ProviderAtomIndex): string {
-  if (meter.namespace === "kmodels") return formatSentenceCase(meter.value);
-  providerAtom(atoms, meter.provider_id, "meter", meter.value);
-  return formatSentenceCase(meter.value);
+function rateTermLabel({ label, meter }: PriceRateTerm, atoms: ProviderAtomIndex): string {
+  if (meter.namespace === "provider") providerAtom(atoms, meter.provider_id, "meter", meter.value);
+  return label ?? formatSentenceCase(meter.value);
 }
 
 function hasFixedValue(selector: WebsitePricingSelector): boolean {

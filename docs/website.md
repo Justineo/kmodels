@@ -307,9 +307,10 @@ does not resolve conflicts, alter canonical evidence, or merge the quotes into a
   while its matching predicate retains that bound and the inclusive upper boundary.
   Changes to the projected selector contract advance the UI projection version and rebuild its
   snapshot, so an unchanged canonical price book cannot retain stale cached controls.
-- The model rate matrix shows only the meter, rate, unit, and unresolved validity qualification. Driver metadata
-  remains in the canonical audit; a missing driver never hides a rate. Labels identify the meter,
-  not an optional usage counter. TTL and other rate-changing facts remain conditions. Selecting
+- The rate matrix shows the charge name, rate, unit, and unresolved validity qualification. A
+  reviewed rate-term label names the charge when available, with the meter name as the fallback.
+  Pricing notes and references to that term use the same name. Driver metadata remains in the
+  canonical audit; a missing driver never hides a rate. TTL and other rate-changing facts remain conditions. Selecting
   geography must not hide a still-required TTL; a sole published value resolves internally.
   The UI must not interpret provider-specific term keys.
   Contribution rows expose the same driver metadata without copying the target rate. Generic

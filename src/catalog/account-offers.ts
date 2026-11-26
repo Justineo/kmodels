@@ -206,6 +206,7 @@ export function canonicalizeOfferBoundaries(
               ...base,
               kind: "rate",
               meter: term.meter,
+              ...(term.label === undefined ? {} : { label: term.label }),
               variants: normalized(relevant(term.variants), scope).map(
                 ({ charge_binding, selector_sources, ...v }) => ({
                   ...v,

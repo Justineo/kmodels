@@ -70,6 +70,56 @@ interface ServiceRateInput {
   vocabulary: ProviderAtomRegistryEntry[];
 }
 
+interface GuardrailPolicy {
+  field: string;
+  label: string;
+}
+
+const contentPolicy = { field: "contentPolicyUnits", label: "Text content filters" };
+const sensitiveInformationPolicy = {
+  field: "sensitiveInformationPolicyUnits",
+  label: "Sensitive information filters (PII)",
+};
+const topicPolicy = { field: "topicPolicyUnits", label: "Denied topics" };
+const wordPolicy = { field: "wordPolicyUnits", label: "Word filters" };
+const applyGuardrailPolicies: Readonly<Record<string, GuardrailPolicy>> = {
+  AutomatedReasoning: {
+    field: "automatedReasoningPolicyUnits",
+    label: "Automated Reasoning checks",
+  },
+  Content: contentPolicy,
+  ContentPolicyImage: { field: "contentPolicyImageUnits", label: "Image content filters" },
+  ContextualGrounding: {
+    field: "contextualGroundingPolicyUnits",
+    label: "Contextual grounding checks",
+  },
+  GuardrailContent: contentPolicy,
+  GuardrailSensitiveInfo: sensitiveInformationPolicy,
+  GuardrailTopic: topicPolicy,
+  GuardrailWordPolicy: wordPolicy,
+  SensitiveInfo: sensitiveInformationPolicy,
+  SensitiveInfoFree: {
+    field: "sensitiveInformationPolicyFreeUnits",
+    label: "Sensitive information filters (regex)",
+  },
+  Topic: topicPolicy,
+  WordPolicy: wordPolicy,
+};
+const invokeGuardrailChecksPolicies: Readonly<Record<string, GuardrailPolicy>> = {
+  GuardrailContentChecks: {
+    field: "contentFilter.textUnits",
+    label: contentPolicy.label,
+  },
+  GuardrailPromptAttackChecks: {
+    field: "promptAttack.textUnits",
+    label: "Prompt attack detection",
+  },
+  GuardrailSensitiveInfoChecks: {
+    field: "sensitiveInformation.textUnits",
+    label: sensitiveInformationPolicy.label,
+  },
+};
+
 // Price List pricePerUnit is denominated by its unit field. The description may
 // advertise a price per 1K while the machine amount is already per single unit.
 export function bedrockServiceTerm(input: ServiceRateInput): PriceRateTerm | undefined {
@@ -115,13 +165,15 @@ export function bedrockServiceTerm(input: ServiceRateInput): PriceRateTerm | und
       },
     ],
   });
-  const charge_binding = serviceBinding(input, unit.unit);
+  const charge = serviceCharge(input, unit.unit);
+  const charge_binding = charge?.binding;
   const offerId = pricingOfferId(pricingBookId(providerId, input.bookKey), input.offerKey);
   return {
     id: pricingTermId(offerId, "rate", input.termKey),
     kind: "rate",
     term_key: input.termKey,
     meter,
+    ...(charge?.label === undefined ? {} : { label: charge.label }),
     source_refs: [input.observation.source_ref],
     raw_variants: [],
     variants: [
@@ -177,48 +229,37 @@ function serviceUnit(
   return;
 }
 
-function serviceBinding(input: ServiceRateInput, unit: UnitExpression): ChargeBinding | undefined {
-  const { operation, policyType } = input.attributes;
+function serviceCharge(
+  input: ServiceRateInput,
+  unit: UnitExpression,
+): { label?: string; binding: ChargeBinding } | undefined {
   if (input.resourceKey === "guardrails") {
-    const field =
-      operation === "InvokeGuardrailChecks"
-        ? {
-            GuardrailContentChecks: "contentFilter.textUnits",
-            GuardrailPromptAttackChecks: "promptAttack.textUnits",
-            GuardrailSensitiveInfoChecks: "sensitiveInformation.textUnits",
-          }[policyType ?? ""]
-        : {
-            AutomatedReasoning: "automatedReasoningPolicyUnits",
-            Content: "contentPolicyUnits",
-            ContentPolicyImage: "contentPolicyImageUnits",
-            ContextualGrounding: "contextualGroundingPolicyUnits",
-            GuardrailContent: "contentPolicyUnits",
-            GuardrailSensitiveInfo: "sensitiveInformationPolicyUnits",
-            GuardrailTopic: "topicPolicyUnits",
-            GuardrailWordPolicy: "wordPolicyUnits",
-            SensitiveInfo: "sensitiveInformationPolicyUnits",
-            SensitiveInfoFree: "sensitiveInformationPolicyFreeUnits",
-            Topic: "topicPolicyUnits",
-            WordPolicy: "wordPolicyUnits",
-          }[policyType ?? ""];
-    if (field === undefined) return;
+    const { operation, policyType } = input.attributes;
+    const invokeChecks = operation === "InvokeGuardrailChecks";
+    const policies = invokeChecks ? invokeGuardrailChecksPolicies : applyGuardrailPolicies;
+    const policy =
+      policyType !== undefined && Object.hasOwn(policies, policyType)
+        ? policies[policyType]
+        : undefined;
+    if (policy === undefined) return;
+    const { field, label } = policy;
     const key = `guardrail_${field.replace(/[A-Z.]/g, (value) => (value === "." ? "_" : `_${value.toLowerCase()}`))}`;
-    const factKey =
-      operation === "InvokeGuardrailChecks"
-        ? `guardrails.checks.${field}`
-        : `guardrails.apply.${field}`;
+    const factKey = `guardrails.${invokeChecks ? "checks" : "apply"}.${field}`;
     const facts = input.inputs.filter(
       (fact) => fact.key === factKey && fact.source_ref === input.observation.source_ref,
     );
-    return binding(
-      key,
-      `Amazon Bedrock Guardrails billable ${field}`,
-      "outcome",
-      unit,
-      input.vocabulary,
-      input.observation,
-      facts,
-    );
+    return {
+      label: invokeChecks ? `${label} · InvokeGuardrailChecks` : label,
+      binding: binding(
+        key,
+        `Amazon Bedrock Guardrails billable ${field}`,
+        "outcome",
+        unit,
+        input.vocabulary,
+        input.observation,
+        facts,
+      ),
+    };
   }
   const metadata =
     input.resourceKey === "reranking"
@@ -242,15 +283,17 @@ function serviceBinding(input: ServiceRateInput, unit: UnitExpression): ChargeBi
             }
           : undefined;
   if (metadata === undefined) return;
-  return binding(
-    metadata.key,
-    metadata.definition,
-    metadata.phase,
-    unit,
-    input.vocabulary,
-    input.observation,
-    [],
-  );
+  return {
+    binding: binding(
+      metadata.key,
+      metadata.definition,
+      metadata.phase,
+      unit,
+      input.vocabulary,
+      input.observation,
+      [],
+    ),
+  };
 }
 
 function binding(

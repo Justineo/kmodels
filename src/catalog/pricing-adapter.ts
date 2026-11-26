@@ -593,6 +593,10 @@ function addSourceTerm(
             raw_variants: [],
             source_refs: [],
           };
+    if (term.label !== undefined) {
+      if (rate.label === undefined) rate.label = term.label;
+      else if (rate.label !== term.label) rate.label = null;
+    }
     const variants = atomicNormalizedVariants(term.variants).map(
       ({ charge_binding, selector_sources, ...variant }) => ({
         ...variant,

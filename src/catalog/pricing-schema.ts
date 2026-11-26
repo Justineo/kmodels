@@ -523,6 +523,7 @@ export const priceRateTermSchema = z
     ...pricingTermBaseShape,
     kind: z.literal("rate"),
     meter: priceMeterSchema,
+    label: nonEmptyString.optional(),
     variants: z.array(priceRateVariantSchema),
     raw_variants: z.array(rawPricingVariantSchema),
   })

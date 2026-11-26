@@ -65,6 +65,7 @@ function detail(
   conditions: PriceCondition[],
   atoms: ProviderAtomRegistryEntry[] = [],
   options: {
+    rateLabel?: string;
     rateBinding?: ChargeBinding;
     contributionBindings?: ChargeBinding[];
     enrollment?: PricingOffer["enrollment"];
@@ -112,6 +113,7 @@ function detail(
                 id: pricingTermId(offerId, "rate", "input"),
                 term_key: "input",
                 kind: "rate",
+                ...(options.rateLabel === undefined ? {} : { label: options.rateLabel }),
                 meter: { namespace: "kmodels", value: "input_text" },
                 source_refs: [sourceId],
                 variants: applicability.map((scope, index) => ({
@@ -171,6 +173,19 @@ function detail(
 }
 
 describe("website data projection", () => {
+  it("uses the reviewed rate term label without requiring a charge binding", () => {
+    const condition = {
+      kind: "decimal_range",
+      dimension: durationDimension,
+      unit: secondUnit,
+      lower: { value: "10", inclusive: true },
+    } satisfies PriceCondition;
+    const named = detail([condition], [], { rateLabel: "Reviewed charge" }).pricing?.offers[0];
+    const legacy = detail([condition]).pricing?.offers[0];
+    expect(named?.rates[0]).toEqual({ ...legacy?.rates[0], label: "Reviewed charge" });
+    expect(legacy?.rates[0]?.label).toBe("Input text");
+  });
+
   it("summarizes broad offer relations instead of repeating every target", () => {
     const offerRefs = ["1", "2", "3", "4"].map((value) => value.repeat(64));
     expect(
