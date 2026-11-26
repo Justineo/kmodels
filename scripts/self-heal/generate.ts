@@ -130,7 +130,7 @@ async function prepareCodexGeneration(
   await mkdir(sandboxCodexHome, { recursive: true });
   return {
     adapter: { apiKey, model, pricingLookup: prices, codexBin },
-    replayCommandWrapper(replayArgs: readonly string[], replayCwd: string) {
+    replayCommandWrapper: (replayArgs: readonly string[], replayCwd: string) => {
       const env = sanitizedUntrustedEnv();
       delete env.RUNNER_TEMP;
       env.CODEX_HOME = sandboxCodexHome;
