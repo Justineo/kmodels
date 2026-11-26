@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   # Job 1 (Read-only): download exact-attempt refresh-report.json & .json.gz public evidence
-  # into $RUNNER_TEMP (outside checkout), reserve budget, check open PRs/cooldowns, and emit target.json.
+  # into $RUNNER_TEMP (outside checkout), check spend and open source repairs, and emit target.json.
   triage:
     if: github.repository == 'Justineo/kmodels' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
@@ -133,30 +133,31 @@ jobs:
           TRIGGER_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           SELF_HEAL_MAX_RUN_USD: ${{ vars.SELF_HEAL_MAX_RUN_USD }}
           SELF_HEAL_MAX_WINDOW_USD: ${{ vars.SELF_HEAL_MAX_WINDOW_USD }}
-          SELF_HEAL_COOLDOWN_HOURS: ${{ vars.SELF_HEAL_COOLDOWN_HOURS }}
         run: |
           WORK="$RUNNER_TEMP/self-heal/triage-input"
           PACKET="$RUNNER_TEMP/self-heal/triage-packet"
           mkdir -p "$PACKET/evidence"
           base_sha="$(git rev-parse HEAD)"
-          open_prs="$(gh pr list --state open --json headRefName --jq '[.[] | .headRefName | capture("^self-heal/(?<p>[a-z0-9-]+)-[0-9]+$").p] | unique | join(",")' || true)"
+          open_prs="$(gh pr list --state open --limit 1000 --json headRefName --jq '[.[] | .headRefName | capture("^self-heal/[a-z0-9-]+/(?<s>[a-z0-9-]+)/[0-9]+$").s] | unique | join(",")' || true)"
           args=(--data-dir "$WORK" --evidence-dir "$WORK/evidence" --budget-ledger "$RUNNER_TEMP/self-heal/budget-ledger.json")
-          if [[ "$EVENT_NAME" == "workflow_run" ]]; then args+=(--require-refresh-report --require-source-evidence); fi
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            args+=(--require-refresh-report --require-source-evidence)
+          else
+            args+=(--probe-public-evidence)
+          fi
           if [[ -n "$PROVIDER_FILTER" ]]; then args+=(--provider "$PROVIDER_FILTER"); fi
-          if [[ -n "$open_prs" ]]; then args+=(--open-pr-providers "$open_prs"); fi
+          if [[ -n "$open_prs" ]]; then args+=(--open-pr-sources "$open_prs"); fi
           if [[ -n "$TRIGGER_RUN_ID" ]]; then args+=(--trigger-run-id "$TRIGGER_RUN_ID"); fi
           if [[ -n "$TRIGGER_RUN_ATTEMPT" ]]; then args+=(--trigger-run-attempt "$TRIGGER_RUN_ATTEMPT"); fi
           vp node scripts/self-heal/triage.ts "${args[@]}" | tee "$PACKET/target.json"
           status="$(jq -r '.status // ""' "$PACKET/target.json")"
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$status" == "actionable" ]]; then
             # Manual dispatch hydrates refresh-summary.json without a bundled evidence archive.
-            # Fetch reviewed public evidence for target source-level candidates before binding target.json.
-            public_sources="$(jq -r '[(.target.candidates // [])[] | select((.source_id | type) == "string" and .source_access == "public") | .source_id] | unique | .[]' "$PACKET/target.json")"
-            if [[ -n "$public_sources" ]]; then
+            # The probe admits a single public source for evidence capture.
+            source="$(jq -r '.target.source_id // ""' "$PACKET/target.json")"
+            if [[ -n "$source" ]]; then
               rm -rf /tmp/gh-aw/agent/catalog-evidence
-              while IFS= read -r sid; do
-                [[ -n "$sid" ]] && vp node scripts/fetch-catalog-evidence.ts "$sid" || true
-              done <<< "$public_sources"
+              vp node scripts/fetch-catalog-evidence.ts "$source" || true
               if [[ -d /tmp/gh-aw/agent/catalog-evidence ]]; then
                 target_provider="$(jq -r '.target.provider_id // ""' "$PACKET/target.json")"
                 while IFS= read -r ev_file; do
@@ -271,7 +272,6 @@ jobs:
           SELF_HEAL_AGENT_CMD: ${{ vars.SELF_HEAL_AGENT_CMD }}
           SELF_HEAL_MAX_RUN_USD: ${{ vars.SELF_HEAL_MAX_RUN_USD }}
           SELF_HEAL_MAX_WINDOW_USD: ${{ vars.SELF_HEAL_MAX_WINDOW_USD }}
-          SELF_HEAL_COOLDOWN_HOURS: ${{ vars.SELF_HEAL_COOLDOWN_HOURS }}
         run: |
           vp node scripts/self-heal/generate.ts \
             --triage-file "$RUNNER_TEMP/self-heal/triage-packet/target.json" \
@@ -352,7 +352,7 @@ jobs:
           retention-days: 7
 
   # Job 4 (Trusted publish & budget settlement, ZERO LLM secrets, NEVER executes candidate code):
-  # always settles budget/cooldown even when generate or verify failed; publishes ONLY exact verified patches.
+  # always settles spend even when generate or verify failed; publishes ONLY exact verified patches.
   publish:
     needs: [triage, generate, verify]
     if: always() && needs.triage.outputs.actionable == 'true' && vars.SELF_HEAL_AGENT_CMD != ''
@@ -420,7 +420,6 @@ jobs:
           GENERATE_RUN_ATTEMPT: ${{ needs.generate.outputs.generate_attempt }}
           SELF_HEAL_MAX_RUN_USD: ${{ vars.SELF_HEAL_MAX_RUN_USD }}
           SELF_HEAL_MAX_WINDOW_USD: ${{ vars.SELF_HEAL_MAX_WINDOW_USD }}
-          SELF_HEAL_COOLDOWN_HOURS: ${{ vars.SELF_HEAL_COOLDOWN_HOURS }}
         run: |
           args=(--triage-file "$RUNNER_TEMP/self-heal/triage-packet/target.json" --budget-ledger "$RUNNER_TEMP/self-heal/budget-ledger.json")
           if [[ -d "$RUNNER_TEMP/self-heal/proposal-out" ]]; then args+=(--proposal-dir "$RUNNER_TEMP/self-heal/proposal-out"); fi

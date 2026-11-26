@@ -24,13 +24,12 @@ own exact identities, pricing policies, known source limits and reviewed fixture
 ### Set a finite scope
 
 For a targeted repair, use the admitted candidates, publication boundary and investigation deadline.
-Triage (`scripts/self-heal/triage.ts`) selects one error-driven provider from the triggering refresh
-report and quarantine state using severity, open-PR deferral, provider cooldown and per-source
-evidence availability, keeping all of that provider's source and validation candidates together
-alongside bound public evidence. Other providers remain visible in the refresh report and skipped
-list; they are neither resolved nor part of this run's closing list. Reruns use the latest exact-run
-evidence. Source-acquisition review follows the admitted providers too; an unrelated transport failure
-must not silently expand a bounded batch, and execution failures remain visible in the refresh report.
+Triage (`scripts/self-heal/triage.ts`) selects one source incident from the triggering refresh report
+and quarantine state using severity, source-specific open-PR deferral, and replay evidence
+availability. It keeps all findings bound to that source together alongside the verified public
+evidence. The refresh report retains sibling incidents and unbound provider findings. The skipped
+list explains why triage passed over higher-ranked candidates. Reruns use the latest exact-run
+evidence, and source acquisition follows the admitted source.
 Daily proactive provider rotation is retired; broader multi-provider or architecture reviews are run
 explicitly on demand.
 For a comprehensive review, define the provider queue and acceptance conditions first. Prioritize

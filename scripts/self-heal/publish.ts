@@ -65,7 +65,7 @@ async function emitGithubOutputs(outcome: PublishOutcome): Promise<void> {
  * Security invariant: NEVER executes untrusted candidate code, parsers, or tests.
  * Only verifies the immutable verification receipt + exact patch digest + trusted budget,
  * applies the exact patch via `git apply`, stages ONLY `receipt.changed_files`, and publishes.
- * Always settles budget & provider cooldown even on generate failure, no-patch, or verify failure.
+ * Settles paid usage even on generate failure, no-patch, or verify failure.
  */
 export async function runPublish(options: {
   cwd?: string;
@@ -111,20 +111,12 @@ export async function runPublish(options: {
     parsedUsage = undefined;
   }
 
-  const runUsage: RunUsageInput =
-    parsedUsage !== undefined
-      ? {
-          usage_known: parsedUsage.usage_known,
-          input_tokens: parsedUsage.input_tokens,
-          output_tokens: parsedUsage.output_tokens,
-          estimated_usd: parsedUsage.estimated_usd,
-        }
-      : {
-          usage_known: false,
-          input_tokens: null,
-          output_tokens: null,
-          estimated_usd: null,
-        };
+  const runUsage: RunUsageInput = parsedUsage ?? {
+    usage_known: false,
+    input_tokens: null,
+    output_tokens: null,
+    estimated_usd: null,
+  };
 
   const resolvedRunId = options.runId ?? process.env.GITHUB_RUN_ID ?? `local-${Date.now()}`;
   // Key settlement by `generate`'s attempt (from usage.json or upstream generate job output)
@@ -170,7 +162,7 @@ export async function runPublish(options: {
     return result;
   };
 
-  // Case 1: Generation failed, hit budget cap, or produced no patch -> settle budget & cooldown and exit.
+  // Settle usage from attempts that produced no eligible patch.
   let rawProposal: unknown;
   let rawReceipt: unknown;
   try {
@@ -200,8 +192,7 @@ export async function runPublish(options: {
       parsedUsage.estimated_usd === 0 &&
       (parsedUsage.status === "deferred" || parsedUsage.status === "no_patch")
     ) {
-      // Pre-call refusal (cooldown, rolling budget exhausted, or missing evidence) never invoked
-      // the paid agent: leave the spend ledger and provider cooldown untouched.
+      // A pre-call refusal never invoked the paid agent and leaves the spend ledger untouched.
       const outcome: BudgetOutcome = parsedUsage.status === "deferred" ? "deferred" : "no_patch";
       return finish(
         outcome,
@@ -321,7 +312,7 @@ export async function runPublish(options: {
   }
 
   // Apply ONLY the verified exact patch and stage ONLY the verified file set (zero candidate execution).
-  // Wrap delivery so push/PR failures ALWAYS settle budget & cooldown before returning.
+  // Settle usage even when push or PR creation fails.
   try {
     runCommand("git", ["apply", "--whitespace=nowarn", patchPath], cwd);
     runCommand("git", ["add", "--", ...expectedFiles], cwd);
@@ -374,7 +365,10 @@ export async function runPublish(options: {
       });
     }
 
-    const branch = `self-heal/${target.provider_id}-${process.env.GITHUB_RUN_ID ?? Date.now()}`;
+    const branch =
+      target.source_id === undefined
+        ? `self-heal/${target.provider_id}-${resolvedRunId}`
+        : `self-heal/${target.provider_id}/${target.source_id}/${resolvedRunId}`;
     if (options.skipRemotePush !== true) {
       runCommand("git", ["push", "origin", `HEAD:refs/heads/${branch}`], cwd);
       runCommand(

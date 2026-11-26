@@ -29,8 +29,10 @@ verification gate**.
      `shard.attempt <= report_attempt`, and exact GitHub `artifact_id` + `artifact_name` match,
      allowing legal reuse of earlier successful shards). On `workflow_dispatch`, fetches reviewed
      public evidence via `scripts/fetch-catalog-evidence.ts` and materializes paired public catalog
-     context from `data/catalog.json` (excluding `azure-retail-prices`). Preserves all merged,
-     source+dependency, and quarantine obligations per provider; refuses transport-layer
+     context from `data/catalog.json` (excluding `azure-retail-prices`) for an independently
+     replayable public source. Ranks incidents by severity and selects one source. It keeps all
+     obligations bound to that source together and reports unbound quarantine or validation
+     findings separately. It refuses transport-layer
      `dependency_parse_failure` targets (whose failed raw dependency payloads are not preserved in
      the assembled source bundle), rejects legacy redacted/truncated `source_parse_failure` targets
      lacking `error_fingerprint` or `source_hash` before paid generation (shared with `generate` and
@@ -41,30 +43,32 @@ verification gate**.
      discovered evidence body via `verifiedCatalogEvidence()` and paired context via
      `parseReplayContext()` (shared with `scripts/replay-catalog-evidence.ts`; `sagemaker-pricing`
      is self-contained and requires no external catalog context) before admitting any target.
-     Uploads only evidence and replay context bound to the selected target. Scheduled triage defers
-     an incident for the rolling budget window after an incomplete attempt with observed spend,
-     matching the diagnostics, source and replay-context hashes, and checked-out tree excluding
-     generated data. A new incident, evidence, or code revision can become eligible after the provider
-     cooldown. Manual dispatch can target an incident subject to the generation preflight checks.
+     Uploads only evidence and replay context bound to the selected target. An open repair PR
+     defers its source. Scheduled triage defers an identical incident for the rolling budget
+     window after an incomplete attempt with observed spend. Dedupe matches diagnostics, source
+     and replay-context hashes, and the checked-out code excluding generated data. A sibling
+     source, new incident, changed evidence, or changed code can be eligible immediately.
    - **`generate`** (`contents: read`, `persist-credentials: false`, **no write `GH_TOKEN`**):
-     Holds only `SELF_HEAL_API_KEY`. Re-checks both the rolling budget ledger AND provider cooldowns
-     before invoking any paid agent (emitting `status: "deferred"`, `attempts: 0`, `$0` when
-     blocked pre-call so cooldowns and the spend ledger stay untouched) and refuses
+     Holds only `SELF_HEAL_API_KEY`. Rechecks the rolling budget before invoking a paid agent
+     (emitting `status: "deferred"`, `attempts: 0`, `$0` on pre-call budget refusal) and refuses
      unsupported/unverifiable triggers or missing/hash-mismatched/invalid replay context at `$0`.
      Checks out pinned `base_sha`, passes only hash-matched evidence into the agent prompt, strips
-     `GH_TOKEN`/`GITHUB_TOKEN` from the agent subprocess, runs at most 2 bounded generation attempts
-     and passes the **remaining** `SELF_HEAL_MAX_RUN_USD` to each attempt. Before a scheduled paid
+     `GH_TOKEN`/`GITHUB_TOKEN` from the agent subprocess and passes the remaining USD to each
+     attempt. The built-in adapter can retry while it records positive settled spend, has budget
+     left, and receives new gate feedback. Custom agent commands are tried at most twice.
+     Before a scheduled paid
      attempt, it also rechecks recent incomplete incidents. It enforces the USD cap on cumulative
      reported spend rounded to 6 decimal places and preserves each valid USD or token count
-     independently. Incomplete usage stops the retry. A metered USD stop with settled usage sends
-     the current working diff through the same local gate before ending generation. It always
-     emits `usage.json` (tagged with `generate_run_attempt`) and exports `proposal_artifact_id`
+     independently. Incomplete usage stops the retry. A built-in Codex session that exits early
+     with settled usage sends its working diff through the same local gate before generation
+     finishes or retries. It always emits `usage.json` (tagged with `generate_run_attempt`) and
+     exports `proposal_artifact_id`
      and `generate_attempt` for the artifact, which includes `candidate.patch` and `proposal.json`
      when ready.
    - **`verify`** (`contents: read`, `persist-credentials: false`, **no write `GH_TOKEN`**, **no
      `SELF_HEAL_API_KEY`**): Downloads upstream artifacts by immutable `artifact-id` (surviving
-     GitHub "Re-run failed jobs"). The sole job that executes untrusted candidate code,
-     symlinked-worktree before/after evidence replay (verifying evidence & context SHA-256 digests,
+     GitHub "Re-run failed jobs"). Independently executes symlinked-worktree before/after
+     evidence replay (verifying evidence & context SHA-256 digests,
      passing identical public replay context to baseline and candidate, enforcing trigger-matched
      verification: `source_parse_failure` requires non-null, non-zero baseline exit emitting a
      structured `stage: "parse_error"` JSON payload for the exact `source_id` carrying both
@@ -88,11 +92,11 @@ verification gate**.
      **no `SELF_HEAL_API_KEY`**, **never executes candidate code**): Downloads upstream artifacts by
      immutable `artifact-id`. Leaves the budget ledger untouched on verified zero-call pre-flight
      refusals (`deferred` / pre-call `no_patch` with `attempts: 0` and `$0`), and settles the
-     trusted budget & cooldown ledger keyed by `(run_id, generate_attempt)` — comparing USD sums
+     trusted budget ledger keyed by `(run_id, generate_attempt)` — comparing USD sums
      and caps at 6-decimal precision (`roundUsd`) and looking up existing runs across the full
      retained ledger (not just the last 24h) so >24h re-runs keep their original timestamp outside
      the current rolling window while still enforcing merged per-run observed spend and keeping
-     `observed_usd` separate from conservative `maxRunUsd` reserves. Persists the incident
+     `observed_usd` separate from conservative per-attempt reserves. Persists the incident
      fingerprint from trusted triage for subsequent scheduled runs. Requires both
      `needs.verify.result == 'success'` (`VERIFY_JOB_RESULT`) and `receipt.ok == true`, verifies
      `verification-receipt.json` + exact patch SHA-256 + reverse-dependency ownership, applies
@@ -113,30 +117,32 @@ Before enabling automated self-heal in production, configure and verify in GitHu
   hardcoded rate table, the adapter consumes Kmodels' own SHA-256-verified published pricing data
   (`data/export-assets.json` + `data/export-assets.pack`, hydrated before generation — with
   hydration failures emitting a verified `$0` / `attempts: 0` `deferred` receipt so transient
-  snapshot download errors never consume paid budget or start provider cooldown — and loaded once
+  snapshot download errors never consume paid budget — and loaded once
   into immutable parent memory via `createInferencePriceLookup`), evaluating exact rational standard
   `v1/responses` rates (`completion_window: "ordinary"`, `deployment_scope: "global_processing"`,
   context thresholds, and cache tiers) and failing closed at `$0` for any uncatalogued (including
   uncatalogued dated snapshots) or ambiguous model. When configured with the built-in adapter, `generate.ts` invokes `runCodexAdapter` directly
   in-process from already-loaded immutable modules (never reloading scripts or `node_modules` from
-  the writable workspace on retry), runs static diff/path/safety checks plus deterministic candidate
-  evidence replay with the pinned Node runtime inside a secret-free, read-only, network-disabled
-  `codex sandbox` (so parse errors on attempt 1 feed back into attempt 2 while the separate
-  secret-free `verify` job remains
-  authoritative for before/after replay and full validation), stores trusted parent files
+  the writable workspace on retry), runs static diff/path/safety checks and before/after evidence
+  replay with the pinned Node runtime inside a secret-free, read-only, network-disabled
+  `codex sandbox`. Failed replay comparisons feed back into a remaining attempt. The separate
+  secret-free `verify` job independently repeats replay and runs full validation. The adapter stores trusted parent files
   (`usage.json`, prompts, `codex-model.json`, and SHA-256-verified cached `bin/codex`) strictly
   outside `/tmp`, the repo checkout, and the Codex subprocess's private `TMPDIR`, and strips all API
-  keys/tokens from every untrusted subprocess. The loopback metering proxy enforces worst-case
-  byte-bounded pre-request USD reservations, writes pending/unsettled usage (`estimated_usd: null`)
+  keys/tokens from every untrusted subprocess. The loopback metering proxy caps in-memory request
+  bodies at 8 MiB. It uses a conservative byte bound when affordable and asks the Responses
+  input-token counter for the same model input when that bound would block a request. It reserves
+  worst-case USD before each generation request and writes pending/unsettled usage (`estimated_usd: null`)
   before dispatching any upstream POST so pre-header disconnects, kills, or ambiguous `5xx`/`408`
   gateway errors (such as `502`/`504`) never leave a retryable `$0` receipt (only confirmed
   pre-execution HTTP rejections restore known spend), and atomically settles verified Responses SSE
-  usage into `SELF_HEAL_USAGE_FILE`.
+  usage into `SELF_HEAL_USAGE_FILE`. The adapter waits for the proxy to finish writing metering
+  results after Codex exits, including when the client disconnects during a response.
 - Repository secret `SELF_HEAL_API_KEY` (only passed to the isolated `generate` job).
-- The USD budget defaults to $2 per run and $10 per rolling 24 hours. Triage and generation reserve
-  the full per-run ceiling against the rolling spend budget before admitting a paid attempt.
-  Override the ceilings with `SELF_HEAL_MAX_RUN_USD` and `SELF_HEAL_MAX_WINDOW_USD`. Configure
-  provider cooldown separately with `SELF_HEAL_COOLDOWN_HOURS`.
+- The USD budget defaults to $2 per run and $10 per rolling 24 hours. A run can spend the smaller
+  of the per-run ceiling and the remaining rolling balance. If usage is incomplete, settlement
+  retains at least the amount authorized for that run. Override the ceilings with
+  `SELF_HEAL_MAX_RUN_USD` and `SELF_HEAL_MAX_WINDOW_USD`.
 
 When `SELF_HEAL_AGENT_CMD` is unset, `triage` still detects actionable drift and uploads the
 triage packet, emits a workflow warning and job summary explaining the missing configuration, and

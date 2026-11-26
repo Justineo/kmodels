@@ -35,7 +35,9 @@ export const CODEX_LINUX_X64_SHA256 =
   "582646c6bf0561eb0de540f7fc85b9121b0091a826bc6e96830b7f1722122182";
 export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 
-const MAX_REQUEST_BYTES = 256 * 1024;
+// A transport allocation bound. The proxy admits normal text contexts by USD, including
+// serialized conversations whose tool outputs push the JSON above 256 KiB.
+const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const MAX_OUTPUT_TOKENS = 8_192;
 const INPUT_TOKEN_FRAMING_OVERHEAD = 4_096;
 const PROXY_QUEUE_LIMIT = 8;
@@ -428,15 +430,18 @@ export function parseSseUsage(
 
 export function estimateRequestReservationUsd(
   model: string,
-  bodyBytes: number,
+  inputUpperBound: number,
   maxOutputTokens: number,
   lookup: OpenAIInferencePriceLookup,
 ): number {
-  // Byte-level BPE tokenizers emit at most 1 token per UTF-8 byte; adding framing overhead
-  // guarantees pre-request reservation never underestimates dense lockfiles, JSON, or hashes.
-  const estimatedInputTokens = bodyBytes + INPUT_TOKEN_FRAMING_OVERHEAD;
+  // UTF-8 bytes bound BPE token counts for text-only input. For a counted request, the same
+  // framing allowance covers generated instructions and request-envelope overhead.
+  const estimatedInputTokens = inputUpperBound + INPUT_TOKEN_FRAMING_OVERHEAD;
   const rates = resolveOpenAIRateBand(model, estimatedInputTokens, lookup);
-  const worstInputRate = rationalMax(rates.input, rates.cacheWrite12h ?? rates.input);
+  const worstInputRate = rationalMax(
+    rationalMax(rates.input, rates.cacheWrite12h ?? rates.input),
+    rates.cacheWrite30m ?? rates.input,
+  );
   return sumTokenChargesUsd([
     { tokens: estimatedInputTokens, rate: worstInputRate },
     { tokens: maxOutputTokens, rate: rates.output },
@@ -452,6 +457,50 @@ const additionalToolsItemSchema = z.object({
   type: z.literal("additional_tools"),
   tools: z.unknown(),
 });
+const countInputFields = new Set([
+  "input",
+  "instructions",
+  "model",
+  "parallel_tool_calls",
+  "personality",
+  "reasoning",
+  "text",
+  "tool_choice",
+  "tools",
+  "truncation",
+]);
+const responseExecutionFields = new Set([
+  "background",
+  "client_metadata",
+  "include",
+  "max_output_tokens",
+  "max_tool_calls",
+  "metadata",
+  "prompt_cache_key",
+  "prompt_cache_options",
+  "prompt_cache_retention",
+  "safety_identifier",
+  "service_tier",
+  "store",
+  "stream",
+  "stream_options",
+  "temperature",
+  "top_p",
+  "user",
+]);
+const inputTokenCountSchema = z.object({
+  object: z.literal("response.input_tokens"),
+  input_tokens: tokenCountSchema,
+});
+
+function tokenCountBody(payload: Readonly<Record<string, unknown>>): string | undefined {
+  const input: Record<string, unknown> = {};
+  for (const [field, value] of Object.entries(payload)) {
+    if (countInputFields.has(field)) input[field] = value;
+    else if (!responseExecutionFields.has(field)) return;
+  }
+  return JSON.stringify(input);
+}
 const responsesRequestSchema = z
   .object({
     input: z.array(z.unknown()),
@@ -472,10 +521,7 @@ function assertLocalToolsOnly(value: unknown, depth = 0): void {
   }
 }
 
-export function sanitizeResponsesRequest(
-  rawInput: unknown,
-  model: string,
-): { body: string; maxOutputTokens: number } {
+export function sanitizeResponsesRequest(rawInput: unknown, model: string) {
   const request = responsesRequestSchema.parse(rawInput);
 
   if (request.tools !== undefined) assertLocalToolsOnly(request.tools);
@@ -489,7 +535,7 @@ export function sanitizeResponsesRequest(
     MAX_OUTPUT_TOKENS,
   );
   const { previous_response_id: _prev, conversation: _conv, ...rest } = request;
-  const body = JSON.stringify({
+  const payload = {
     ...rest,
     model,
     stream: true,
@@ -497,21 +543,23 @@ export function sanitizeResponsesRequest(
     background: false,
     service_tier: "default",
     max_output_tokens: maxOutputTokens,
-  });
+  };
+  const body = JSON.stringify(payload);
+  const bodyBytes = Buffer.byteLength(body, "utf8");
 
-  if (
-    Buffer.byteLength(body, "utf8") > MAX_REQUEST_BYTES ||
-    /"type"\s*:\s*"(?:input_image|input_file)"/.test(body)
-  ) {
+  if (bodyBytes > MAX_REQUEST_BYTES || /"type"\s*:\s*"(?:input_image|input_file)"/.test(body)) {
     throw new Error("Codex request exceeds text-only payload limit");
   }
-  return { body, maxOutputTokens };
+  return { body, bodyBytes, payload };
 }
 
 async function readBoundedBody(req: IncomingMessage, maxBytes: number): Promise<string> {
+  if (Number(req.headers["content-length"]) > maxBytes) {
+    throw new Error("Request body exceeds maximum size");
+  }
   let total = 0;
   const chunks: Buffer[] = [];
-  for await (const chunk of req) {
+  for await (const chunk of req.iterator({ destroyOnReturn: false })) {
     const buf = typeof chunk === "string" ? Buffer.from(chunk, "utf8") : Buffer.from(chunk);
     total += buf.length;
     if (total > maxBytes) throw new Error("Request body exceeds maximum size");
@@ -583,11 +631,12 @@ export async function startMeteredOpenAIProxy(options: {
       return;
     }
 
-    let sanitized: { body: string; maxOutputTokens: number };
+    let sanitized: ReturnType<typeof sanitizeResponsesRequest>;
     try {
       const rawText = await readBoundedBody(req, MAX_REQUEST_BYTES);
       sanitized = sanitizeResponsesRequest(JSON.parse(rawText), options.model);
     } catch (error) {
+      if (!req.complete) res.setHeader("connection", "close");
       sendJsonError(
         res,
         400,
@@ -597,16 +646,52 @@ export async function startMeteredOpenAIProxy(options: {
       return;
     }
 
-    const reservedUsd = estimateRequestReservationUsd(
-      options.model,
-      Buffer.byteLength(sanitized.body, "utf8"),
-      sanitized.maxOutputTokens,
-      pricingLookup,
-    );
-    if (usageIncomplete || roundUsd(estimatedUsd + reservedUsd) > options.maxRunUsd) {
+    const estimate = (inputBound: number) =>
+      estimateRequestReservationUsd(
+        options.model,
+        inputBound,
+        sanitized.payload.max_output_tokens,
+        pricingLookup,
+      );
+    const fitsBudget = (reservation: number | undefined) =>
+      reservation !== undefined && roundUsd(estimatedUsd + reservation) <= options.maxRunUsd;
+    let reservedUsd: number | undefined;
+    try {
+      reservedUsd = estimate(sanitized.bodyBytes);
+    } catch {
+      // The byte upper bound can extend outside cataloged context bands.
+    }
+    if (!usageIncomplete && !fitsBudget(reservedUsd)) {
+      const countBody = tokenCountBody(sanitized.payload);
+      if (countBody !== undefined) {
+        // Token counting is a non-generating call. Any unsupported or failed count keeps the
+        // conservative byte estimate, which still has to fit before submitting generation.
+        try {
+          const counter = await fetcher(`${upstreamUrl}/input_tokens`, {
+            method: "POST",
+            redirect: "error",
+            signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+            headers: {
+              authorization: `Bearer ${options.apiKey}`,
+              "content-type": "application/json",
+            },
+            body: countBody,
+          });
+          if (counter.ok) {
+            const count = inputTokenCountSchema.parse(await counter.json());
+            reservedUsd = estimate(count.input_tokens);
+          }
+        } catch {
+          // Retain the original reservation when a usable count cannot be established.
+        }
+      }
+    }
+    if (usageIncomplete || !fitsBudget(reservedUsd)) {
       stopReason = usageIncomplete
         ? "Self-heal cannot reserve spend while previous usage is unsettled"
-        : `Self-heal USD cap: ${estimatedUsd.toFixed(6)} settled + ${reservedUsd.toFixed(6)} requested > ${options.maxRunUsd.toFixed(6)}`;
+        : reservedUsd === undefined
+          ? "Self-heal cannot price the request context before spending"
+          : `Self-heal USD cap: ${estimatedUsd.toFixed(6)} settled + ${reservedUsd.toFixed(6)} requested > ${options.maxRunUsd.toFixed(6)}`;
       sendJsonError(res, 429, stopReason, "budget_exceeded");
       return;
     }
@@ -758,6 +843,8 @@ export async function startMeteredOpenAIProxy(options: {
     budgetStopReason: () => stopReason,
     close: async () => {
       await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+      // A disconnected client can close the socket while its upstream request still settles.
+      while (running !== undefined) await running;
     },
   };
 }
@@ -1002,6 +1089,7 @@ export async function runCodexAdapter(options: {
   const runPrivateDir = await mkdtemp(join(codexBase, "run-"));
   const codexHome = join(runPrivateDir, "home");
   const codexTmp = join(runPrivateDir, "tmp");
+  let exitCode: number;
   try {
     await mkdir(codexHome, { recursive: true });
     await mkdir(codexTmp, { recursive: true });
@@ -1032,7 +1120,7 @@ export async function runCodexAdapter(options: {
     childEnv.CODEX_API_KEY = proxy.proxyToken;
     childEnv.GIT_TERMINAL_PROMPT = "0";
 
-    const exitCode = await new Promise<number>((resolveExit, rejectExit) => {
+    exitCode = await new Promise<number>((resolveExit, rejectExit) => {
       const child = spawn(codexBin, args, {
         cwd,
         env: childEnv,
@@ -1042,14 +1130,12 @@ export async function runCodexAdapter(options: {
       child.once("close", (code) => resolveExit(code ?? 1));
       child.stdin.end(promptText, "utf8");
     });
-
-    const usage = proxy.usage();
-    await writeUsageAtomically(options.usageFile, usage);
-    return { exitCode, usage, budgetStopReason: proxy.budgetStopReason() };
   } finally {
     await proxy.close();
     await rm(runPrivateDir, { recursive: true, force: true });
   }
+  // The proxy persists every metering transition. Read its settled state after it drains.
+  return { exitCode, usage: proxy.usage(), budgetStopReason: proxy.budgetStopReason() };
 }
 
 async function main(): Promise<void> {

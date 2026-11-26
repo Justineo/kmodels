@@ -1214,7 +1214,10 @@ export function runSelfHealGate(options: {
   evidenceFiles?: readonly BoundEvidenceFile[];
   requireEvidenceReplay?: boolean;
   skipEvidenceReplay?: boolean;
-  replayCommandWrapper?: (replayArgs: readonly string[]) => {
+  replayCommandWrapper?: (
+    replayArgs: readonly string[],
+    replayCwd: string,
+  ) => {
     command: string;
     args: string[];
     env?: NodeJS.ProcessEnv;
@@ -1348,25 +1351,19 @@ export function runSelfHealGate(options: {
           ...(resolvedContextPath === undefined ? [] : [resolvedContextPath]),
         ];
 
-        const wrappedCandidate = options.replayCommandWrapper?.(replayArgs);
-        const candidateReplay = spawnSync(
-          wrappedCandidate?.command ?? "vp",
-          wrappedCandidate?.args ?? replayArgs,
-          {
-            cwd,
-            env: wrappedCandidate?.env ?? untrustedEnv,
-            encoding: "utf8",
-            maxBuffer: SELF_HEAL_MAX_BUFFER,
-          },
-        );
-
-        if (baselineDir !== undefined) {
-          const baselineReplay = spawnSync("vp", replayArgs, {
-            cwd: baselineDir,
-            env: untrustedEnv,
+        const replay = (replayCwd: string) => {
+          const wrapped = options.replayCommandWrapper?.(replayArgs, replayCwd);
+          return spawnSync(wrapped?.command ?? "vp", wrapped?.args ?? replayArgs, {
+            cwd: replayCwd,
+            env: wrapped?.env ?? untrustedEnv,
             encoding: "utf8",
             maxBuffer: SELF_HEAL_MAX_BUFFER,
           });
+        };
+        const candidateReplay = replay(cwd);
+
+        if (baselineDir !== undefined) {
+          const baselineReplay = replay(baselineDir);
           const comparison = evaluateBeforeAfterReplay({
             sourceId: entry.source_id,
             baseline: {

@@ -48,14 +48,12 @@ export interface BudgetLimits {
   maxRunUsd: number;
   maxWindowUsd: number;
   windowHours: number;
-  providerCooldownHours: number;
 }
 
 export const defaultBudgetLimits: BudgetLimits = {
   maxRunUsd: 2.0,
   maxWindowUsd: 10.0,
   windowHours: 24,
-  providerCooldownHours: 6,
 };
 
 export interface BudgetCheckResult {
@@ -63,7 +61,7 @@ export interface BudgetCheckResult {
   reasons: string[];
   window_usd: number;
   window_runs: number;
-  cooldown_providers: Record<string, string>;
+  available_run_usd: number;
 }
 
 export interface RunUsageInput {
@@ -71,6 +69,7 @@ export interface RunUsageInput {
   input_tokens: number | null;
   output_tokens: number | null;
   estimated_usd: number | null;
+  reserved_usd?: number | undefined;
 }
 
 /** Upper bound ($1B) preventing `* 1_000_000` overflow to Infinity on corrupt agent usage receipts. */
@@ -103,18 +102,14 @@ export function parseBudgetLimitsFromEnv(env: NodeJS.ProcessEnv = process.env): 
       defaultBudgetLimits.maxWindowUsd,
     ),
     windowHours: parsePositiveNumber(env.SELF_HEAL_WINDOW_HOURS, defaultBudgetLimits.windowHours),
-    providerCooldownHours: parsePositiveNumber(
-      env.SELF_HEAL_COOLDOWN_HOURS,
-      defaultBudgetLimits.providerCooldownHours,
-    ),
   };
 }
 
 /**
  * Convert raw or missing agent usage into a conservative ledger entry.
  * Unknown/unreported usage is never treated as $0 and never under-reports known spend —
- * it charges `max(known_usd, limits.maxRunUsd)` and records `usage_known: false` so failed
- * or partially reported runs still count accurately against rolling spend caps and cooldowns.
+ * it charges the higher of the observed amount and the authorized reservation. Legacy or
+ * missing receipts without a reservation use the configured per-run ceiling.
  */
 export function buildSettledBudgetEntry(params: {
   run_id: string;
@@ -136,7 +131,9 @@ export function buildSettledBudgetEntry(params: {
     params.usage.estimated_usd !== null && Number.isFinite(params.usage.estimated_usd)
       ? params.usage.estimated_usd
       : 0;
-  const settledUsd = known ? knownFloorUsd : Math.max(limits.maxRunUsd, knownFloorUsd);
+  const settledUsd = known
+    ? knownFloorUsd
+    : Math.max(params.usage.reserved_usd ?? limits.maxRunUsd, knownFloorUsd);
   const observedUsd = known || knownFloorUsd > 0 ? Number(knownFloorUsd.toFixed(6)) : undefined;
   return budgetUsageEntrySchema.parse({
     run_id: params.run_id,
@@ -157,15 +154,13 @@ export function buildSettledBudgetEntry(params: {
 
 /**
  * Evaluate per-run and rolling-window spend limits with pre-call reservation or post-run actual usage.
- * Pre-call checks reserve `limits.maxRunUsd` so a run cannot start unless the rolling window
- * can absorb a full per-run ceiling.
+ * Admit a run for up to the lesser of its configured ceiling and the rolling balance.
  */
 export function evaluateBudget(
   ledger: BudgetLedger,
   options: {
     nowMs?: number;
     limits?: BudgetLimits;
-    reserveRun?: boolean;
     runUsage?: RunUsageInput;
     existingRunKey?: { run_id: string; run_attempt?: number };
   } = {},
@@ -173,7 +168,6 @@ export function evaluateBudget(
   const nowMs = options.nowMs ?? Date.now();
   const limits = options.limits ?? defaultBudgetLimits;
   const windowStartMs = nowMs - limits.windowHours * 3_600_000;
-  const cooldownMs = limits.providerCooldownHours * 3_600_000;
 
   const recentEntries = ledger.entries.filter((entry) => {
     if (entry.outcome === "deferred") return false;
@@ -203,6 +197,7 @@ export function evaluateBudget(
       : windowUsd;
   const maxWindowUsd = roundUsd(limits.maxWindowUsd);
   const maxRunUsd = roundUsd(limits.maxRunUsd);
+  const availableRunUsd = roundUsd(Math.max(0, Math.min(maxRunUsd, maxWindowUsd - windowUsd)));
   const reasons: string[] = [];
 
   const runKnownUsd =
@@ -215,10 +210,8 @@ export function evaluateBudget(
     options.runUsage !== undefined
       ? options.runUsage.usage_known && options.runUsage.estimated_usd !== null
         ? roundUsd(options.runUsage.estimated_usd)
-        : roundUsd(Math.max(maxRunUsd, runKnownUsd))
-      : options.reserveRun === true
-        ? maxRunUsd
-        : 0;
+        : roundUsd(Math.max(options.runUsage.reserved_usd ?? maxRunUsd, runKnownUsd))
+      : 0;
 
   let projectedUsd: number;
   let effectiveObservedUsd = runKnownUsd;
@@ -246,7 +239,11 @@ export function evaluateBudget(
   } else {
     projectedUsd = roundUsd(windowUsd + additionalUsd);
   }
-  if ((existingMatch === undefined && windowUsd >= maxWindowUsd) || projectedUsd > maxWindowUsd) {
+  if (options.runUsage === undefined && availableRunUsd === 0) {
+    reasons.push(
+      `Rolling ${limits.windowHours}h budget has no available spend (${windowUsd.toFixed(6)} USD used, cap ${maxWindowUsd.toFixed(6)} USD)`,
+    );
+  } else if (projectedUsd > maxWindowUsd) {
     reasons.push(
       `Rolling ${limits.windowHours}h spend (${projectedUsd.toFixed(4)} USD) exceeds cap (${limits.maxWindowUsd.toFixed(2)} USD)`,
     );
@@ -257,27 +254,12 @@ export function evaluateBudget(
     );
   }
 
-  const cooldownProviders: Record<string, string> = {};
-  for (const entry of ledger.entries) {
-    if (entry.outcome === "dry_run" || entry.outcome === "deferred") continue;
-    const recorded = Date.parse(entry.recorded_at);
-    if (!Number.isFinite(recorded)) continue;
-    const expiresAt = recorded + cooldownMs;
-    if (expiresAt > nowMs) {
-      const existing = cooldownProviders[entry.provider_id];
-      const candidate = new Date(expiresAt).toISOString();
-      if (existing === undefined || candidate > existing) {
-        cooldownProviders[entry.provider_id] = candidate;
-      }
-    }
-  }
-
   return {
     allowed: reasons.length === 0,
     reasons,
     window_usd: windowUsd,
     window_runs: recentEntries.length,
-    cooldown_providers: cooldownProviders,
+    available_run_usd: availableRunUsd,
   };
 }
 
@@ -423,11 +405,11 @@ async function main(): Promise<void> {
               input_tokens: z.number().int().nonnegative().nullable(),
               output_tokens: z.number().int().nonnegative().nullable(),
               estimated_usd: z.number().nonnegative().nullable(),
+              reserved_usd: z.number().positive().optional(),
             })
             .parse(JSON.parse(await readFile(resolve(usagePath), "utf8")));
     const result = evaluateBudget(ledger, {
       limits,
-      reserveRun: runUsage === undefined,
       ...(runUsage === undefined ? {} : { runUsage }),
     });
     console.log(JSON.stringify(result, null, 2));

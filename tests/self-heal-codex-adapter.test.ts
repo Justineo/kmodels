@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { EventEmitter, once } from "node:events";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
@@ -786,7 +787,10 @@ describe("self-heal metered OpenAI proxy", () => {
       maxRunUsd,
       usageFile,
       pricingLookup: syntheticLookup,
-      fetcher: async (_url, init) => {
+      fetcher: async (url, init) => {
+        if (new URL(new Request(url).url).pathname.endsWith("/input_tokens")) {
+          return Response.json({ object: "response.input_tokens", input_tokens: 256 });
+        }
         upstreamCalls += 1;
         const headers = init?.headers as Record<string, string>;
         lastUpstreamAuth = headers.authorization ?? "";
@@ -846,6 +850,75 @@ describe("self-heal metered OpenAI proxy", () => {
       expect(turn2.status).toBe(429);
       expect(proxy.budgetStopReason()).toMatch(/USD cap.*settled.*requested/);
       expect(upstreamCalls).toBe(1);
+    } finally {
+      await proxy.close();
+    }
+  });
+
+  it("uses a counted large prompt when the byte reservation would consume the remaining budget", async () => {
+    const dir = await makeTempDir("self-heal-counted-prompt-");
+    const requests: Array<{ path: string; body: unknown }> = [];
+    const content = "source evidence\n".repeat(18_000);
+    const proxy = await startMeteredOpenAIProxy({
+      apiKey: "sk-real-secret",
+      model: DEFAULT_CODEX_MODEL,
+      maxRunUsd: 0.2,
+      usageFile: join(dir, "usage.json"),
+      pricingLookup: syntheticLookup,
+      fetcher: async (url, init) => {
+        const request = new Request(url, init);
+        const path = new URL(request.url).pathname;
+        requests.push({ path, body: await request.json() });
+        if (path.endsWith("/input_tokens")) {
+          return Response.json({ object: "response.input_tokens", input_tokens: 4_000 });
+        }
+        return new Response(
+          buildCompletedSse({
+            model: DEFAULT_CODEX_MODEL,
+            inputTokens: 4_000,
+            outputTokens: 50,
+            cachedTokens: 0,
+            cacheWriteTokens: 0,
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      },
+    });
+
+    try {
+      const input = [{ role: "user", content }];
+      const tools = [{ type: "function", name: "inspect", parameters: { type: "object" } }];
+      const response = await postLoopback(
+        `${proxy.baseUrl}/responses`,
+        { authorization: `Bearer ${proxy.proxyToken}`, "content-type": "application/json" },
+        JSON.stringify({
+          input,
+          tools,
+          client_metadata: { "x-codex-window-id": "turn-window" },
+          max_output_tokens: 100,
+        }),
+      );
+      expect(response.status).toBe(200);
+      expect(requests).toEqual([
+        {
+          path: "/v1/responses/input_tokens",
+          body: { model: DEFAULT_CODEX_MODEL, input, tools },
+        },
+        {
+          path: "/v1/responses",
+          body: expect.objectContaining({
+            input,
+            tools,
+            client_metadata: { "x-codex-window-id": "turn-window" },
+            max_output_tokens: 100,
+          }),
+        },
+      ]);
+      expect(proxy.usage()).toEqual({
+        estimated_usd: 0.0085,
+        input_tokens: 4_000,
+        output_tokens: 50,
+      });
     } finally {
       await proxy.close();
     }
@@ -1006,6 +1079,62 @@ describe("self-heal metered OpenAI proxy", () => {
     } finally {
       await proxy.close();
     }
+  });
+
+  it("drains the metering receipt after the Codex client disconnects", async () => {
+    const dir = await makeTempDir("self-heal-disconnected-client-");
+    const usageFile = join(dir, "usage.json");
+    const upstream = new EventEmitter();
+    const started = once(upstream, "request");
+    const released = once(upstream, "settle");
+    const proxy = await startMeteredOpenAIProxy({
+      apiKey: "sk-test",
+      model: DEFAULT_CODEX_MODEL,
+      maxRunUsd: 2.0,
+      usageFile,
+      pricingLookup: syntheticLookup,
+      fetcher: async () => {
+        upstream.emit("request");
+        await released;
+        return new Response(
+          buildCompletedSse({
+            model: DEFAULT_CODEX_MODEL,
+            inputTokens: 500,
+            outputTokens: 100,
+            cachedTokens: 0,
+            cacheWriteTokens: 0,
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        );
+      },
+    });
+    const req = httpRequest(`${proxy.baseUrl}/responses`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${proxy.proxyToken}` },
+    });
+    req.on("error", () => {});
+    req.end(JSON.stringify({ input: [], max_output_tokens: 128 }));
+    await started;
+    req.destroy();
+
+    const closing = proxy.close();
+    try {
+      expect(
+        await Promise.race([
+          closing.then(() => "closed"),
+          new Promise((resolve) => setTimeout(() => resolve("settling"), 25)),
+        ]),
+      ).toBe("settling");
+      expect(JSON.parse(await readFile(usageFile, "utf8")).estimated_usd).toBeNull();
+    } finally {
+      upstream.emit("settle");
+      await closing;
+    }
+    expect(JSON.parse(await readFile(usageFile, "utf8"))).toEqual({
+      input_tokens: 500,
+      output_tokens: 100,
+      estimated_usd: 0.002,
+    });
   });
 
   it("keeps estimated_usd null and blocks retries on upstream 504/502 gateway errors", async () => {
@@ -1289,11 +1418,16 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
     expect(selfHealPrivateBaseDir("runs").startsWith("/tmp/")).toBe(false);
   });
 
-  const replayScenarios = ["retry", "accept stopped patch", "reject stopped patch"] as const;
+  const replayScenarios = [
+    "retry",
+    "accept stopped patch",
+    "reject stopped patch",
+    "accept oversized request patch",
+  ] as const;
   it.each(replayScenarios)("keeps candidate replay isolated: %s", async (scenario) => {
-    const budgetStop = scenario !== "retry";
-    // On retry, the first edit fails replay and tampers with gitignored Zod. The second
-    // attempt must receive the replay error without reloading the candidate's dependency.
+    const oversizedRequest = scenario === "accept oversized request patch";
+    const budgetStop = scenario !== "retry" && !oversizedRequest;
+    // Distinct replay failures can lead to a third attempt without reloading tampered dependencies.
     const root = await makeTempDir("self-heal-isolation-");
     const repo = join(root, "repo");
     const ext = join(root, "ext");
@@ -1314,11 +1448,8 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
         "import { join } from 'node:path';",
         `writeFileSync(${JSON.stringify(replayEnvDump)}, JSON.stringify({ hasKey: 'SELF_HEAL_API_KEY' in process.env }));`,
         "const parser = readFileSync(join(process.cwd(), 'src/catalog/openai.ts'), 'utf8');",
-        "if (!parser.includes('FIXED_PARSER')) {",
-        "  console.error('Simulated parse error on attempt 1');",
-        "  process.exit(1);",
-        "}",
-        "console.log(JSON.stringify({ schema_version: 1, stage: 'parse', source_id: 'openai-pricing', models: [] }));",
+        "const reason_counts = parser.includes('FIXED_PARSER') ? {} : { pricing_input_contract_partial: parser.includes('SECOND_ATTEMPT') ? 2 : 1 };",
+        "console.log(JSON.stringify({ schema_version: 1, stage: 'parse', source_id: 'openai-pricing', models: [], reconciliation: { reason_counts } }));",
       ].join("\n"),
       "utf8",
     );
@@ -1363,19 +1494,19 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
         "});",
         "if (!res.ok) process.exit(92);",
         "await res.text();",
-        ...(budgetStop
+        ...(scenario !== "retry"
           ? [
               `writeFileSync(join(process.cwd(), 'src/catalog/openai.ts'), ${JSON.stringify(
-                scenario === "accept stopped patch"
-                  ? "export const v = 3; // FIXED_PARSER\n"
-                  : "export const v = 2; // still broken\n",
+                scenario === "reject stopped patch"
+                  ? "export const v = 2; // still broken\n"
+                  : "export const v = 3; // FIXED_PARSER\n",
               )});`,
               "const blocked = await fetch(`${baseUrl}/responses`, {",
               "  method: 'POST',",
               "  headers: { authorization: `Bearer ${process.env.CODEX_API_KEY}`, 'content-type': 'application/json' },",
-              "  body: JSON.stringify({ input: [{ role: 'user', content: 'x'.repeat(120000) }], max_output_tokens: 64 }),",
+              `  body: JSON.stringify({ input: [{ role: 'user', content: 'x'.repeat(${oversizedRequest ? 9 * 1024 * 1024 : 120000}) }], max_output_tokens: 64 }),`,
               "});",
-              "if (blocked.status !== 429) process.exit(93);",
+              `if (blocked.status !== ${oversizedRequest ? 400 : 429}) process.exit(93);`,
               "await blocked.text();",
               "process.exit(1);",
             ]
@@ -1383,8 +1514,10 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
         "if (attempt === 1) {",
         "  writeFileSync(join(process.cwd(), 'src/catalog/openai.ts'), 'export const v = 2; // still broken\\n');",
         "  writeFileSync(join(process.cwd(), 'node_modules/zod/index.js'), 'throw new Error(\"TAMPERED_ZOD\");\\n');",
-        "} else {",
+        "} else if (attempt === 2) {",
         "  writeFileSync(prompt2Path, stdin, 'utf8');",
+        "  writeFileSync(join(process.cwd(), 'src/catalog/openai.ts'), 'export const v = 2; // SECOND_ATTEMPT\\n');",
+        "} else {",
         "  writeFileSync(join(process.cwd(), 'src/catalog/openai.ts'), 'export const v = 3; // FIXED_PARSER\\n');",
         "}",
       ].join("\n"),
@@ -1424,9 +1557,10 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
               scope: "source",
               subject_id: "openai-pricing",
               source_id: "openai-pricing",
-              trigger: "source_contract_change",
-              message: "drift",
+              trigger: "source_pricing_structure",
+              message: "Missing reviewed source contracts: pricing_input_contract_partial: 1.",
               diagnostics: [],
+              reconciliation_reasons: { pricing_input_contract_partial: 1 },
             },
           ],
           evidence_files: [
@@ -1470,7 +1604,7 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
             { status: 200, headers: { "content-type": "text/event-stream" } },
           ),
       });
-      const attempts = budgetStop ? 1 : 2;
+      const attempts = scenario === "retry" ? 3 : 1;
       expect(genResult.hasPatch).toBe(scenario !== "reject stopped patch");
       expect(genResult.usage.attempts).toBe(attempts);
       expect(genResult.usage.usage_known).toBe(true);
@@ -1479,7 +1613,7 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
       if (scenario === "reject stopped patch") {
         expect(genResult.usage.status).toBe("budget_exceeded");
         expect(genResult.usage.error).toContain("Self-heal USD cap");
-        expect(genResult.usage.error).toContain("Evidence replay failed for openai-pricing");
+        expect(genResult.usage.error).toContain("pricing_input_contract_partial (1 -> 1)");
         await expect(readFile(join(ext, "out", "candidate.patch"))).rejects.toThrow(/ENOENT/);
       } else {
         expect(genResult.usage.status).toBe("patch_ready");
@@ -1490,11 +1624,9 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
       }
 
       // Verify attempt 2 received the exact sandboxed replay failure from attempt 1.
-      if (!budgetStop) {
+      if (scenario === "retry") {
         const attempt2Prompt = await readFile(promptAttempt2Dump, "utf8");
-        expect(attempt2Prompt).toContain(
-          "Evidence replay failed for openai-pricing: Simulated parse error on attempt 1",
-        );
+        expect(attempt2Prompt).toContain("pricing_input_contract_partial (1 -> 1)");
       }
 
       // Verify both replay runs went through read-only, network-disabled, secret-free `codex sandbox`.
@@ -1502,7 +1634,7 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
         .trim()
         .split("\n")
         .map((line) => JSON.parse(line) as Record<string, unknown>);
-      expect(sandboxCalls).toHaveLength(attempts);
+      expect(sandboxCalls).toHaveLength(2 * attempts);
       for (const call of sandboxCalls) {
         expect(call.hasSelfHealApiKey).toBe(false);
         expect(call.hasRunnerTemp).toBe(false);
@@ -1512,7 +1644,7 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
         expect(call.cmd).toEqual(expect.arrayContaining([process.execPath]));
       }
 
-      if (budgetStop) return;
+      if (scenario !== "retry") return;
 
       // Verify direct runSelfHealGate (used in verify) also strips SELF_HEAL_API_KEY.
       runSelfHealGate({
@@ -1537,7 +1669,7 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
 
       // Verify pre-call config errors (missing SELF_HEAL_API_KEY and unsupported SELF_HEAL_MODEL)
       // emit verified $0 / attempts: 0 deferred usage receipts before any paid call so `publish`
-      // never consumes paid budget or starts provider cooldown.
+      // never consumes paid budget.
       const prevModel = process.env.SELF_HEAL_MODEL;
       try {
         delete process.env.SELF_HEAL_API_KEY;

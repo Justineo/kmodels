@@ -66,7 +66,6 @@ const strictLimits: BudgetLimits = {
   maxRunUsd: 1.5,
   maxWindowUsd: 5.0,
   windowHours: 24,
-  providerCooldownHours: 6,
 };
 
 function makeRefreshReport(
@@ -190,26 +189,30 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
     }
   });
 
-  it("advances past persistently failing providers that have an open PR or active cooldown", () => {
+  it("defers only the source with an open PR even after another paid attempt for its provider", () => {
     const nowMs = Date.parse("2026-11-23T12:00:00.000Z");
-    const report = makeRefreshReport([
-      { id: "anthropic", sourceId: "anthropic-models", outcome: "parse_failed" },
-      { id: "cohere", sourceId: "cohere-models", outcome: "parse_failed" },
-      { id: "openai", sourceId: "openai-models", outcome: "unchanged" },
-    ]);
-    const quarantine = [
-      {
-        provider_id: "fireworks",
-        checked_at: "2026-11-23T00:00:00.000Z",
-        reason: "Persistent drift 1",
-      },
-    ];
+    const report = {
+      ...makeRefreshReport([]),
+      providers: [
+        {
+          provider_id: "openai",
+          signals: [],
+          attempt: {
+            outcome: "rejected",
+            sources: [
+              { source_id: "openai-models", outcome: "parse_failed", message: "Models drifted" },
+              { source_id: "openai-pricing", outcome: "parse_failed", message: "Pricing drifted" },
+            ],
+          },
+        },
+      ],
+    };
 
     const ledger = appendBudgetEntry(
       emptyBudgetLedger(),
       buildSettledBudgetEntry({
         run_id: "run-1",
-        provider_id: "anthropic",
+        provider_id: "openai",
         recorded_at: "2026-11-23T10:00:00.000Z",
         usage: { usage_known: false, input_tokens: null, output_tokens: null, estimated_usd: null },
         outcome: "generate_failed",
@@ -218,9 +221,9 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
       { nowMs },
     );
 
-    const result = selectSelfHealTarget(report, quarantine, {
+    const result = selectSelfHealTarget(report, [], {
       nowMs,
-      openPrProviders: new Set(["fireworks"]),
+      openPrSources: new Set(["openai-models"]),
       budgetLedger: ledger,
       budgetLimits: strictLimits,
       triggerRunId: "999",
@@ -228,16 +231,16 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
     });
 
     expect(result.status).toBe("actionable");
-    expect(result.target?.provider_id).toBe("cohere");
+    expect(result.target?.provider_id).toBe("openai");
+    expect(result.target?.source_id).toBe("openai-pricing");
     expect(result.target?.trigger_run_id).toBe("999");
     expect(result.target?.trigger_run_attempt).toBe(2);
     expect(result.skipped_providers).toEqual([
-      { provider_id: "fireworks", reason: "open_pr" },
-      expect.objectContaining({ provider_id: "anthropic", reason: "cooldown" }),
+      { provider_id: "openai", source_id: "openai-models", reason: "open_pr" },
     ]);
   });
 
-  it("admits another repair after six inexpensive runs when the USD reservation fits", () => {
+  it("admits another repair after six inexpensive runs until the rolling balance is exhausted", () => {
     const nowMs = Date.parse("2026-11-23T12:00:00.000Z");
     const report = makeRefreshReport([
       { id: "cohere", sourceId: "cohere-models", outcome: "parse_failed" },
@@ -270,6 +273,12 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
         ...options,
         budgetLimits: { ...defaultBudgetLimits, maxWindowUsd: 3 },
       }),
+    ).toMatchObject({ status: "actionable" });
+    expect(
+      selectSelfHealTarget(report, [], {
+        ...options,
+        budgetLimits: { ...defaultBudgetLimits, maxWindowUsd: 1.2 },
+      }),
     ).toMatchObject({
       status: "idle",
       idle_reason: "budget_exhausted",
@@ -277,7 +286,7 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
     });
   });
 
-  it("reserves conservative maxRunUsd for unknown usage and blocks when rolling cap would be exceeded", () => {
+  it("caps generation and unknown usage at the amount available to the run", () => {
     const nowMs = Date.parse("2026-11-23T12:00:00.000Z");
     const settledUnknown = buildSettledBudgetEntry({
       run_id: "run-unknown",
@@ -311,10 +320,26 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
       );
     }
 
-    // Rolling spend is $4.20; reserving maxRunUsd ($1.50) would exceed $5.00 cap!
-    const preReserve = evaluateBudget(ledger, { nowMs, limits: strictLimits, reserveRun: true });
-    expect(preReserve.allowed).toBe(false);
-    expect(preReserve.reasons.some((r) => r.includes("spend"))).toBe(true);
+    expect(evaluateBudget(ledger, { nowMs, limits: strictLimits })).toMatchObject({
+      allowed: true,
+      available_run_usd: 0.8,
+    });
+    expect(
+      buildSettledBudgetEntry({
+        run_id: "run-partial-reserve",
+        provider_id: "openai",
+        recorded_at: "2026-11-23T11:30:00.000Z",
+        usage: {
+          usage_known: false,
+          input_tokens: null,
+          output_tokens: null,
+          estimated_usd: null,
+          reserved_usd: 0.8,
+        },
+        outcome: "generate_failed",
+        limits: strictLimits,
+      }).estimated_usd,
+    ).toBe(0.8);
 
     // Unknown usage with a known spend floor above maxRunUsd MUST settle the higher known floor (never under-report $3 as $2).
     const floorLimits: BudgetLimits = { ...strictLimits, maxRunUsd: 2.0, maxWindowUsd: 10.0 };
@@ -537,7 +562,7 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
     expect(mergedTriage.idle_reason).toBe("missing_evidence");
     expect(mergedTriage.skipped_providers[0]?.detail).toContain("provider_validation");
 
-    // Quarantined provider that ALSO has a source-level failure MUST keep its quarantine obligation.
+    // Unbound quarantine remains visible while independently verified source repair can proceed.
     const quarantinedWithSourceFail = selectSelfHealTarget(
       makeRefreshReport([{ id: "openai", sourceId: "openai-pricing", outcome: "parse_failed" }]),
       [
@@ -549,8 +574,11 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
       ],
       { evidenceFiles: sharedPool, requireSourceEvidence: true },
     );
-    expect(quarantinedWithSourceFail.status).toBe("idle");
-    expect(quarantinedWithSourceFail.idle_reason).toBe("missing_evidence");
+    expect(quarantinedWithSourceFail).toMatchObject({
+      status: "actionable",
+      target: { source_id: "openai-pricing", quarantined: true },
+      skipped_providers: [{ provider_id: "openai", reason: "missing_evidence" }],
+    });
 
     // together-releases reads catalogModels and MUST be rejected when no paired context file exists.
     const togetherNoCtx = selectSelfHealTarget(
@@ -985,7 +1013,7 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
       expect.objectContaining({ provider_id: "fireworks", reason: "missing_evidence" }),
     ]);
 
-    // When TWO sources of the same provider fail, having evidence for ONLY ONE source MUST NOT pass requireSourceEvidence.
+    // The missing sibling evidence does not block the independently replayable pricing incident.
     const partialSourceEv = selectSelfHealTarget(
       {
         generated_at: "2026-11-23T00:00:00.000Z",
@@ -1011,9 +1039,17 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
       [],
       { evidenceFiles: [sharedPool[1]!], requireSourceEvidence: true },
     );
-    expect(partialSourceEv.status).toBe("idle");
-    expect(partialSourceEv.idle_reason).toBe("missing_evidence");
-    expect(partialSourceEv.skipped_providers[0]?.detail).toContain("openai-models");
+    expect(partialSourceEv).toMatchObject({
+      status: "actionable",
+      target: {
+        source_id: "openai-pricing",
+        candidates: [{ source_id: "openai-pricing" }],
+        evidence_files: [{ source_id: "openai-pricing" }],
+      },
+      skipped_providers: [
+        { provider_id: "openai", source_id: "openai-models", reason: "missing_evidence" },
+      ],
+    });
 
     // Standalone provider-level quarantine with 0 bound evidence MUST NOT enter paid generation when requireSourceEvidence=true.
     const zeroEvQuarantine = selectSelfHealTarget(
@@ -3561,47 +3597,34 @@ describe("self-heal zero-cost end-to-end 4-job pipeline", () => {
     expect(ledger.entries).toHaveLength(1);
     expect(ledger.entries[0]?.estimated_usd).toBe(0.25);
 
-    // Re-running generate itself when provider is in cooldown (even with plenty of rolling budget) MUST stop at $0 (0 attempts)
-    // Publishing that zero-call refusal must leave the ledger and cooldown untouched.
-    const beforeCooldownLedger = await readBudgetLedger(ledgerPath);
-    const beforeCooldownRecordedAt = beforeCooldownLedger.entries[0]?.recorded_at;
-    const cooldownBlockedDir = join(artifactsDir, "cooldown-blocked-gen");
-    const cooldownBlockedGen = await runGenerate({
-      cwd: genRepo,
-      triageFile: triagePath,
-      evidenceRoot: evidenceDir,
-      outputDir: cooldownBlockedDir,
-      budgetLedgerPath: ledgerPath,
-      allowZeroEvidenceForTest: true,
-      agentCommand: "echo SHOULD_NOT_RUN >&2; exit 99",
-    });
-    expect(cooldownBlockedGen.hasPatch).toBe(false);
-    expect(cooldownBlockedGen.usage.status).toBe("deferred");
-    expect(cooldownBlockedGen.usage.attempts).toBe(0);
-    expect(cooldownBlockedGen.usage.error).toContain("cooldown");
-
-    const cooldownBlockedPublish = await runPublish({
-      cwd: publishRepo,
-      triageFile: triagePath,
-      proposalDir: cooldownBlockedDir,
-      runId: "run-cooldown-noop",
-      runAttempt: 1,
-      budgetLedgerPath: ledgerPath,
-    });
-    expect(cooldownBlockedPublish.outcome).toBe("deferred");
-    const afterCooldownLedger = await readBudgetLedger(ledgerPath);
-    expect(afterCooldownLedger.entries).toHaveLength(1);
-    expect(afterCooldownLedger.entries[0]?.recorded_at).toBe(beforeCooldownRecordedAt);
-
-    // Re-running generate itself when rolling budget ledger is already exhausted MUST stop at $0 (0 attempts).
+    const blockedDir = join(artifactsDir, "blocked-rerun-gen");
     const prevMaxWindow = process.env.SELF_HEAL_MAX_WINDOW_USD;
-    process.env.SELF_HEAL_MAX_WINDOW_USD = "0.2";
+    process.env.SELF_HEAL_MAX_WINDOW_USD = "0.4";
     try {
+      const partialGen = await runGenerate({
+        cwd: genRepo,
+        triageFile: triagePath,
+        evidenceRoot: evidenceDir,
+        outputDir: join(artifactsDir, "partial-budget-gen"),
+        budgetLedgerPath: ledgerPath,
+        allowZeroEvidenceForTest: true,
+        agentCommand:
+          "test \"$SELF_HEAL_MAX_RUN_USD\" = 0.15 && printf '%s' " +
+          '\'{"estimated_usd":0.15,"input_tokens":10,"output_tokens":10}\' > "$SELF_HEAL_USAGE_FILE"',
+      });
+      expect(partialGen.usage).toMatchObject({
+        attempts: 1,
+        usage_known: true,
+        estimated_usd: 0.15,
+        reserved_usd: 0.15,
+      });
+
+      process.env.SELF_HEAL_MAX_WINDOW_USD = "0.25";
       const blockedReRunGen = await runGenerate({
         cwd: genRepo,
         triageFile: triagePath,
         evidenceRoot: evidenceDir,
-        outputDir: join(artifactsDir, "blocked-rerun-gen"),
+        outputDir: blockedDir,
         budgetLedgerPath: ledgerPath,
         allowZeroEvidenceForTest: true,
         agentCommand: "echo SHOULD_NOT_RUN >&2; exit 99",
@@ -3609,6 +3632,16 @@ describe("self-heal zero-cost end-to-end 4-job pipeline", () => {
       expect(blockedReRunGen.hasPatch).toBe(false);
       expect(blockedReRunGen.usage.status).toBe("deferred");
       expect(blockedReRunGen.usage.attempts).toBe(0);
+      const blockedPublish = await runPublish({
+        cwd: publishRepo,
+        triageFile: triagePath,
+        proposalDir: blockedDir,
+        runId: "run-budget-noop",
+        runAttempt: 1,
+        budgetLedgerPath: ledgerPath,
+      });
+      expect(blockedPublish.outcome).toBe("deferred");
+      expect(await readBudgetLedger(ledgerPath)).toEqual(ledger);
     } finally {
       if (prevMaxWindow === undefined) delete process.env.SELF_HEAL_MAX_WINDOW_USD;
       else process.env.SELF_HEAL_MAX_WINDOW_USD = prevMaxWindow;

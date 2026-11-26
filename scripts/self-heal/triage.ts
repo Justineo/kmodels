@@ -429,6 +429,7 @@ export type BoundEvidenceFile = z.infer<typeof boundEvidenceFileSchema>;
 
 export interface SelfHealTarget {
   provider_id: string;
+  source_id?: string;
   quarantined: boolean;
   quarantine_reason?: string;
   trigger_run_id?: string;
@@ -440,7 +441,8 @@ export interface SelfHealTarget {
 
 export interface SkippedProvider {
   provider_id: string;
-  reason: "open_pr" | "cooldown" | "recent_incomplete_repair" | "missing_evidence";
+  source_id?: string;
+  reason: "open_pr" | "recent_incomplete_repair" | "missing_evidence";
   detail?: string;
 }
 
@@ -473,9 +475,8 @@ function normalizeRefreshTelemetry(input: unknown): unknown {
 }
 
 /**
- * Deterministically select one actionable provider target from refresh & quarantine telemetry,
- * reserving budget up front and skipping providers that already have an open self-heal PR or
- * an active cooldown window so persistent failures cannot starve other providers.
+ * Select one independently replayable source. Keep a source's obligations together while
+ * reporting unsupported provider-wide and sibling-source failures as separate candidates.
  */
 export function selectSelfHealTarget(
   refreshTelemetry: unknown,
@@ -484,8 +485,8 @@ export function selectSelfHealTarget(
     providerFilter?: string;
     evidenceFiles?: readonly BoundEvidenceFile[];
     requireSourceEvidence?: boolean;
-    openPrProviders?: ReadonlySet<string>;
-    cooldownProviders?: Readonly<Record<string, string>>;
+    probePublicEvidence?: boolean;
+    openPrSources?: ReadonlySet<string>;
     nowMs?: number;
     budgetLedger?: BudgetLedger;
     budgetLimits?: BudgetLimits;
@@ -495,15 +496,11 @@ export function selectSelfHealTarget(
   } = {},
 ): TriageResult {
   const nowMs = options.nowMs ?? Date.now();
-  const cooldownProviders: Record<string, string> = { ...options.cooldownProviders };
-
   if (options.budgetLedger !== undefined) {
     const budget = evaluateBudget(options.budgetLedger, {
       nowMs,
-      reserveRun: true,
       ...(options.budgetLimits === undefined ? {} : { limits: options.budgetLimits }),
     });
-    Object.assign(cooldownProviders, budget.cooldown_providers);
     if (!budget.allowed) {
       return {
         status: "idle",
@@ -520,21 +517,24 @@ export function selectSelfHealTarget(
     quarantineSchema.parse(quarantineInput).map((entry) => [entry.provider_id, entry.reason]),
   );
 
-  const byProvider = new Map<string, CatalogRepairCandidate[]>();
-  for (const candidate of candidates) {
+  const byTarget = new Map<string, [CatalogRepairCandidate, ...CatalogRepairCandidate[]]>();
+  function addCandidate(candidate: CatalogRepairCandidate): void {
     if (options.providerFilter !== undefined && candidate.provider_id !== options.providerFilter) {
-      continue;
+      return;
     }
-    const group = byProvider.get(candidate.provider_id) ?? [];
-    group.push(candidate);
-    byProvider.set(candidate.provider_id, group);
+    const key = JSON.stringify([candidate.provider_id, candidate.source_id]);
+    const group = byTarget.get(key);
+    if (group === undefined) byTarget.set(key, [candidate]);
+    else group.push(candidate);
   }
-
+  candidates.forEach(addCandidate);
   for (const [providerId, reason] of quarantined) {
-    if (options.providerFilter !== undefined && providerId !== options.providerFilter) continue;
-    const group = byProvider.get(providerId) ?? [];
-    if (!group.some((c) => c.subject_id === "provider_quarantined")) {
-      group.push({
+    if (
+      !candidates.some(
+        (c) => c.provider_id === providerId && c.subject_id === "provider_quarantined",
+      )
+    ) {
+      addCandidate({
         provider_id: providerId,
         scope: "provider",
         subject_id: "provider_quarantined",
@@ -543,10 +543,9 @@ export function selectSelfHealTarget(
         diagnostics: [],
       });
     }
-    byProvider.set(providerId, group);
   }
 
-  if (byProvider.size === 0) {
+  if (byTarget.size === 0) {
     return {
       status: "idle",
       idle_reason: "no_candidates",
@@ -555,41 +554,42 @@ export function selectSelfHealTarget(
     };
   }
 
-  const ranked = [...byProvider.entries()].sort(([leftId, left], [rightId, right]) => {
-    const leftQuarantined = quarantined.has(leftId) ? 0 : 1;
-    const rightQuarantined = quarantined.has(rightId) ? 0 : 1;
-    if (leftQuarantined !== rightQuarantined) return leftQuarantined - rightQuarantined;
-    const leftPriority = Math.min(...left.map(candidatePriority));
-    const rightPriority = Math.min(...right.map(candidatePriority));
-    if (leftPriority !== rightPriority) return leftPriority - rightPriority;
-    return leftId.localeCompare(rightId);
-  });
+  const ranked = [...byTarget.values()]
+    .map((findings) => ({
+      providerId: findings[0].provider_id,
+      sourceId: findings[0].source_id,
+      quarantineRank: quarantined.has(findings[0].provider_id) ? 0 : 1,
+      priority: Math.min(...findings.map(candidatePriority)),
+      findings,
+    }))
+    .sort(
+      (left, right) =>
+        left.quarantineRank - right.quarantineRank ||
+        left.priority - right.priority ||
+        left.providerId.localeCompare(right.providerId) ||
+        (left.sourceId ?? "").localeCompare(right.sourceId ?? ""),
+    );
 
-  const openPrProviders = options.openPrProviders ?? new Set<string>();
   const skipped: SkippedProvider[] = [];
-  for (const [providerId, providerCandidates] of ranked) {
-    // Explicit --provider filter bypasses cooldown/open-PR deferral for manual dispatch.
-    if (options.providerFilter === undefined) {
-      if (openPrProviders.has(providerId)) {
-        skipped.push({ provider_id: providerId, reason: "open_pr" });
-        continue;
-      }
-      const cooldownUntil = cooldownProviders[providerId];
-      if (cooldownUntil !== undefined && Date.parse(cooldownUntil) > nowMs) {
-        skipped.push({ provider_id: providerId, reason: "cooldown", detail: cooldownUntil });
-        continue;
-      }
+  for (const { providerId, sourceId, findings: targetCandidates } of ranked) {
+    const scope = {
+      provider_id: providerId,
+      ...(sourceId === undefined ? {} : { source_id: sourceId }),
+    };
+    if (sourceId !== undefined && options.openPrSources?.has(sourceId)) {
+      skipped.push({ ...scope, reason: "open_pr" });
+      continue;
     }
     const evidenceFiles = filterEvidenceForTargetCandidates(
-      providerCandidates,
+      targetCandidates,
       options.evidenceFiles ?? [],
       providerOwnedSources.get(providerId) ?? new Set<string>(),
     );
-    if (options.requireSourceEvidence === true) {
-      const readiness = inspectTargetReplayReadiness(providerCandidates, evidenceFiles);
+    if (options.requireSourceEvidence === true || options.probePublicEvidence === true) {
+      const readiness = inspectTargetReplayReadiness(targetCandidates, evidenceFiles);
       if (readiness.hasUnboundProviderCandidate || readiness.unsupportedTriggers.length > 0) {
         skipped.push({
-          provider_id: providerId,
+          ...scope,
           reason: "missing_evidence",
           detail:
             readiness.unsupportedTriggers.length > 0
@@ -598,13 +598,22 @@ export function selectSelfHealTarget(
         });
         continue;
       }
-      if (
+      if (options.probePublicEvidence === true && options.requireSourceEvidence !== true) {
+        if (targetCandidates.some(({ source_access }) => source_access !== "public")) {
+          skipped.push({
+            ...scope,
+            reason: "missing_evidence",
+            detail: "Source has no public replay evidence",
+          });
+          continue;
+        }
+      } else if (
         readiness.missingSourceIds.length > 0 ||
         readiness.evidenceCount === 0 ||
         readiness.contextErrors.length > 0
       ) {
         skipped.push({
-          provider_id: providerId,
+          ...scope,
           reason: "missing_evidence",
           detail:
             readiness.contextErrors.length > 0
@@ -624,7 +633,7 @@ export function selectSelfHealTarget(
             JSON.stringify([
               options.repairRevision,
               providerId,
-              providerCandidates.map((candidate) => JSON.stringify(candidate)).sort(),
+              targetCandidates.map((candidate) => JSON.stringify(candidate)).sort(),
               evidenceFiles
                 .map((file) =>
                   JSON.stringify([file.source_id, file.source_hash, file.context_sha256]),
@@ -643,7 +652,7 @@ export function selectSelfHealTarget(
           );
     if (previousRun !== undefined) {
       skipped.push({
-        provider_id: providerId,
+        ...scope,
         reason: "recent_incomplete_repair",
         detail: `Run ${previousRun} did not complete a repair for these inputs`,
       });
@@ -655,7 +664,7 @@ export function selectSelfHealTarget(
       total_candidates: candidates.length,
       skipped_providers: skipped,
       target: {
-        provider_id: providerId,
+        ...scope,
         quarantined: quarantineReason !== undefined,
         ...(quarantineReason === undefined ? {} : { quarantine_reason: quarantineReason }),
         ...(options.triggerRunId === undefined ? {} : { trigger_run_id: options.triggerRunId }),
@@ -663,7 +672,7 @@ export function selectSelfHealTarget(
           ? {}
           : { trigger_run_attempt: options.triggerRunAttempt }),
         ...(incidentFingerprint === undefined ? {} : { incident_fingerprint: incidentFingerprint }),
-        candidates: providerCandidates,
+        candidates: targetCandidates,
         evidence_files: evidenceFiles,
       },
     };
@@ -908,7 +917,7 @@ async function main(): Promise<void> {
   const evidenceDir = flag("--evidence-dir");
   const providerFilter = flag("--provider");
   const budgetLedgerPath = flag("--budget-ledger");
-  const openPrsRaw = flag("--open-pr-providers");
+  const openPrsRaw = flag("--open-pr-sources");
   const triggerRunId = flag("--trigger-run-id");
   const triggerRunAttemptRaw = flag("--trigger-run-attempt");
   const requireRefreshReport = args.includes("--require-refresh-report");
@@ -921,7 +930,7 @@ async function main(): Promise<void> {
     budgetLedgerPath === undefined ? undefined : readBudgetLedger(resolve(budgetLedgerPath)),
   ]);
 
-  const openPrProviders = new Set(
+  const openPrSources = new Set(
     (openPrsRaw ?? "")
       .split(",")
       .map((s) => s.trim())
@@ -945,7 +954,8 @@ async function main(): Promise<void> {
     ...(providerFilter === undefined ? {} : { providerFilter }),
     evidenceFiles,
     ...(requireSourceEvidence ? { requireSourceEvidence: true } : {}),
-    openPrProviders,
+    probePublicEvidence: args.includes("--probe-public-evidence"),
+    openPrSources,
     ...(budgetLedger === undefined
       ? {}
       : { budgetLedger, budgetLimits: parseBudgetLimitsFromEnv() }),
