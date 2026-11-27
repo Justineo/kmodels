@@ -154,6 +154,10 @@ leaves the scoped mode unspecified. Its existing prompt-cache summary and pricin
   display labels. An explicit unknown ID cannot fall back to a different revision. Reviewed label
   normalization preserves word and version order; a unique observed dated-ID stem can match a
   display label, but rearranged tokens cannot establish identity. Joins do not rename catalog rows.
+- The model ID guide distinguishes pinned dateless IDs from older Claude API aliases that point to
+  the most recent dated snapshot of their minor version. The validator accepts that statement in
+  the guide's pre-4.6 format section and the legacy convenience-pointer wording. Guide examples do
+  not supply alias pairs.
 - Current and historical official IDs remain in the catalog. Lifecycle state and release maturity
   are independent.
 - Repeated overview observations distinguish missing fields from conflicting known values. Missing
