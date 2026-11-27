@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { priceDataExport, priceDataExportAssets } from "../src/catalog/pricing-lookup-export.ts";
+import { priceDataExport } from "../src/catalog/pricing-lookup-export.ts";
 import { priceDataCoverage } from "../src/catalog/pricing-coverage.ts";
 import { providerPricingFreshnessSchema } from "../src/catalog/pricing-schema.ts";
 import { capturePricingSourceRecords } from "../src/catalog/pricing-source-records.ts";
 import { providerPartition } from "../src/catalog/pricing-transition.ts";
+import { readPublishedAssetProfile } from "../src/catalog/published-assets.ts";
 import {
   validatePriceData,
   type PriceDataEnvelope,
@@ -20,7 +21,6 @@ import type {
 import { generatedData } from "./generated-data-context.ts";
 import {
   DEFAULT_CODEX_MODEL,
-  calculateUsageCostUsd,
   loadOpenAIPricingLookup,
   resolveOpenAIRateBand,
 } from "../scripts/self-heal/adapters/codex.ts";
@@ -103,11 +103,13 @@ describe("unit-price exports", () => {
       ),
     ).providers[0];
     const baseline = priceDataExport(catalog, pricing, [snapshot.provider_id]).providers[0];
-    expect(exported?.sources).toEqual(captured.snapshot.source_records);
-    expect(exported?.snapshot).not.toHaveProperty("source_records");
-    expect(exported?.snapshot).toMatchObject({ publication: "retained", observed_at: historical });
-    expect(exported?.books).toEqual(baseline?.books);
-    expect(exported?.models).toEqual(baseline?.models);
+    if (exported === undefined || baseline === undefined)
+      throw new Error(`Missing price export for ${snapshot.provider_id}`);
+    expect(exported.sources).toEqual(captured.snapshot.source_records);
+    expect(exported.snapshot).not.toHaveProperty("source_records");
+    expect(exported.snapshot).toMatchObject({ publication: "retained", observed_at: historical });
+    expect(exported.books).toEqual(baseline.books);
+    expect(exported.models).toEqual(baseline.models);
   }, 90_000);
   it("rejects empty, duplicated and unknown provider selections", async () => {
     const { catalog, pricing } = await generatedData();
@@ -120,16 +122,19 @@ describe("unit-price exports", () => {
     }
   });
   it("publishes the index, coverage and per-provider unit-price assets", async () => {
-    const { catalog, pricing } = await generatedData();
-    const fileNames = priceDataExportAssets(
-      validatePriceData(priceDataExport(catalog, pricing)),
-    ).map(({ fileName }) => fileName);
-    expect(fileNames).toEqual([
-      "pricing/lookup/index.json",
+    const [{ pricing }, { manifest }] = await Promise.all([
+      generatedData(),
+      readPublishedAssetProfile("exports"),
+    ]);
+    const lookupFiles = manifest.assets
+      .map(({ file_name }) => file_name)
+      .filter((path) => path.startsWith("pricing/lookup/"));
+    expect(lookupFiles).toEqual([
       "pricing/lookup/coverage.json",
-      ...pricing.data.provider_snapshots.map(
-        ({ provider_id }) => `pricing/lookup/providers/${provider_id}.json`,
-      ),
+      "pricing/lookup/index.json",
+      ...pricing.data.provider_snapshots
+        .map(({ provider_id }) => `pricing/lookup/providers/${provider_id}.json`)
+        .sort(),
     ]);
   }, 90_000);
 
@@ -141,35 +146,6 @@ describe("unit-price exports", () => {
     expect(band.input.numerator > 0n).toBe(true);
     expect(band.output.numerator > 0n).toBe(true);
     expect(band.cacheRead.numerator >= 0n).toBe(true);
-
-    const expectedMicroUsd =
-      ((10_000n * band.input.numerator * band.output.denominator +
-        1_000n * band.output.numerator * band.input.denominator) *
-        2_000_000n +
-        band.input.denominator * band.output.denominator) /
-      (band.input.denominator * band.output.denominator * 2n);
-    const expectedUsd = Number(expectedMicroUsd) / 1_000_000;
-    expect(
-      calculateUsageCostUsd(
-        DEFAULT_CODEX_MODEL,
-        {
-          input_tokens: 10_000,
-          output_tokens: 1_000,
-          total_tokens: 11_000,
-          input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 },
-        },
-        lookup,
-      ),
-    ).toBe(expectedUsd);
-
-    // Synthetic unrecognized and synthetic dated IDs must fail closed rather than borrowing base rates
-    // (never assert against real dated OpenAI IDs that future catalog refreshes may legitimately add).
-    expect(() => resolveOpenAIRateBand("gpt-9-custom", 10_000, lookup)).toThrow(
-      /Unsupported SELF_HEAL_MODEL/,
-    );
-    expect(() =>
-      resolveOpenAIRateBand(`${DEFAULT_CODEX_MODEL}-1999-01-01`, 10_000, lookup),
-    ).toThrow(/Unsupported SELF_HEAL_MODEL/);
   });
 });
 

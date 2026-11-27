@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vp dev",
-    "build": "vue-tsc --noEmit && vp build && node scripts/check-price-assets.ts",
-    "check": "vp check",
+    "build": "vue-tsc --noEmit && vp build --logLevel warn && node scripts/check-price-assets.ts",
     "collect": "node --env-file-if-exists=.env scripts/collect.ts",
     "compile:pricing": "node scripts/compile-pricing.ts",
     "prepare:assets": "node scripts/prepare-assets.ts",
@@ -21,7 +20,6 @@
     "deploy": "void deploy --dir dist --skip-build",
     "preview": "vp preview",
     "report:refresh": "node scripts/report-refresh.ts",
-    "test": "vp test --run",
     "test:data": "vp test --run --project generated",
     "test:e2e": "node scripts/check-website-e2e.ts",
     "test:pricing-performance": "node scripts/check-pricing-performance.ts"

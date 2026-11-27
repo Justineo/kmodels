@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vite-plus/test";
@@ -22,15 +22,16 @@ it("checks generation changes against the prepared package tree, not Git's base 
   try {
     await mkdir(join(packageRoot, "dist"), { recursive: true });
     const source = join(packageRoot, "schema.json");
-    await writeFile(source, "original");
-    await writeFile(source, "prepared ".repeat(200_000));
+    await writeFile(source, "prepared schema", { mode: 0o644 });
     const prepared = await packageSourceHash(root);
-    expect(await packageSourceHash(root)).toBe(prepared);
     await writeFile(join(packageRoot, "dist/index.js"), "generated runtime");
     expect(await packageSourceHash(root)).toBe(prepared);
+    await chmod(source, 0o755);
+    expect(await packageSourceHash(root)).not.toBe(prepared);
+    await chmod(source, 0o644);
     await writeFile(source, "unexpected generated change");
     expect(await packageSourceHash(root)).not.toBe(prepared);
-    await writeFile(source, "prepared ".repeat(200_000));
+    await writeFile(source, "prepared schema");
     expect(await packageSourceHash(root)).toBe(prepared);
     const added = join(packageRoot, "new-schema.json");
     await writeFile(added, "new artifact");
@@ -39,9 +40,7 @@ it("checks generation changes against the prepared package tree, not Git's base 
     await rm(added);
     paths.pop();
     await rm(source);
-    const removed = await packageSourceHash(root);
-    expect(removed).not.toBe(prepared);
-    expect(await packageSourceHash(root)).toBe(removed);
+    expect(await packageSourceHash(root)).not.toBe(prepared);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

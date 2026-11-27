@@ -2,7 +2,11 @@ import { dirname, join, normalize } from "node:path";
 import ts from "typescript";
 
 /** Local module and resource references, including bounded dynamic resource prefixes. */
-export function moduleDependencies(file: string, source: string): string[] {
+export function moduleDependencies(
+  file: string,
+  source: string,
+  mode: "all" | "runtime" = "all",
+): string[] {
   const paths: string[] = [];
   const script = file.endsWith(".vue")
     ? [...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
@@ -16,10 +20,14 @@ export function moduleDependencies(file: string, source: string): string[] {
     else if (ts.isTemplateExpression(node)) paths.push(node.head.text);
   }
   function visit(node: ts.Node): void {
-    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) add(node.moduleSpecifier);
+    if (ts.isImportDeclaration(node) && (mode === "all" || !node.importClause?.isTypeOnly))
+      add(node.moduleSpecifier);
+    if (ts.isExportDeclaration(node) && (mode === "all" || !node.isTypeOnly))
+      add(node.moduleSpecifier);
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword)
       add(node.arguments[0]);
     if (
+      mode === "all" &&
       ts.isNewExpression(node) &&
       ts.isIdentifier(node.expression) &&
       node.expression.text === "URL"
@@ -29,6 +37,8 @@ export function moduleDependencies(file: string, source: string): string[] {
   }
   visit(tree);
   return paths
-    .filter((path) => path.startsWith("."))
-    .map((path) => normalize(join(dirname(file), path.split("?", 1)[0] ?? path)));
+    .filter((path) => mode === "runtime" || path.startsWith("."))
+    .map((path) =>
+      path.startsWith(".") ? normalize(join(dirname(file), path.split("?", 1)[0] ?? path)) : path,
+    );
 }

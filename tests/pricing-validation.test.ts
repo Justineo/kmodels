@@ -260,14 +260,6 @@ describe("canonical pricing serialized catalog validation", () => {
     expect(() => validatePricingCatalog(conflict, core)).toThrow();
   });
 
-  it("preserves provider validation failures across worker boundaries", async () => {
-    const badId = catalog();
-    badId.books[0]!.id = "0".repeat(64);
-    await expect(validatePricingCatalogInParallel(badId, core)).rejects.toThrow(
-      "ID recipe mismatch",
-    );
-  });
-
   it.each(["valid", "unscoped_raw", "id", "duplicate", "ownership", "ijson"])(
     "keeps mirror and worker validation equivalent for %s input",
     async (kind) => {
@@ -304,6 +296,7 @@ describe("canonical pricing serialized catalog validation", () => {
       const parallel = await failure(() => validatePricingCatalogInParallel(data, ownedCore));
       expect(local).toBe(parallel);
       if (kind === "valid" || kind === "unscoped_raw") expect(local).toBeUndefined();
+      else if (kind === "id") expect(local).toContain("ID recipe mismatch");
       else expect(local).toBeTypeOf("string");
       expect(data).toEqual(original);
     },

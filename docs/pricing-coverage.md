@@ -90,8 +90,8 @@ with consumer exports. Portable synthetic fixtures independently verify unit-pri
 semantics and packed Node/browser behavior. These checks complement native evidence; none alone
 proves every published service or charge has been discovered.
 
-Production build verification replays every exact mapped inference ID against its published
-price-data partition and summarizes lookup failures and candidate evidence gaps by provider.
-After a build, `vp node scripts/check-price-assets.ts --list-inference-gaps` lists affected
-IDs and reasons. Missing caller conditions alone are normal candidates. The replay covers
-published mappings and supplies a review queue for source investigations, including known gaps.
+Production build verification checks that each mapping refers to the built price snapshot and its
+own models, offers, conditions and evidence. After a build, use
+`vp node scripts/check-price-assets.ts --list-inference-gaps` to query every mapped inference ID
+and list IDs with review signals and their reasons. Missing caller conditions alone are normal
+candidates.

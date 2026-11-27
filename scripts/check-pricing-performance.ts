@@ -44,6 +44,7 @@ async function catalogCases(): Promise<{ version: string; cases: PricingPerforma
     if (bytes === undefined) throw new Error(`Missing published asset ${path}`);
     return JSON.parse(gunzipSync(bytes).toString("utf8"));
   };
+  const offerChunks = new Map<string, ReturnType<typeof websiteOfferChunkSchema.parse>>();
   const ranked = new Map<
     string,
     {
@@ -86,8 +87,13 @@ async function catalogCases(): Promise<{ version: string; cases: PricingPerforma
     .map(({ subject, provider, references }) => ({
       ...subject,
       offers: references.map(([chunk, index]) => {
-        const offer = websiteOfferChunkSchema.parse(read(`/ui/offers/${provider}/${chunk}.json`))
-          .offers[index];
+        const path = `/ui/offers/${provider}/${chunk}.json`;
+        let decoded = offerChunks.get(path);
+        if (decoded === undefined) {
+          decoded = websiteOfferChunkSchema.parse(read(path));
+          offerChunks.set(path, decoded);
+        }
+        const offer = decoded.offers[index];
         if (offer === undefined)
           throw new Error(`Missing published offer ${provider}/${chunk}/${index}`);
         return offer;
@@ -223,16 +229,7 @@ async function measure(
     frame: frameSamples.length ? timingSummary(frameSamples) : null,
   };
   reports.push(result);
-  const exceeded = timingFailures(name, mounts, first, updates);
-  failures.push(...exceeded);
-  console.log(
-    JSON.stringify({
-      name,
-      mount_ms: Math.max(...mounts),
-      worst_update_ms: Math.max(0, ...[...updates.values()].flat()),
-      failures: exceeded,
-    }),
-  );
+  failures.push(...timingFailures(name, mounts, first, updates));
 }
 
 async function auditTransitions(browser: Browser, origin: string, mode: "inference" | "offer") {
@@ -247,9 +244,7 @@ async function auditTransitions(browser: Browser, origin: string, mode: "inferen
     );
     if (mode === "offer") await checkServicePricing(page);
     assert.deepEqual(errors, [], "Browser errors invalidate transition results");
-    const result = { name: `regional-transitions/${mode}`, ...transitions };
-    console.log(JSON.stringify(result));
-    return result;
+    return { name: `regional-transitions/${mode}`, ...transitions };
   } catch (error) {
     await page.screenshot({ path: join(dirname(reportPath), `failure-transitions-${mode}.png`) });
     throw error;
@@ -300,27 +295,31 @@ try {
     });
     for (const subject of catalog.cases) await measure(subject, "inference", false, origin);
   }
-  if (failures.length > 0) throw new Error(failures.join("\n"));
 } catch (error) {
   failures.push(error instanceof Error ? error.message : String(error));
-  console.error(error);
-  process.exitCode = 1;
 } finally {
-  await writeFile(
-    reportPath,
-    JSON.stringify(
-      {
-        node: process.version,
-        browser: browser?.version(),
-        budgets: pricingPerformanceBudgets,
-        reports,
-        failures,
-      },
-      null,
-      2,
-    ),
-  );
-  await browser?.close();
-  await server?.close();
-  await rm(output, { recursive: true, force: true });
+  try {
+    await writeFile(
+      reportPath,
+      JSON.stringify(
+        {
+          node: process.version,
+          browser: browser?.version(),
+          budgets: pricingPerformanceBudgets,
+          reports,
+          failures,
+        },
+        null,
+        2,
+      ),
+    );
+  } finally {
+    await browser?.close();
+    await server?.close();
+    await rm(output, { recursive: true, force: true });
+  }
 }
+if (failures.length > 0) {
+  console.error(failures.join("\n"));
+  process.exitCode = 1;
+} else console.log(`Pricing browser checks passed (${reportPath}).`);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { copyFile, mkdtemp, readFile, readdir, rm, symlink } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -44,11 +44,7 @@ async function checkPricingPackage(): Promise<void> {
     await checkNodeRuntime(entryPath, suite);
     await checkBrowserRuntime(entryPath, suite);
 
-    console.log(
-      `Packed package: ${expectedPackageFiles.length} expected files; ` +
-        "unit-price queries verified in Node and browser; " +
-        "consumer types verified; synthetic price data only; no transport or Node dependency in the runtime.",
-    );
+    console.log("Verified packed pricing exports and consumer types in Node and browser.");
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
@@ -101,10 +97,7 @@ async function checkPackageContents(packageDirectory: string): Promise<void> {
   const manifest = packageManifestSchema.parse(JSON.parse(await readFile(manifestPath, "utf8")));
   assert.deepEqual(Object.keys(manifest.dependencies), ["zod"]);
 
-  const distributionDirectory = join(packageDirectory, "dist");
-  assert.deepEqual((await readdir(distributionDirectory)).sort(), ["index.d.ts", "index.js"]);
-
-  const runtimeSource = await readFile(join(distributionDirectory, "index.js"), "utf8");
+  const runtimeSource = await readFile(join(packageDirectory, "dist/index.js"), "utf8");
   const forbiddenRuntimeFeatures =
     /node:|https?:\/\/|fetch\(|XMLHttpRequest|localStorage|indexedDB/;
   assert(

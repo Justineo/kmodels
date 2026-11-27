@@ -97,10 +97,12 @@ async function collect(
   );
 }
 let baseline: CatalogPairCandidate;
+let queryBaseline: ReturnType<typeof lookup>;
 beforeAll(async () => {
   baseline = await collect();
+  queryBaseline = lookup(baseline);
 }, 15000);
-function lookup(candidate = baseline) {
+function lookup(candidate: CatalogPairCandidate) {
   return createInferencePriceLookup(
     priceDataExport(candidate.catalog, candidate.pricing),
     candidate.inference?.mapping,
@@ -149,7 +151,7 @@ function inputPrices(result: ReturnType<ReturnType<typeof lookup>>) {
 
 it("keeps literal IDs and published regional prices independent of inferred ID prefixes", () => {
   const args = { provider_id: "dashscope", model_id: "qwen-plus" };
-  const query = lookup();
+  const query = queryBaseline;
   const initial = query(args);
   expect(initial.status).toBe("candidates");
   expect(initial.missing_conditions).toContainEqual({ namespace: "kmodels", value: "region" });
@@ -185,14 +187,14 @@ it("keeps literal IDs and published regional prices independent of inferred ID p
 });
 
 it("preserves snapshot IDs and distinct on-demand and Batch offers", () => {
-  const dated = lookup()({
+  const dated = queryBaseline({
     provider_id: "dashscope",
     model_id: "qwen-plus-2025-12-01",
     selectors: [...globalUS, context("128000")],
   });
   expect(dated.status).toBe("matched");
   expect(inputPrices(dated)).toEqual([{ numerator: "23", denominator: "200000000" }]);
-  const result = lookup()({ provider_id: "dashscope", model_id: "qwen-flash" });
+  const result = queryBaseline({ provider_id: "dashscope", model_id: "qwen-flash" });
   expect(result.status).toBe("candidates");
   expect(new Set(result.candidates.map(({ offer }) => offer.name))).toEqual(
     new Set(["Public rates"]),
@@ -200,14 +202,14 @@ it("preserves snapshot IDs and distinct on-demand and Batch offers", () => {
 });
 
 it("distinguishes known price exclusions from unknown prices and IDs", () => {
-  const excluded = lookup()({
+  const excluded = queryBaseline({
     provider_id: "dashscope",
     model_id: "qwen-plus",
     selectors: [condition("region", "Singapore"), condition("deployment_scope", "US")],
   });
   expect(excluded.reason).toBe("no_applicable_price");
   expect(excluded.candidates).toEqual([]);
-  const world = lookup()({ provider_id: "dashscope", model_id: "happyoyster-1.0-acting" });
+  const world = queryBaseline({ provider_id: "dashscope", model_id: "happyoyster-1.0-acting" });
   expect(world.reason).toBeUndefined();
   expect(world.candidates.length).toBeGreaterThan(0);
   expect(world.candidates.flatMap((c) => c.offer.terms).some((t) => t.kind === "rate")).toBe(true);
@@ -240,7 +242,7 @@ it("publishes literal Beijing IDs and CNY rates from the mainland price book", a
     });
   });
   const args = { provider_id: "dashscope", model_id: "qwen-long" };
-  expect(lookup()(args).reason).toBe("unreviewed_id");
+  expect(queryBaseline(args).reason).toBe("unreviewed_id");
   const query = lookup(candidate);
   const result = query({
     ...args,
@@ -408,7 +410,11 @@ it("uses the same conditions and reasons in static output and compact UI data", 
     [condition("region", "Singapore"), condition("deployment_scope", "US")],
   ]) {
     const result = queryWebsiteInferencePrice(price, selectors, at);
-    const expected = lookup()({ provider_id: "dashscope", model_id: price.model_id, selectors });
+    const expected = queryBaseline({
+      provider_id: "dashscope",
+      model_id: price.model_id,
+      selectors,
+    });
     expect(result.status).toBe(expected.status);
     expect(result.reason).toBe(expected.reason);
   }

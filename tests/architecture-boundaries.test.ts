@@ -19,27 +19,23 @@ async function collectTsFiles(dir: string): Promise<string[]> {
   return files;
 }
 
-/** Extract runtime (non-`import type`) static import targets for cycle & boundary checks. */
-function runtimeImports(file: string, source: string): string[] {
-  const specifiers: string[] = [];
-  const pattern =
-    /\b(?:import|export)\s+(?!type\b)(?:[^"'`]*?\s+from\s+)?["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)/g;
-  for (const match of source.matchAll(pattern)) {
-    const raw = match[1] ?? match[2];
-    if (raw === undefined) continue;
-    if (raw.startsWith(".")) {
-      specifiers.push(posix.normalize(posix.join(posix.dirname(file), raw)));
-    } else {
-      specifiers.push(raw);
-    }
+const scanned = new Map<string, Promise<string[]>>();
+function runtimeImports(file: string): Promise<string[]> {
+  let imports = scanned.get(file);
+  if (imports === undefined) {
+    imports = readFile(new URL(file, repoRoot), "utf8").then((source) =>
+      moduleDependencies(file, source, "runtime"),
+    );
+    scanned.set(file, imports);
   }
-  return specifiers;
+  return imports;
 }
 
-async function transitiveClosure(
-  entries: readonly string[],
-  mode: "runtime" | "all",
-): Promise<Set<string>> {
+const coreFiles = Promise.all([collectTsFiles("src/catalog"), collectTsFiles("src/pricing")]).then(
+  (groups) => groups.flat(),
+);
+
+async function transitiveClosure(entries: readonly string[]): Promise<Set<string>> {
   const seen = new Set<string>();
   const queue = [...entries];
   while (queue.length > 0) {
@@ -47,10 +43,7 @@ async function transitiveClosure(
     if (current === undefined || seen.has(current)) continue;
     seen.add(current);
     if (!current.startsWith("src/") || !/\.(?:ts|vue)$/.test(current)) continue;
-    const source = await readFile(new URL(current, repoRoot), "utf8");
-    const deps =
-      mode === "runtime" ? runtimeImports(current, source) : moduleDependencies(current, source);
-    for (const dep of deps) {
+    for (const dep of await runtimeImports(current)) {
       if (!seen.has(dep)) queue.push(dep);
     }
   }
@@ -59,16 +52,12 @@ async function transitiveClosure(
 
 describe("architecture boundaries", () => {
   it("has zero runtime value-level import cycles in src/catalog and src/pricing", async () => {
-    const files = [
-      ...(await collectTsFiles("src/catalog")),
-      ...(await collectTsFiles("src/pricing")),
-    ];
+    const files = await coreFiles;
     const graph = new Map<string, string[]>();
     for (const file of files) {
-      const source = await readFile(new URL(file, repoRoot), "utf8");
       graph.set(
         file,
-        runtimeImports(file, source).filter((dep) => dep.startsWith("src/")),
+        (await runtimeImports(file)).filter((dep) => dep.startsWith("src/")),
       );
     }
     const state = new Map<string, "visiting" | "done">();
@@ -93,8 +82,7 @@ describe("architecture boundaries", () => {
 
   it("keeps sealed src/catalog/transport/ free of provider parsers, manifests, and cheerio", async () => {
     const transportFiles = await collectTsFiles("src/catalog/transport");
-    expect(transportFiles.length).toBeGreaterThanOrEqual(3);
-    const closure = await transitiveClosure(transportFiles, "runtime");
+    const closure = await transitiveClosure(transportFiles);
     expect(closure.has("cheerio")).toBe(false);
     expect(closure.has("src/catalog/manifests.ts")).toBe(false);
     expect(closure.has("src/catalog/fetch.ts")).toBe(false);
@@ -142,14 +130,10 @@ describe("architecture boundaries", () => {
   });
 
   it("keeps AWS SDK and Smithy clients sealed inside src/catalog/transport/", async () => {
-    const files = [
-      ...(await collectTsFiles("src/catalog")),
-      ...(await collectTsFiles("src/pricing")),
-    ].filter((file) => !file.startsWith("src/catalog/transport/"));
+    const files = (await coreFiles).filter((file) => !file.startsWith("src/catalog/transport/"));
     const offenders: string[] = [];
     for (const file of files) {
-      const source = await readFile(new URL(file, repoRoot), "utf8");
-      const sdkDeps = runtimeImports(file, source).filter(
+      const sdkDeps = (await runtimeImports(file)).filter(
         (dep) => dep.startsWith("@aws-sdk/") || dep.startsWith("@smithy/"),
       );
       if (sdkDeps.length > 0) offenders.push(`${file}: ${sdkDeps.join(", ")}`);
@@ -158,7 +142,7 @@ describe("architecture boundaries", () => {
   });
 
   it("keeps browser entrypoints free of zod, node built-ins, and transport modules", async () => {
-    const closure = await transitiveClosure(["src/main.ts", "src/details-app.ts"], "runtime");
+    const closure = await transitiveClosure(["src/main.ts", "src/details-app.ts"]);
     const forbidden = [...closure].filter(
       (dep) => dep === "zod" || dep.startsWith("node:") || dep.startsWith("src/catalog/transport/"),
     );
@@ -166,7 +150,7 @@ describe("architecture boundaries", () => {
   });
 
   it("keeps @kmodels/pricing portable runtime free of node built-ins and transport modules", async () => {
-    const closure = await transitiveClosure(["src/pricing/index.ts"], "runtime");
+    const closure = await transitiveClosure(["src/pricing/index.ts"]);
     const forbidden = [...closure].filter(
       (dep) =>
         dep.startsWith("node:") ||

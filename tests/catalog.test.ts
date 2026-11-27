@@ -1,14 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vite-plus/test";
-import type { AssetSource } from "../src/catalog/asset-pack.ts";
+import { compressedAsset } from "../src/catalog/asset-pack.ts";
 import { catalogExportAssets } from "../src/catalog/endpoints.ts";
 import { sha256 } from "../src/catalog/io.ts";
 import { manifests } from "../src/catalog/manifests.ts";
 import { modelUid } from "../src/catalog/model.ts";
-import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts";
-import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
-import { projectCatalogPair } from "../src/catalog/projections.ts";
 import {
   catalogIdentifiersSchema,
   catalogIdsSchema,
@@ -18,8 +15,6 @@ import {
 } from "../src/catalog/publication-schema.ts";
 import { readPublishedAssetProfile } from "../src/catalog/published-assets.ts";
 import { catalogEnvelopeSchema } from "../src/catalog/schema.ts";
-import { websiteDetailChunkSchema } from "../src/catalog/website-schema.ts";
-import { loadWebsiteCatalog } from "../src/catalog/website-runtime.ts";
 import { inferencePriceMappingSchema } from "../src/pricing/inference-schema.ts";
 import { generatedData } from "./generated-data-context.ts";
 
@@ -129,56 +124,33 @@ describe("generated static catalog", () => {
     }
   });
 
-  it("builds public endpoints from durable state", async () => {
+  it("keeps published catalog endpoints synchronized with the catalog and their public contracts", async () => {
     const { catalog } = await generatedData();
-    const pricing = createPricingCatalogEnvelope(
-      {
-        provider_vocabularies: [],
-        provider_snapshots: [],
-        model_dispositions: [],
-        books: [],
-      },
-      catalog,
+    const publishedExports = await readPublishedAssetProfile("exports");
+    const entries = new Map(
+      publishedExports.manifest.assets.map((entry) => [entry.file_name, entry]),
     );
-    const candidate = prepareCatalogPair(catalog, pricing);
-    const projections = await projectCatalogPair(candidate);
-    const assets: AssetSource[] = [projections.ui, projections.exports].flatMap(
-      ({ manifest, pack }) =>
-        manifest.assets.map(({ file_name, offset, length }) => ({
-          fileName: file_name,
-          source: gunzipSync(pack.subarray(offset, offset + length)).toString("utf8"),
-        })),
-    );
-    const catalogAsset = assets.find(({ fileName }) => fileName === "catalog/index.json");
-    const pricingAsset = assets.find(({ fileName }) => fileName === "pricing/index.json");
-    const websiteDetailAssets = assets.filter(({ fileName }) => fileName.startsWith("ui/details/"));
-    const idsAsset = assets.find(({ fileName }) => fileName === "catalog/ids.json");
-    const identifiersAsset = assets.find(({ fileName }) => fileName === "catalog/identifiers.json");
-    const modelsAsset = assets.find(({ fileName }) => fileName === "catalog/models.json");
-    const summaryAsset = assets.find(({ fileName }) => fileName === "catalog/summary.json");
-    const providersAsset = assets.find(({ fileName }) => fileName === "providers/index.json");
-    const sampleProviderId = catalog.providers[0]?.id;
-    if (sampleProviderId === undefined) throw new Error("Generated catalog has no providers");
-    const providerAsset = assets.find(
-      ({ fileName }) => fileName === `providers/${sampleProviderId}/index.json`,
-    );
-    const providerModelsAsset = assets.find(
-      ({ fileName }) => fileName === `providers/${sampleProviderId}/models/index.json`,
-    );
-    const envelope = catalogEnvelopeSchema.parse(JSON.parse(catalogAsset?.source ?? ""));
-    const ids = catalogIdsSchema.parse(JSON.parse(idsAsset?.source ?? ""));
-    const identifiers = catalogIdentifiersSchema.parse(JSON.parse(identifiersAsset?.source ?? ""));
-    const published = catalogModelsSchema.parse(JSON.parse(modelsAsset?.source ?? ""));
-    const summary = catalogSummarySchema.parse(JSON.parse(summaryAsset?.source ?? ""));
-    catalogProvidersSchema.parse(JSON.parse(providersAsset?.source ?? ""));
-    expect(JSON.parse(providerAsset?.source ?? "")).toMatchObject({
-      profile: "provider",
-      provider_id: sampleProviderId,
-    });
-    expect(JSON.parse(providerModelsAsset?.source ?? "")).toMatchObject({
-      profile: "provider-models",
-      provider_id: sampleProviderId,
-    });
+    const assets = new Map<string, string>();
+    for (const asset of catalogExportAssets(catalog)) {
+      const entry = entries.get(asset.fileName);
+      if (entry === undefined) throw new Error(`Missing catalog export ${asset.fileName}`);
+      const source = gunzipSync(compressedAsset(publishedExports.pack, entry)).toString("utf8");
+      expect(sha256(source), asset.fileName).toBe(entry.source_sha256);
+      expect(sha256(asset.source), asset.fileName).toBe(entry.source_sha256);
+      assets.set(asset.fileName, source);
+    }
+    function read(path: string): unknown {
+      const source = assets.get(path);
+      if (source === undefined) throw new Error(`Missing catalog export ${path}`);
+      return JSON.parse(source);
+    }
+
+    const envelope = catalogEnvelopeSchema.parse(read("catalog/index.json"));
+    const ids = catalogIdsSchema.parse(read("catalog/ids.json"));
+    const identifiers = catalogIdentifiersSchema.parse(read("catalog/identifiers.json"));
+    const published = catalogModelsSchema.parse(read("catalog/models.json"));
+    const summary = catalogSummarySchema.parse(read("catalog/summary.json"));
+    catalogProvidersSchema.parse(read("providers/index.json"));
     const distinctModelCount = new Set(
       catalog.models.map(({ provider_id, model_id }) => JSON.stringify([provider_id, model_id])),
     ).size;
@@ -208,6 +180,14 @@ describe("generated static catalog", () => {
     for (const provider of catalog.providers) {
       const sourceModels = catalog.models.filter(({ provider_id }) => provider_id === provider.id);
       const expectedModelIds = new Set(sourceModels.map(({ model_id }) => model_id));
+      expect(read(`providers/${provider.id}/index.json`), provider.id).toMatchObject({
+        profile: "provider",
+        provider_id: provider.id,
+      });
+      expect(read(`providers/${provider.id}/models/index.json`), provider.id).toMatchObject({
+        profile: "provider-models",
+        provider_id: provider.id,
+      });
       const publishedModelIds = ids.providers[provider.id];
       const publishedIdentifiers = identifiers.providers[provider.id];
       const publishedProvider = published.providers[provider.id];
@@ -267,45 +247,16 @@ describe("generated static catalog", () => {
         status,
       })),
     );
-    expect(modelsAsset?.source).not.toMatch(
+    expect(assets.get("catalog/models.json")).not.toMatch(
       /"(?:task_evidence|delivery_mode_evidence|raw_type|routes|source_refs|observed_at|first_seen_at|last_seen_at|warnings)"/,
     );
-    expect(
-      assets
-        .filter(
-          ({ fileName }) =>
-            fileName.startsWith("providers/") || fileName === "providers/index.json",
-        )
-        .map(({ source }) => source)
-        .join(""),
-    ).not.toMatch(
-      /"(?:task_evidence|delivery_mode_evidence|raw_type|routes|source_refs|source_ids|observed_at|first_seen_at|last_seen_at|warnings)"/,
-    );
-    expect(pricingAsset?.source.endsWith("\n")).toBe(false);
-    const website = await loadWebsiteCatalog(async (path) => {
-      const asset = assets.find(({ fileName }) => `/${fileName}` === path);
-      if (asset === undefined) throw new Error(`Missing core asset ${path}`);
-      return JSON.parse(asset.source);
-    });
-    const websiteDetails = websiteDetailAssets.map(({ source }) =>
-      websiteDetailChunkSchema.parse(JSON.parse(source)),
-    );
-    expect(website.data_version).toBe(projections.ui.manifest.data_version);
-    expect(website.models).toHaveLength(catalog.models.length);
-    expect(websiteDetails.flatMap(({ details }) => details)).toHaveLength(catalog.models.length);
-    expect(new Set(assets.map(({ fileName }) => fileName)).size).toBe(assets.length);
+    for (const [path, source] of assets) {
+      if (!path.startsWith("providers/")) continue;
+      expect(source, path).not.toMatch(
+        /"(?:task_evidence|delivery_mode_evidence|raw_type|routes|source_refs|source_ids|observed_at|first_seen_at|last_seen_at|warnings)"/,
+      );
+    }
   }, 15_000);
-
-  it("keeps checked-in catalog exports synchronized with their projection contracts", async () => {
-    const { catalog } = await generatedData();
-    const published = await readPublishedAssetProfile("exports");
-    const actualHashes = new Map(
-      published.manifest.assets.map(({ file_name, source_sha256 }) => [file_name, source_sha256]),
-    );
-
-    for (const asset of catalogExportAssets(catalog))
-      expect(actualHashes.get(asset.fileName), asset.fileName).toBe(sha256(asset.source));
-  });
 
   it("keeps committed structured evidence duplicate-free", async () => {
     const { catalog } = await generatedData();

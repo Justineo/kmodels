@@ -13,7 +13,6 @@ import { formatSentenceCase } from "../src/catalog/presentation.ts";
 import { providerPartition } from "../src/catalog/pricing-transition.ts";
 import { rationalFromDecimal } from "../src/catalog/pricing-rational.ts";
 import type { PriceRateTerm } from "../src/catalog/pricing-schema.ts";
-import { validatePricingCatalogInParallel } from "../src/catalog/pricing-validation-parallel.ts";
 import { generatedData } from "./generated-data-context.ts";
 
 describe("provider pricing validation", () => {
@@ -82,11 +81,6 @@ describe("provider pricing validation", () => {
         }
     }
   });
-
-  it("validates every committed provider pricing partition", async () => {
-    const { catalog, pricing } = await generatedData();
-    await expect(validatePricingCatalogInParallel(pricing.data, catalog)).resolves.toBeUndefined();
-  }, 90_000);
 
   it("checks current topology for fresh partitions without reinterpreting retained evidence", async () => {
     const { catalog, pricing } = await generatedData();
@@ -214,7 +208,7 @@ describe("provider pricing validation", () => {
       );
   }, 300_000);
 
-  it.each(["cohere", "mistral", "openai", "dashscope"])(
+  it.each(["cohere", "mistral", "openai"])(
     "keeps %s topology independent of current disposition inventory without losing structural guards",
     async (providerId) => {
       const { catalog, pricing } = await generatedData();

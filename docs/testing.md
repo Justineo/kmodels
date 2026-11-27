@@ -20,8 +20,8 @@ Status: implemented
   previous inputs. Source ownership and reviewed hosts are checked independently.
 - Production build validation checks that the already-validated pair can be consumed and
   materialized. It is not a substitute for unit or adapter behavior tests.
-- Maintenance tests verify reservation/settlement failure boundaries, task invalidation and
-  shared USD 10 run reservations, concrete-error checkpoint binding and monthly exhaustion,
+- Maintenance tests verify reservation and settlement failures, task invalidation, shared USD 10
+  run reservations, concrete-error checkpoint binding, and monthly exhaustion.
 - Self-heal & architecture boundary tests (`tests/self-heal.test.ts`,
   `tests/architecture-boundaries.test.ts`, `tests/public-evidence.test.ts`,
   `tests/repair-provider-replay.test.ts`) verify deterministic triage, path allowlists,
@@ -41,12 +41,12 @@ releasing canonical publication fragments before consumer tests. Replay consumes
 graphs directly and prepares only its result through the parallel boundary for that assertion;
 website projections reuse the checked inference mapping and end caches with their synchronous
 phase, as in production. The reader checks schema,
-metadata hashes, provenance and canonical identity; generated tests additionally exercise parallel
-provider validation and compare replay and consumer outputs. This keeps cold filesystem,
+metadata hashes, provenance and canonical identity. Worker validation is exercised with controlled
+fixtures and by preparing the replay result. Generated tests compare replay and consumer outputs.
+This keeps cold filesystem,
 decompression and schema-validation cost out of the first assertion's default five-second budget.
-The full public-endpoint projection test has a 15-second budget
-for rebuilding and decoding the catalog assets. Assertion and production resource limits
-remain independent.
+Catalog endpoint tests compare the stored export bytes to the current projector and check public
+schemas, model identities and audit-field omission on those bytes.
 
 The website suite rebuilds the full inference and website publication once in a five-minute
 setup hook, outside each consumer assertion's budget. On CI this shared synchronous projection
@@ -334,22 +334,25 @@ remain by design and the concrete evidence required to reopen them.
 Use `vp node scripts/validate-changes.ts BASE_SHA` (or `HEAD` for uncommitted work). `--plan`
 prints the paths and selected commands. Ordinary CI compares against the push's previous commit
 or the PR base. Trusted repair publication uses the same planner against latest main.
-CI completes source-only plans on the planning runner. For broader changes it runs source
-checks, two full-suite unit shards, three generated-data shards, builds and browser timing
-on separate runners as selected. Related unit tests stay together on the source runner.
-Package generation and its packed consumer checks share a checkout. Only generated-data,
-site-build and browser jobs hydrate the checked-out pointer, and only browser jobs install
-the Chromium headless shell. The required `verify` check waits for every selected group
-and the repair toolchain smoke check when applicable. A newer PR revision cancels its
+CI completes source-only plans on the planning runner. Larger plans can run source checks, two
+full-suite unit shards, generated-data tests, the site build, the package gate, and pricing browser
+timing on separate runners. Full generated-data plans use three shards. Package generation and
+its packed consumer checks share a checkout. Generated-data, site-build and browser jobs hydrate
+the checked-out pointer. Jobs running real browser checks install the Chromium headless shell.
+The required `verify` check waits for every selected group. A newer PR revision cancels its
 superseded CI run.
 
-- Code changes run formatting/lint/type checks and Vitest's related unit tests. The test-boundary
-  guard is included; workflow changes also select the harness workflow checks.
-- Generated data or changes in its consumer dependency closure select the generated project.
+- Code changes run formatting/lint/type checks and Vitest's related unit tests. Changes to test
+  sources and their boundary scanner select the test-boundary guard. Edits to the self-heal
+  workflow select its harness tests. Source changes select the architecture checks, and CSS
+  or Vue changes select design-token checks. These checks read source files directly.
+- Changes to generated data select the full generated project. Code changes select the generated
+  test files whose dependency closures include the changed paths.
   A changed snapshot pointer also selects the static build because it can replace the projections.
   Site and package checks run only when their source/resource dependency closures change;
   generated catalog/projection assets also select the production build.
-- Pricing component/matcher dependencies, the performance harness, generated data and full gates
+- Pricing component/matcher dependencies, the performance harness, the website pack or snapshot
+  pointer, and full gates
   select the pricing browser check. This dependency closure includes both UI paths and their
   shared query code; unrelated collector-only changes do not force a browser run.
 - Filesystem-loaded fixtures cannot be fully traced by Vitest's import graph. Their change uses
@@ -358,7 +361,8 @@ superseded CI run.
 - Shared configuration, runtime, lockfile and test-setup changes select the complete test suite,
   the production build and package gates. An unavailable/initial comparison also selects this
   complete gate. `vp run test:e2e` runs a Playwright browser smoke check against the built `dist/`
-  site (`App.vue`, search `replaceState`, zero-results recovery, and model detail drawer).
+  site (search `replaceState`, zero-results recovery, and deferred detail loading from a large
+  published chunk). Fixed prices and exact pricing options use reviewed fixtures.
 - Package generation must preserve the prepared package source tree. Compare content and modes
   before and after generation, including intentional uncommitted edits and new source artifacts;
   ignore generated runtime output. An intentional schema/entry restoration is not a build mutation.
@@ -377,17 +381,14 @@ history, replay/inference inputs, accepted pair identity and portable price expo
 changing the accepted model/state inputs. Boundary tests reject incomplete/duplicate groups,
 mixed plans, foreign ownership and malformed result artifacts. Workflow tests bind both matrices
 to one plan/revision and keep the only snapshot publication behind complete assembly and checks.
-Refresh and the Actions validation planner use the same
-test runner. It retries the identical command once when every reported failure is a test-body
-timeout. Both attempts are logged. Assertion, hook, collection, and unhandled failures stop
-that check immediately. A second timeout remains an operational failure. The repair agent demonstrates
+Refresh and the Actions validation planner run each selected test command once. Vitest reports
+assertion failures, timeouts, setup failures and unhandled errors in the failing job. The repair agent demonstrates
 the defect and runs focused regressions. Trusted post-execution checking admits the exact patch and
 evidence, and threat detection and publication use that same artifact. Publication checks the
 affected delta against latest `main` before commit. Ordinary CI and repair publication cap Vitest at
 two workers.
-Actions test logs show outcome totals, failed-test output, and error annotations. Successful-test
-console output stays out of these logs. The validation planner logs each executed command in
-Actions and prints the full plan on request with `--plan`.
+Validation logs show test totals and failure output, with error annotations in Actions. The
+planner prints the full command and path plan on request with `--plan`.
 When a publication check rejects the patch, the revision uses the saved failed command and
 diagnostics, fresh after-repair receipts, and the same complete trusted validation. Tests cover
 eligibility, retry bounds and stale proof rejection.
@@ -410,6 +411,6 @@ dependencies, and execute identical queries in Node and a browser-like ESM conte
 access blocked. Consumer fixtures compile against packed declarations in NodeNext and bundler
 modes and reject usage quantities and total-cost fields. No cost conformance suite is retained.
 
-`tests/pricing-lookup-data.test.ts` verifies all provider exports against the canonical pair.
-Production builds verify materialized lookup endpoints, coverage parity and every provider
-partition, preventing a stale export pack from passing an in-memory exporter test.
+`tests/pricing-lookup-data.test.ts` verifies provider export semantics against the canonical pair
+and checks the delivered export inventory. Production builds verify materialized lookup endpoints,
+coverage parity and every provider partition and inference binding.

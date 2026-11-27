@@ -9,8 +9,13 @@ import {
 
 const inputs: ValidationInputs = {
   full: false,
-  generated: new Set(["src/catalog/pricing-schema.ts"]),
-  build: new Set(["src/catalog/pricing-schema.ts", "src/App.vue"]),
+  generated: new Map([
+    [
+      "tests/pricing-lookup-data.test.ts",
+      new Set(["src/catalog/pricing-schema.ts", "tests/pricing-lookup-data.test.ts"]),
+    ],
+  ]),
+  build: new Set(["src/catalog/pricing-schema.ts", "src/App.vue", "scripts/check-price-assets.ts"]),
   package: new Set(["src/catalog/pricing-schema.ts", "tests/fixtures/pricing/"]),
   performance: new Set(["src/catalog/pricing-schema.ts", "src/components/InferencePrices.vue"]),
 };
@@ -27,6 +32,8 @@ it("partitions the complete CI gate and keeps package generation with its consum
     build: [
       ["run", "build"],
       ["run", "test:e2e"],
+    ],
+    package: [
       ["run", "package:build"],
       ["run", "package:check"],
     ],
@@ -68,15 +75,7 @@ it("limits documentation and collector changes to their affected checks", () => 
   ]);
   expect(validationPlan(["scripts/check-website-e2e.ts"], inputs)).toEqual([
     ["check"],
-    [
-      "test",
-      "related",
-      "--run",
-      "--project",
-      "unit",
-      "scripts/check-website-e2e.ts",
-      "tests/test-architecture.test.ts",
-    ],
+    ["test", "related", "--run", "--project", "unit", "scripts/check-website-e2e.ts"],
     ["run", "build"],
     ["run", "test:e2e"],
   ]);
@@ -91,7 +90,16 @@ it("limits documentation and collector changes to their affected checks", () => 
       "src/catalog/xai.ts",
       "tests/xai-accounting.test.ts",
       "tests/test-architecture.test.ts",
+      "tests/architecture-boundaries.test.ts",
     ],
+  ]);
+  expect(validationPlan(["src/tokens.css"], inputs)).toContainEqual([
+    "test",
+    "related",
+    "--run",
+    "--project",
+    "unit",
+    "tests/design-tokens.test.ts",
   ]);
 });
 
@@ -106,8 +114,19 @@ it("checks generated data and materialized consumers without rerunning code-only
     ["test", "--run", "--project", "generated"],
     ["run", "build"],
     ["run", "test:e2e"],
-    ["run", "test:pricing-performance"],
   ]);
+  expect(validationPlan(["data/refresh-summary.json"], inputs)).toEqual([
+    ["test", "--run", "--project", "generated"],
+  ]);
+  expect(validationPlan(["scripts/check-price-assets.ts"], inputs)).toContainEqual([
+    "run",
+    "build",
+  ]);
+  expect(
+    ciValidationGroups(validationPlan(["tests/pricing-lookup-data.test.ts"], inputs)).get(
+      "generated",
+    ),
+  ).toEqual([["test", "--run", "--project", "generated", "tests/pricing-lookup-data.test.ts"]]);
 });
 
 it("checks every affected pricing consumer once without a duplicate fixture suite", () => {
@@ -121,9 +140,9 @@ it("checks every affected pricing consumer once without a duplicate fixture suit
       "--project",
       "unit",
       "src/catalog/pricing-schema.ts",
-      "tests/test-architecture.test.ts",
+      "tests/architecture-boundaries.test.ts",
     ],
-    ["test", "--run", "--project", "generated"],
+    ["test", "--run", "--project", "generated", "tests/pricing-lookup-data.test.ts"],
     ["run", "build"],
     ["run", "test:e2e"],
     ["run", "package:build"],
@@ -155,7 +174,6 @@ it("selects harness tests for workflow edits without unrelated production builds
     "--run",
     "--project",
     "unit",
-    "tests/test-architecture.test.ts",
     "tests/self-heal.test.ts",
   ]);
   expect(commands.some(([command]) => command === "run")).toBe(false);
@@ -167,7 +185,7 @@ it.each(["src/components/InferencePrices.vue", "tests/performance/index.html"])(
     expect(validationPlan([path], inputs)).toContainEqual(["run", "test:pricing-performance"]),
 );
 
-it.each(["pnpm-lock.yaml", "vite.config.ts", "tests/setup.ts"])(
+it.each(["pnpm-lock.yaml", "pnpm-workspace.yaml", "vite.config.ts", "tests/setup.ts"])(
   "uses one full test run when %s changes the shared execution contract",
   (path) => {
     const commands = validationPlan([path], inputs);
@@ -183,19 +201,33 @@ it.each(["pnpm-lock.yaml", "vite.config.ts", "tests/setup.ts"])(
 );
 
 it("follows relative imports, re-exports, workers and dynamic resource prefixes through Vue scripts", () => {
-  expect(
-    moduleDependencies(
-      "src/Example.vue",
-      [
-        '<template><div>from "./not-a-module.ts"</div></template>',
-        '<script setup lang="ts">',
-        'import "./style.css";',
-        'export { value } from "./helper.ts";',
-        'const module = import("./lazy.ts");',
-        'const worker = new URL("./worker.ts", import.meta.url);',
-        "const data = new URL(`../data/${name}.json`, import.meta.url);",
-        "</script>",
-      ].join("\n"),
-    ),
-  ).toEqual(["src/style.css", "src/helper.ts", "src/lazy.ts", "src/worker.ts", "data/"]);
+  const source = [
+    '<template><div>from "./not-a-module.ts"</div></template>',
+    '<script setup lang="ts">',
+    '// import "./comment.ts";',
+    'import "node:fs";',
+    'import type { Value } from "./types.ts";',
+    'export type { Other } from "./other-types.ts";',
+    'import "./style.css";',
+    'export { value } from "./helper.ts";',
+    'const module = import("./lazy.ts");',
+    'const worker = new URL("./worker.ts", import.meta.url);',
+    "const data = new URL(`../data/${name}.json`, import.meta.url);",
+    "</script>",
+  ].join("\n");
+  expect(moduleDependencies("src/Example.vue", source)).toEqual([
+    "src/types.ts",
+    "src/other-types.ts",
+    "src/style.css",
+    "src/helper.ts",
+    "src/lazy.ts",
+    "src/worker.ts",
+    "data/",
+  ]);
+  expect(moduleDependencies("src/Example.vue", source, "runtime")).toEqual([
+    "node:fs",
+    "src/style.css",
+    "src/helper.ts",
+    "src/lazy.ts",
+  ]);
 });

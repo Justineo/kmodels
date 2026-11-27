@@ -95,10 +95,12 @@ async function collect(
   );
 }
 let baseline: CatalogPairCandidate;
+let queryBaseline: ReturnType<typeof lookup>;
 beforeAll(async () => {
   baseline = await collect();
+  queryBaseline = lookup(baseline);
 }, 15000);
-function lookup(candidate = baseline) {
+function lookup(candidate: CatalogPairCandidate) {
   return createInferencePriceLookup(
     priceDataExport(candidate.catalog, candidate.pricing),
     candidate.inference?.mapping,
@@ -176,7 +178,7 @@ function inputPrices(result: ReturnType<ReturnType<typeof lookup>>) {
 }
 
 it("joins literal managed model IDs and exact qualified request examples to existing tariffs", () => {
-  const query = lookup();
+  const query = queryBaseline;
   const direct = query({
     provider_id: "vertex",
     model_id: "mistral-medium-3",
@@ -201,7 +203,7 @@ it("joins literal managed model IDs and exact qualified request examples to exis
 });
 
 it("binds documented dated Claude request IDs to their existing online offers", () => {
-  const query = lookup();
+  const query = queryBaseline;
   for (const [base, date] of [
     ["claude-haiku-4-5", "20251001"],
     ["claude-opus-4-5", "20251101"],
@@ -231,7 +233,7 @@ it("binds documented dated Claude request IDs to their existing online offers", 
 
 it("keeps context, served tier and published geography separate from request ID spelling", () => {
   const args = { provider_id: "vertex", model_id: "xai/grok-4.20-reasoning" };
-  const query = lookup();
+  const query = queryBaseline;
   const result = query(args);
   expect(result.status).toBe("candidates");
   expect(result.missing_conditions).toContainEqual({
@@ -286,7 +288,7 @@ it("keeps context, served tier and published geography separate from request ID 
 });
 
 it("distinguishes evidence gaps and excluded known conditions from guessed or private identifiers", () => {
-  const query = lookup();
+  const query = queryBaseline;
   for (const model_id of [
     "us.gemini-3.5-flash",
     "google/gemini-3.5-flash",
@@ -366,7 +368,7 @@ it("reads relocated partner prices and rejects missing or duplicated commercial 
     expect(() => parse(documents)).toThrow("partner pricing companion is missing or duplicated");
   expect(
     inputPrices(
-      lookup()({ provider_id: "vertex", model_id: "mistral-medium-3", selectors: [standard] }),
+      queryBaseline({ provider_id: "vertex", model_id: "mistral-medium-3", selectors: [standard] }),
     ),
   ).not.toEqual([]);
 }, 20_000);
@@ -504,7 +506,7 @@ it("publishes identical ID lookup semantics in the static and compact UI project
   if (!price) throw new Error("Missing qualified ID in UI");
   for (const selectors of [[], [standard, context("1000")]]) {
     const result = queryWebsiteInferencePrice(price, selectors, at);
-    const expected = lookup()({ provider_id: "vertex", model_id: price.model_id, selectors });
+    const expected = queryBaseline({ provider_id: "vertex", model_id: price.model_id, selectors });
     expect(result.status).toBe(expected.status);
     expect(result.reason).toBe(expected.reason);
   }

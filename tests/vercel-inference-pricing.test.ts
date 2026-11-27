@@ -82,8 +82,10 @@ async function collect(change?: (bundle: LinkedBundle) => void, previous?: Catal
   };
 }
 let baseline: CatalogPairCandidate;
+let queryBaseline: ReturnType<typeof lookup>;
 beforeAll(async () => {
   baseline = (await collect()).candidate;
+  queryBaseline = lookup(baseline);
 }, 15000);
 
 function lookup(candidate: CatalogPairCandidate) {
@@ -120,9 +122,8 @@ function amounts(result: ReturnType<ReturnType<typeof lookup>>, meter = "input_t
   );
 }
 
-it("looks up a native gateway ID without treating the creator as the serving route", async () => {
-  const candidate = baseline;
-  const query = lookup(candidate);
+it("looks up a native gateway ID without treating the creator as the serving route", () => {
+  const query = queryBaseline;
   const args = { provider_id: "vercel", model_id: "alibaba/qwen3-embedding-0.6b" };
   const result = query({ ...args, selectors: [condition("route_provider", "deepinfra")] });
   expect(
@@ -204,9 +205,8 @@ it("publishes HeyGen duration boundaries identically to the public lookup and we
   }
 }, 15000);
 
-it("keeps native Fast context tiers and regional amounts instead of extending the short rate", async () => {
-  const candidate = baseline;
-  const query = lookup(candidate);
+it("keeps native Fast context tiers and regional amounts instead of extending the short rate", () => {
+  const query = queryBaseline;
   for (const [region, numerator, denominator] of [
     ["default", "1", "25000"],
     ["us", "11", "250000"],
@@ -244,9 +244,8 @@ it("keeps native Fast context tiers and regional amounts instead of extending th
   }
 });
 
-it("associates Batch IDs and base IDs with the same published Batch rates", async () => {
-  const candidate = baseline;
-  const query = lookup(candidate);
+it("associates Batch IDs and base IDs with the same published Batch rates", () => {
+  const query = queryBaseline;
   for (const model_id of ["anthropic/claude-opus-5", "anthropic/claude-opus-5-batch"]) {
     for (const [region, numerator, denominator] of [
       ["default", "1", "400000"],

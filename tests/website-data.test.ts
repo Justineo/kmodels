@@ -1,11 +1,10 @@
-import { readFile } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
-import { decodeAssetPackManifest, validateAssetPack } from "../src/catalog/asset-pack.ts";
-import { canonicalJsonKey, compareUtf8 } from "../src/catalog/canonical-value.ts";
+import { compressedAsset } from "../src/catalog/asset-pack.ts";
+import { canonicalJsonKey } from "../src/catalog/canonical-value.ts";
 import { websitePublicationAssets } from "../src/catalog/endpoints.ts";
 import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
-import { defaultProjectionPaths } from "../src/catalog/projection-paths.ts";
+import { readPublishedAssetProfile } from "../src/catalog/published-assets.ts";
 import type { PriceDimension } from "../src/catalog/pricing-schema.ts";
 import { websiteDataVersionForPair } from "../src/catalog/projections.ts";
 import { withPricingCanonicalCache } from "../src/catalog/pricing-canonical.ts";
@@ -117,9 +116,6 @@ describe("website data", () => {
 
   it("publishes all core table data in bounded parallel chunks", async () => {
     const { catalog, publication, dataVersion } = await publicationData();
-    const catalogSource = JSON.stringify(publication.catalog);
-    const pricingSource = JSON.stringify(publication.pricing);
-
     const coreAssets = websiteCoreAssets(publication.catalog, publication.pricing);
     for (const asset of coreAssets)
       expect(Buffer.byteLength(asset.source)).toBeLessThanOrEqual(WEBSITE_CORE_CHUNK_MAX_BYTES);
@@ -128,9 +124,10 @@ describe("website data", () => {
       if (asset === undefined) throw new Error(`Missing core asset ${path}`);
       return JSON.parse(asset.source);
     });
-    expect(loaded).toEqual(parseWebsiteCatalog(publication.catalog, publication.pricing));
-    expect(foundAuditFields(JSON.parse(catalogSource))).toEqual([]);
-    expect(foundAuditFields(JSON.parse(pricingSource))).toEqual([]);
+    const runtimeCatalog = parseWebsiteCatalog(publication.catalog, publication.pricing);
+    expect(loaded).toEqual(runtimeCatalog);
+    expect(foundAuditFields(publication.catalog)).toEqual([]);
+    expect(foundAuditFields(publication.pricing)).toEqual([]);
     for (const model of publication.catalog.models) {
       expect(model).not.toHaveProperty("uid");
       expect(model).not.toHaveProperty("pricing");
@@ -146,7 +143,6 @@ describe("website data", () => {
     expect(new Set(publication.pricing.cells.map((value) => JSON.stringify(value))).size).toBe(
       publication.pricing.cells.length,
     );
-    const runtimeCatalog = parseWebsiteCatalog(publication.catalog, publication.pricing);
     expect(runtimeCatalog.models.map(({ aliases }) => aliases)).toEqual(
       catalog.models.map(({ aliases }) => aliases),
     );
@@ -197,13 +193,12 @@ describe("website data", () => {
           provider.pricing_coverage.not_applicable_models,
       ).toBe(catalog.models.filter(({ provider_id }) => provider_id === provider.id).length);
     }
-    expect(new Set(details.map(({ model_ref }) => model_ref))).toEqual(
-      new Set(catalog.models.map(({ uid }) => uid)),
-    );
+    const detailsByModel = new Map(details.map((detail) => [detail.model_ref, detail]));
+    expect(detailsByModel.size).toBe(catalog.models.length);
     for (const model of catalog.models) {
-      const detail = details.find(({ model_ref }) => model_ref === model.uid);
-      expect(detail, model.uid).toBeDefined();
-      const projectedAvailability = (detail?.deployment_availability ?? []).flatMap(
+      const detail = detailsByModel.get(model.uid);
+      if (detail === undefined) throw new Error(`Missing website detail for ${model.uid}`);
+      const projectedAvailability = (detail.deployment_availability ?? []).flatMap(
         ({ deployment_type, regions }) =>
           regions.map((region) => JSON.stringify([region, deployment_type])),
       );
@@ -243,22 +238,26 @@ describe("website data", () => {
         book.offers.map((offer) => [offer.id, { book, offer }] as const),
       ),
     );
+    const relatedByModel = new Map<string, Set<string>>();
+    for (const book of pricing.books)
+      for (const offer of book.offers) {
+        if (offer.relations.length === 0) continue;
+        const related = offer.relations.flatMap(({ target }) => target.offer_refs);
+        for (const ref of book.scope.model_refs) {
+          if (offer.model_refs !== undefined && !offer.model_refs.includes(ref)) continue;
+          const refs = relatedByModel.get(ref) ?? new Set<string>();
+          for (const id of related) refs.add(id);
+          relatedByModel.set(ref, refs);
+        }
+      }
     for (const detail of hydratedDetails) {
-      const related = new Set(
-        pricing.books
-          .filter(({ scope }) => scope.model_refs.includes(detail.model_ref))
-          .flatMap(({ offers }) => offers)
-          .filter(
-            ({ model_refs }) => model_refs === undefined || model_refs.includes(detail.model_ref),
-          )
-          .flatMap(({ relations }) => relations.flatMap(({ target }) => target.offer_refs)),
-      );
+      const related = relatedByModel.get(detail.model_ref);
       for (const offer of detail.pricing?.offers ?? []) {
         const canonical = canonicalOffers.get(offer.id);
-        expect(canonical, `${detail.model_ref}: ${offer.id}`).toBeDefined();
-        if (canonical === undefined) continue;
+        if (canonical === undefined) throw new Error(`Missing canonical website offer ${offer.id}`);
         expect(
-          canonical.book.scope.model_refs.includes(detail.model_ref) || related.has(offer.id),
+          canonical.book.scope.model_refs.includes(detail.model_ref) ||
+            related?.has(offer.id) === true,
           `${detail.model_ref}: ${offer.id}`,
         ).toBe(true);
         if (canonical.offer.model_refs !== undefined)
@@ -377,31 +376,28 @@ describe("website data", () => {
     }
   }, 90_000);
 
-  it("keeps the checked-in development pack bound to the audit-free projection", async () => {
-    const [{ publication, dataVersion }, manifest, pack] = await Promise.all([
+  it("keeps the published website pack bound to the projection and loadable for every model", async () => {
+    const [{ publication, dataVersion }, published] = await Promise.all([
       publicationData(),
-      readFile(defaultProjectionPaths.uiManifest).then(decodeAssetPackManifest),
-      readFile(defaultProjectionPaths.uiPack),
+      readPublishedAssetProfile("ui"),
     ]);
-    validateAssetPack(manifest, pack);
-    const actual = manifest.assets.map(({ file_name, offset, length }) => ({
-      fileName: file_name,
-      source: gunzipSync(pack.subarray(offset, offset + length)).toString("utf8"),
-    }));
-
+    const { manifest, pack } = published;
     expect(manifest.data_version).toBe(dataVersion);
-    expect(actual).toEqual(
-      websitePublicationAssets(publication).sort((left, right) =>
-        compareUtf8(left.fileName, right.fileName),
-      ),
+    const assetsByPath = new Map(
+      websitePublicationAssets(publication).map(({ fileName, source }) => [`/${fileName}`, source]),
     );
+    expect(manifest.assets).toHaveLength(assetsByPath.size);
+    for (const entry of manifest.assets) {
+      const source = gunzipSync(compressedAsset(pack, entry)).toString("utf8");
+      if (source !== assetsByPath.get(`/${entry.file_name}`))
+        throw new Error(`Website projection differs at ${entry.file_name}`);
+    }
 
     // Verify the actual browser loader (`loadWebsiteModelDetail`) validates and hydrates
     // every single published model across all detail and offer chunks (100% coverage).
-    const assetsByPath = new Map(actual.map(({ fileName, source }) => [`/${fileName}`, source]));
     const runtimeCatalog = parseWebsiteCatalog(publication.catalog, publication.pricing);
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (input: string | URL | Request) => {
+    globalThis.fetch = async (input) => {
       const rawUrl =
         typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       const pathname = new URL(rawUrl, "http://localhost").pathname;
@@ -411,15 +407,12 @@ describe("website data", () => {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
-    }) as typeof fetch;
+    };
     try {
-      let loadedCount = 0;
       for (const model of runtimeCatalog.models) {
         const detail = await loadWebsiteModelDetail(dataVersion, model);
-        expect(detail.model_ref).toBe(model.uid);
-        loadedCount += 1;
+        expect(detail.model_ref, model.uid).toBe(model.uid);
       }
-      expect(loadedCount).toBe(runtimeCatalog.models.length);
     } finally {
       globalThis.fetch = originalFetch;
     }

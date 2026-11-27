@@ -292,21 +292,10 @@ jobs:
         run: vp node scripts/catalog-snapshot.ts fingerprint > "$RUNNER_TEMP/candidate-fingerprint"
 
       - name: Verify generated catalog shard ${{ matrix.shard }}
-        id: generated
         if: matrix.check == 'generated'
         env:
-          KMODELS_GENERATED_VERIFICATION_PATH: ${{ runner.temp }}/generated-verification.txt
           SHARD: ${{ matrix.shard }}
-        run: vp node scripts/validate-tests.ts --run --project generated --shard="$SHARD/3" --reporter=minimal --reporter=github-actions --silent=passed-only
-
-      - name: Upload verification evidence
-        if: failure() && steps.generated.outcome == 'failure'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: catalog-verification-${{ github.run_id }}-attempt-${{ github.run_attempt }}-shard-${{ matrix.shard }}
-          path: ${{ runner.temp }}/generated-verification.txt
-          if-no-files-found: ignore
-          retention-days: 7
+        run: vp test --run --project generated --shard="$SHARD/3" --reporter=minimal --reporter=github-actions --silent=passed-only
 
       - name: Build generated catalog
         if: matrix.check == 'build'

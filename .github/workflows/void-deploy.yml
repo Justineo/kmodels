@@ -7,6 +7,24 @@ permissions:
 on:
   push:
     branches: [main]
+    paths:
+      - ".github/workflows/void-deploy.yml"
+      - ".github/actions/setup-catalog-toolchain/**"
+      - ".node-version"
+      - ".npmrc"
+      - "data/catalog-snapshot.json"
+      - "index.html"
+      - "package.json"
+      - "pnpm-*.yaml"
+      - "public/**"
+      - "scripts/catalog-snapshot.ts"
+      - "scripts/check-price-assets.ts"
+      - "scripts/deployment-receipt.ts"
+      - "src/**"
+      - "tests/generated-data-tests.ts"
+      - "tests/setup*.ts"
+      - "tsconfig*.json"
+      - "vite.config.ts"
   workflow_dispatch:
 
 jobs:

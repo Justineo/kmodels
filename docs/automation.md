@@ -30,7 +30,8 @@ Status: implemented
 
 ## Static deployment (`.github/workflows/void-deploy.yml`)
 
-- Runs on pushes to `main` and manual dispatch.
+- Runs on pushes to `main` that touch site, deployment, snapshot or toolchain inputs, and on manual
+  dispatch.
 - Hydrates the checked-out `data/catalog-snapshot.json` pointer, builds `dist/`, runs the browser
   pricing performance gate (`vp run test:pricing-performance`), deploys `dist/` to Void, and runs
   `vp node scripts/deployment-receipt.ts` to upload a 30-day `catalog-deployment-<run>-attempt-<n>`
