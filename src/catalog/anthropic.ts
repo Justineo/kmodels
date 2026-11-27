@@ -891,11 +891,17 @@ function validateModelIdentityContract(body: string, modelsListBody: string, inp
   const report = (valid: boolean, sample: string): void => {
     if (!valid) contractFinding(input, "model_identity_contract_drift", sample);
   };
+  const prose = ownedProse(body);
+  const aliasSemantics =
+    prose.includes("convenience pointer that resolves to the most recent dated snapshot") ||
+    /^On the Claude API, the Claude 4\.5 models also have shorter aliases, such as `[a-z0-9-]+`\. Each alias points to the most recent dated snapshot for its minor version\.$/m.test(
+      sectionProse(body, 3, "Before the 4.6 generation"),
+    );
   report(
-    body.includes("Each Claude model ID identifies a pinned version of the model") &&
-      body.includes("Starting with the Claude 4.6 generation, model IDs use a dateless format") &&
-      body.includes("dateless ID is the canonical model ID for that release") &&
-      body.includes("convenience pointer that resolves to the most recent dated snapshot"),
+    prose.includes("Each Claude model ID identifies a pinned version of the model") &&
+      prose.includes("Starting with the Claude 4.6 generation, model IDs use a dateless format") &&
+      prose.includes("dateless ID is the canonical model ID for that release") &&
+      aliasSemantics,
     "model ID semantics",
   );
   try {

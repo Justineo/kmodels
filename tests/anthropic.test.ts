@@ -2156,6 +2156,42 @@ describe("Anthropic adapters", () => {
       optional: true,
     });
   });
+  it("accepts the current and legacy Claude API alias wording without inferring aliases from prose", async () => {
+    for (const name of ["current-model-ids.md", "model-ids.md"]) {
+      const findings: SourceContractEvidence[] = [];
+      const models = await anthropicCatalog({
+        overrides: {
+          "/docs/en/about-claude/models/model-ids-and-versions.md": await fixture(
+            `anthropic/${name}`,
+          ),
+        },
+        onContractFinding: (finding) => findings.push(finding),
+      });
+      expect(contractPaths(findings)).not.toContain(
+        "/anthropic/model_identity_contract_drift/model ID semantics",
+      );
+      expect(models.find(({ model_id }) => model_id === "claude-opus-4-7")?.aliases).toContain(
+        "claude-opus-legacy",
+      );
+      expect(models.flatMap(({ aliases }) => aliases)).not.toContain("claude-haiku-4-5");
+    }
+  });
+  it("reports changed alias semantics or a claim found only in an example", async () => {
+    const body = await fixture("anthropic/current-model-ids.md");
+    for (const changed of [
+      body.replace("most recent dated snapshot", "oldest dated snapshot"),
+      body.replace(/^On the Claude API, .+$/m, "```text\n$&\n```"),
+    ]) {
+      const findings: SourceContractEvidence[] = [];
+      await anthropicCatalog({
+        overrides: { "/docs/en/about-claude/models/model-ids-and-versions.md": changed },
+        onContractFinding: (finding) => findings.push(finding),
+      });
+      expect(contractPaths(findings)).toContain(
+        "/anthropic/model_identity_contract_drift/model ID semantics",
+      );
+    }
+  });
   it("joins official model, lifecycle, and pricing tables by observed identity", async () => {
     const models = await anthropicCatalog();
     const fable = models.find((model) => model.model_id === "claude-fable-5");
