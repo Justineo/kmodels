@@ -145,9 +145,11 @@ Before enabling automated self-heal in production, configure and verify in GitHu
   usage into `SELF_HEAL_USAGE_FILE`. The adapter waits for the proxy to finish writing metering
   results after Codex exits, including when the client disconnects during a response.
 - Repository secret `SELF_HEAL_API_KEY` (only passed to the isolated `generate` job).
-- The USD budget defaults to $2 per run and $10 per rolling 24 hours. A run can spend the smaller
-  of the per-run ceiling and the remaining rolling balance. If usage is incomplete, settlement
-  retains at least the amount authorized for that run. Override the ceilings with
+- The USD budget defaults to $2 per run and $10 per rolling 24 hours. Start a paid repair only
+  when the rolling balance covers the full run allocation, capped by the configured rolling
+  ceiling. This gives generation room for successive requests and leaves small balances
+  available as older spend ages out. Settlement records actual known spend and retains at
+  least the authorized amount when usage is incomplete. Override the ceilings with
   `SELF_HEAL_MAX_RUN_USD` and `SELF_HEAL_MAX_WINDOW_USD`.
 
 When `SELF_HEAL_AGENT_CMD` is unset, `triage` still detects actionable drift and uploads the

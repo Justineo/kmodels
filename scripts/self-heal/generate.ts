@@ -14,6 +14,7 @@ import {
   type OpenAIInferencePriceLookup,
 } from "./adapters/codex.ts";
 import {
+  emptyBudgetLedger,
   evaluateBudget,
   findRecentIncompleteRepairRun,
   isValidUsd,
@@ -284,39 +285,39 @@ export async function runGenerate(options: {
   }
 
   const limits = parseBudgetLimitsFromEnv();
-  let runBudgetUsd = roundUsd(limits.maxRunUsd);
-  if (options.budgetLedgerPath !== undefined) {
-    const nowMs = Date.now();
-    const ledger = await readBudgetLedger(resolve(options.budgetLedgerPath));
-    const budgetCheck = evaluateBudget(ledger, { nowMs, limits });
-    runBudgetUsd = budgetCheck.available_run_usd;
-    const previousRun = findRecentIncompleteRepairRun(
-      ledger,
-      target.incident_fingerprint,
-      nowMs,
-      limits.windowHours,
-    );
-    if (!budgetCheck.allowed || previousRun !== undefined) {
-      const reasons = [
-        ...budgetCheck.reasons,
-        ...(previousRun === undefined
-          ? []
-          : [`Run ${previousRun} did not complete a repair for these inputs`]),
-      ];
-      const usage: SelfHealUsageReport = usageReportSchema.parse({
-        status: "deferred",
-        ...(generateRunAttempt === undefined ? {} : { generate_run_attempt: generateRunAttempt }),
-        usage_known: true,
-        input_tokens: 0,
-        output_tokens: 0,
-        estimated_usd: 0,
-        attempts: 0,
-        error: `Generation deferred: ${reasons.join("; ")}`,
-      });
-      await writeFile(join(resolvedOut, "usage.json"), `${JSON.stringify(usage, null, 2)}\n`);
-      return { hasPatch: false, usage };
-    }
+  const ledger =
+    options.budgetLedgerPath === undefined
+      ? emptyBudgetLedger()
+      : await readBudgetLedger(resolve(options.budgetLedgerPath));
+  const nowMs = Date.now();
+  const budgetCheck = evaluateBudget(ledger, { nowMs, limits });
+  const previousRun = findRecentIncompleteRepairRun(
+    ledger,
+    target.incident_fingerprint,
+    nowMs,
+    limits.windowHours,
+  );
+  if (!budgetCheck.allowed || previousRun !== undefined) {
+    const reasons = [
+      ...budgetCheck.reasons,
+      ...(previousRun === undefined
+        ? []
+        : [`Run ${previousRun} did not complete a repair for these inputs`]),
+    ];
+    const usage: SelfHealUsageReport = usageReportSchema.parse({
+      status: "deferred",
+      ...(generateRunAttempt === undefined ? {} : { generate_run_attempt: generateRunAttempt }),
+      usage_known: true,
+      input_tokens: 0,
+      output_tokens: 0,
+      estimated_usd: 0,
+      attempts: 0,
+      error: `Generation deferred: ${reasons.join("; ")}`,
+    });
+    await writeFile(join(resolvedOut, "usage.json"), `${JSON.stringify(usage, null, 2)}\n`);
+    return { hasPatch: false, usage };
   }
+  const runBudgetUsd = budgetCheck.available_run_usd;
 
   const agentCommand = (options.agentCommand ?? process.env.SELF_HEAL_AGENT_CMD)?.trim();
   if (!agentCommand) {

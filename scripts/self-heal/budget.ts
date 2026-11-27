@@ -154,7 +154,7 @@ export function buildSettledBudgetEntry(params: {
 
 /**
  * Evaluate per-run and rolling-window spend limits with pre-call reservation or post-run actual usage.
- * Admit a run for up to the lesser of its configured ceiling and the rolling balance.
+ * Start generation only when the rolling window can fund a full run.
  */
 export function evaluateBudget(
   ledger: BudgetLedger,
@@ -197,6 +197,7 @@ export function evaluateBudget(
       : windowUsd;
   const maxWindowUsd = roundUsd(limits.maxWindowUsd);
   const maxRunUsd = roundUsd(limits.maxRunUsd);
+  const fullRunUsd = Math.min(maxRunUsd, maxWindowUsd);
   const availableRunUsd = roundUsd(Math.max(0, Math.min(maxRunUsd, maxWindowUsd - windowUsd)));
   const reasons: string[] = [];
 
@@ -239,9 +240,9 @@ export function evaluateBudget(
   } else {
     projectedUsd = roundUsd(windowUsd + additionalUsd);
   }
-  if (options.runUsage === undefined && availableRunUsd === 0) {
+  if (options.runUsage === undefined && (availableRunUsd === 0 || availableRunUsd < fullRunUsd)) {
     reasons.push(
-      `Rolling ${limits.windowHours}h budget has no available spend (${windowUsd.toFixed(6)} USD used, cap ${maxWindowUsd.toFixed(6)} USD)`,
+      `Rolling ${limits.windowHours}h budget has ${availableRunUsd.toFixed(6)} USD of available spend. A repair requires ${fullRunUsd.toFixed(6)} USD (${windowUsd.toFixed(6)} USD used, cap ${maxWindowUsd.toFixed(6)} USD)`,
     );
   } else if (projectedUsd > maxWindowUsd) {
     reasons.push(

@@ -269,7 +269,7 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
     ]);
   });
 
-  it("admits another repair after six inexpensive runs until the rolling balance is exhausted", () => {
+  it("admits another repair whenever the rolling balance covers a full run", () => {
     const nowMs = Date.parse("2026-11-23T12:00:00.000Z");
     const report = makeRefreshReport([
       { id: "cohere", sourceId: "cohere-models", outcome: "parse_failed" },
@@ -300,22 +300,27 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
     expect(
       selectSelfHealTarget(report, [], {
         ...options,
-        budgetLimits: { ...defaultBudgetLimits, maxWindowUsd: 3 },
+        budgetLimits: { ...defaultBudgetLimits, maxWindowUsd: 3.2 },
       }),
     ).toMatchObject({ status: "actionable" });
-    expect(
-      selectSelfHealTarget(report, [], {
-        ...options,
-        budgetLimits: { ...defaultBudgetLimits, maxWindowUsd: 1.2 },
-      }),
-    ).toMatchObject({
-      status: "idle",
-      idle_reason: "budget_exhausted",
-      budget_reasons: [expect.stringContaining("spend")],
-    });
+    for (const [maxWindowUsd, balance] of [
+      [3, "1.800000"],
+      [1.2, "0.000000"],
+    ] as const) {
+      expect(
+        selectSelfHealTarget(report, [], {
+          ...options,
+          budgetLimits: { ...defaultBudgetLimits, maxWindowUsd },
+        }),
+      ).toMatchObject({
+        status: "idle",
+        idle_reason: "budget_exhausted",
+        budget_reasons: [expect.stringContaining(`${balance} USD of available spend`)],
+      });
+    }
   });
 
-  it("caps generation and unknown usage at the amount available to the run", () => {
+  it("requires a funded run and honors historical partial reservations at settlement", () => {
     const nowMs = Date.parse("2026-11-23T12:00:00.000Z");
     const settledUnknown = buildSettledBudgetEntry({
       run_id: "run-unknown",
@@ -350,21 +355,25 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
     }
 
     expect(evaluateBudget(ledger, { nowMs, limits: strictLimits })).toMatchObject({
-      allowed: true,
+      allowed: false,
       available_run_usd: 0.8,
     });
+    const historicalUsage = {
+      usage_known: false,
+      input_tokens: null,
+      output_tokens: null,
+      estimated_usd: null,
+      reserved_usd: 0.8,
+    };
+    expect(
+      evaluateBudget(ledger, { nowMs, limits: strictLimits, runUsage: historicalUsage }).allowed,
+    ).toBe(true);
     expect(
       buildSettledBudgetEntry({
         run_id: "run-partial-reserve",
         provider_id: "openai",
         recorded_at: "2026-11-23T11:30:00.000Z",
-        usage: {
-          usage_known: false,
-          input_tokens: null,
-          output_tokens: null,
-          estimated_usd: null,
-          reserved_usd: 0.8,
-        },
+        usage: historicalUsage,
         outcome: "generate_failed",
         limits: strictLimits,
       }).estimated_usd,
@@ -3630,25 +3639,24 @@ describe("self-heal zero-cost end-to-end 4-job pipeline", () => {
     const prevMaxWindow = process.env.SELF_HEAL_MAX_WINDOW_USD;
     process.env.SELF_HEAL_MAX_WINDOW_USD = "0.4";
     try {
-      const partialGen = await runGenerate({
+      const fundedGen = await runGenerate({
         cwd: genRepo,
         triageFile: triagePath,
         evidenceRoot: evidenceDir,
-        outputDir: join(artifactsDir, "partial-budget-gen"),
-        budgetLedgerPath: ledgerPath,
+        outputDir: join(artifactsDir, "funded-budget-gen"),
+        budgetLedgerPath: join(artifactsDir, "empty-budget-ledger.json"),
         allowZeroEvidenceForTest: true,
         agentCommand:
-          "test \"$SELF_HEAL_MAX_RUN_USD\" = 0.15 && printf '%s' " +
-          '\'{"estimated_usd":0.15,"input_tokens":10,"output_tokens":10}\' > "$SELF_HEAL_USAGE_FILE"',
+          "test \"$SELF_HEAL_MAX_RUN_USD\" = 0.4 && printf '%s' " +
+          '\'{"estimated_usd":0.4,"input_tokens":10,"output_tokens":10}\' > "$SELF_HEAL_USAGE_FILE"',
       });
-      expect(partialGen.usage).toMatchObject({
+      expect(fundedGen.usage).toMatchObject({
         attempts: 1,
         usage_known: true,
-        estimated_usd: 0.15,
-        reserved_usd: 0.15,
+        estimated_usd: 0.4,
+        reserved_usd: 0.4,
       });
 
-      process.env.SELF_HEAL_MAX_WINDOW_USD = "0.25";
       const blockedReRunGen = await runGenerate({
         cwd: genRepo,
         triageFile: triagePath,
@@ -3659,8 +3667,12 @@ describe("self-heal zero-cost end-to-end 4-job pipeline", () => {
         agentCommand: "echo SHOULD_NOT_RUN >&2; exit 99",
       });
       expect(blockedReRunGen.hasPatch).toBe(false);
-      expect(blockedReRunGen.usage.status).toBe("deferred");
-      expect(blockedReRunGen.usage.attempts).toBe(0);
+      expect(blockedReRunGen.usage).toMatchObject({
+        status: "deferred",
+        attempts: 0,
+        estimated_usd: 0,
+        error: expect.stringContaining("0.150000 USD of available spend"),
+      });
       const blockedPublish = await runPublish({
         cwd: publishRepo,
         triageFile: triagePath,
