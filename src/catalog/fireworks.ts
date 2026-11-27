@@ -240,32 +240,34 @@ function requiredSection(body: string, depth: number, name: string, ignoreCase =
   return section;
 }
 
+function modelLink(cell: string | undefined) {
+  const match = cell?.match(
+    /^\[([^\]]+)\]\(https:\/\/app\.fireworks\.ai\/models\/([a-z0-9._-]+\/[a-z0-9._-]+)\)$/u,
+  );
+  const label = match?.[1];
+  const path = match?.[2];
+  assertSourceConstraint(
+    "Fireworks pricing row lost its exact model link",
+    label !== undefined && path !== undefined,
+    undefined,
+  );
+  return { label, id: publicId.parse(`accounts/${path.replace("/", "/models/")}`) };
+}
+
 function pricesFromTable(body: string, section: string) {
   return markdownTableRows(requiredSection(body, 2, section), [
     "Model",
     "Standard",
     "Priority",
   ]).map((row) => {
-    const match = row
-      .get("Model")
-      ?.match(
-        /^\[([^\]]+)\]\(https:\/\/app\.fireworks\.ai\/models\/([a-z0-9._-]+\/[a-z0-9._-]+)\)$/u,
-      );
-    const label = match?.[1],
-      appPath = match?.[2],
-      standard = row.get("Standard"),
-      priority = row.get("Priority");
+    const standard = row.get("Standard");
+    const priority = row.get("Priority");
     assertSourceConstraint(
-      "Fireworks pricing row lost its exact model link or amount",
-      label !== undefined && appPath !== undefined && !!standard && !!priority,
+      "Fireworks pricing row lost its amount",
+      !!standard && !!priority,
       undefined,
     );
-    return {
-      label,
-      id: publicId.parse(`accounts/${appPath.replace("/", "/models/")}`),
-      standard,
-      priority,
-    };
+    return { ...modelLink(row.get("Model")), standard, priority };
   });
 }
 
@@ -277,6 +279,10 @@ function routerTable(body: string, section: string, suffix = "") {
     assertSourceConstraint("Fireworks route table lost a model label", !!label, undefined);
     return { label: `${label}${suffix}`, id: publicId.parse(raw) };
   });
+}
+
+function routerLabelKey(label: string): string {
+  return label.toLowerCase().replace(/( ultra-fast) \(preview\)$/u, "$1");
 }
 
 function tokenRates(
@@ -388,23 +394,45 @@ function readCard(
   return { model, cardAmount, cardUnit };
 }
 
-function addSpotModels(
-  input: SourceParseInput,
-  models: Map<string, ParsedProviderModel>,
-  body: string,
-): void {
+function spotOffers(body: string) {
+  const models = markdownSection(body, 2, "Models");
+  const pricing = requiredSection(body, 2, "Pricing");
+  if (models === undefined) {
+    const prices = markdownTableRows(pricing, ["Model", "Mode", "Input", "Cached input", "Output"]);
+    const eligible = prices.filter((row) => row.get("Mode") === "Spot");
+    const tierSection = requiredSection(body, 3, 'Set `service_tier` to `"spot"`');
+    const aliasSection = requiredSection(body, 3, "Use the Spot model ID");
+    const aliases = new Set(aliasSection.match(/accounts\/[a-z0-9._-]+\/models\/[a-z0-9._-]+/gu));
+    assertSourceConstraint(
+      "Fireworks Spot guide omitted eligible models",
+      eligible.length > 0,
+      undefined,
+    );
+    return eligible.map((row) => {
+      const { label, id: standardId } = modelLink(row.get("Model"));
+      const id = `${standardId}-spot`;
+      assertSourceConstraint(
+        "Fireworks Spot price lacks both documented invocation forms",
+        aliases.has(id) && tierSection.includes(`\`${standardId}\``),
+        id,
+      );
+      return {
+        id,
+        standardId,
+        label,
+        rate: ["Input", "Cached input", "Output"].map((column) => row.get(column)).join(" / "),
+        tier: true,
+      };
+    });
+  }
   const priceColumns = ["Uncached input", "Cached input", "Output"] as const;
-  const prices = markdownTableRows(requiredSection(body, 2, "Pricing"), [
-    "Model",
-    "Tier",
-    ...priceColumns,
-  ]);
-  const identities = markdownTableRows(requiredSection(body, 2, "Models"), [
+  const prices = markdownTableRows(pricing, ["Model", "Tier", ...priceColumns]);
+  const identities = markdownTableRows(models, [
     "Model",
     "Spot model identifier",
     "Standard model identifier",
   ]);
-  for (const row of identities) {
+  return identities.map((row) => {
     const id = publicId.parse(documentedId(row.get("Spot model identifier")));
     const standardId = publicId.parse(documentedId(row.get("Standard model identifier")));
     const label = row.get("Model");
@@ -414,9 +442,26 @@ function addSpotModels(
     const rate = matched[0];
     assertSourceConstraint(
       "Fireworks Spot model lacks a unique rate or ID",
-      !!label && id !== standardId && !models.has(id) && matched.length === 1 && rate !== undefined,
+      !!label && id !== standardId && matched.length === 1 && rate !== undefined,
       id,
     );
+    return {
+      id,
+      standardId,
+      label,
+      rate: priceColumns.map((column) => rate.get(column)).join(" / "),
+      tier: false,
+    };
+  });
+}
+
+function addSpotModels(
+  input: SourceParseInput,
+  models: Map<string, ParsedProviderModel>,
+  offers: ReturnType<typeof spotOffers>,
+): void {
+  for (const { id, standardId, label, rate, tier } of offers) {
+    assertSourceConstraint("Fireworks Spot model repeated a public ID", !models.has(id), id);
     const model = baseModel({
       providerId: input.provider.id,
       id,
@@ -429,12 +474,12 @@ function addSpotModels(
     model.tasks = ["text_generation"];
     model.modalities = standard?.modalities ?? { input: ["text"], output: ["text"] };
     model.api_endpoints = [{ name: "Chat completions", path: chatPath }];
-    model.price_facts = tokenRates(
-      input,
-      id,
-      priceColumns.map((column) => rate.get(column)).join(" / "),
-      "Spot Serverless/Pricing",
-    );
+    model.price_facts = tokenRates(input, id, rate, "Spot Serverless/Pricing");
+    if (tier && standard !== undefined) {
+      standard.price_facts.push(
+        ...tokenRates(input, standardId, rate, "Spot Serverless/Pricing", { service_tier: "spot" }),
+      );
+    }
     models.set(id, model);
   }
 }
@@ -546,15 +591,23 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
   const decisionRows = pricesFromTable(pricing, "Decision models");
   const decisionIds = new Set(decisionRows.map(({ id }) => id));
   const modes = docs("serverless-modes");
+  const ultraFastSection =
+    markdownSection(modes, 2, "Ultra-fast", { ignoreCase: true }) === undefined
+      ? "Ultra-fast (Preview)"
+      : "Ultra-fast";
   const routerRows = [
     ...routerTable(modes, "Fast"),
-    ...routerTable(modes, "Ultra-fast (Preview)", " Ultra-fast (Preview)"),
+    ...routerTable(modes, ultraFastSection).map(({ id, label }) => {
+      const modelName = label.replace(/ \(preview\)$/iu, "");
+      const preview = modelName !== label || ultraFastSection === "Ultra-fast (Preview)";
+      return { id, label: `${modelName} Ultra-fast${preview ? " (Preview)" : ""}` };
+    }),
     ...(markdownSection(modes, 2, "Flex", { ignoreCase: true }) === undefined
       ? []
       : routerTable(modes, "Flex")),
     ...routerTable(docs("us-only-serverless"), "Available models", " (US)"),
   ];
-  const routers = new Map(routerRows.map(({ label, id }) => [label.toLowerCase(), id]));
+  const routers = new Map(routerRows.map(({ label, id }) => [routerLabelKey(label), id]));
   assertSourceConstraint(
     "Fireworks router documentation repeated a price label",
     routers.size === routerRows.length,
@@ -599,11 +652,14 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
   }
 
   const standardOnly = new Set<string>();
+  const spot = spotOffers(docs("spot-serverless", "guides"));
   for (const { label, id, standard, priority } of [
     ...pricesFromTable(pricing, "Text and vision models"),
     ...decisionRows,
   ]) {
-    const routedId = routers.get(label.toLowerCase());
+    if (spot.some((offer) => offer.standardId === id && `${offer.label} Spot` === label)) continue;
+    const labelKey = routerLabelKey(label);
+    const routedId = routers.get(labelKey);
     const model = models.get(routedId ?? id);
     if (model === undefined) {
       input.onPricingReconciliation?.({
@@ -613,7 +669,7 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
       });
       continue;
     }
-    const variant = / (?:Fast|Ultra-fast \(Preview\)|Flex|\(US\))$/u.test(label);
+    const variant = / (?:fast|ultra-fast|flex|spot|\(us\))$/u.test(labelKey);
     if (
       variant &&
       routedId === undefined &&
@@ -713,7 +769,7 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
         model.modalities.input.push("video");
     }
   }
-  addSpotModels(input, models, docs("spot-serverless", "guides"));
+  addSpotModels(input, models, spot);
   const retrieval = docs("querying-embeddings-models", "guides");
   addLegacyEmbeddings(input, models, retrieval, pricing);
   bindRetrievalAliases(models, retrieval);
@@ -740,7 +796,13 @@ export function parseFireworksServerless(input: SourceParseInput): SourceParseRe
               ? { kind: "provider_key", value: id }
               : { kind: "table", value: `Embeddings and Reranking/Qwen3/${id}` },
           );
-          if (standardOnly.has(model.model_id))
+          if (
+            standardOnly.has(model.model_id) &&
+            !model.price_facts.some(
+              ({ conditions }) =>
+                conditions.service_tier !== undefined && conditions.service_tier !== "standard",
+            )
+          )
             rule.fixed_selectors.push({
               kind: "categorical",
               dimension: { namespace: "kmodels", value: "service_tier" },
@@ -758,6 +820,6 @@ export const fireworksSelectionPolicy = {
     usage: ["request"],
   },
   values: {
-    service_tier: ["standard", "priority"],
+    service_tier: ["standard", "priority", "spot"],
   },
 } satisfies import("./commercial-selection.ts").CommercialSelectionPolicy;

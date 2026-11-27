@@ -21,7 +21,7 @@ import {
   readBudgetLedger,
   roundUsd,
 } from "./budget.ts";
-import { runSelfHealGate } from "./gate.ts";
+import { preflightEvidenceReplay, runSelfHealGate } from "./gate.ts";
 import {
   assertOutsideRepo,
   parseCliFlag,
@@ -68,7 +68,7 @@ function buildTaskPrompt(target: SelfHealTarget, evidenceRoot: string, feedback?
       const fullPath = join(evidenceRoot, relative_path);
       const contextArg =
         context_relative_path === undefined ? "" : ` ${join(evidenceRoot, context_relative_path)}`;
-      return `- ${source_id}: ${fullPath} (sha256: ${hash.slice(0, 12)}, replay: vp node scripts/replay-catalog-evidence.ts ${source_id} ${fullPath}${contextArg})`;
+      return `- ${source_id}: ${fullPath} (sha256: ${hash.slice(0, 12)}, replay: ${process.execPath} scripts/replay-catalog-evidence.ts ${source_id} ${fullPath}${contextArg})`;
     },
   );
   const candidateLines = target.candidates.map(
@@ -140,7 +140,7 @@ async function prepareCodexGeneration(
         // The Vite+ shim can try to take a package-store lock in the read-only sandbox.
         args: buildCodexSandboxArgs({
           cwd: replayCwd,
-          command: [process.execPath, ...replayArgs.slice(1)],
+          command: [process.execPath, ...replayArgs],
         }),
         env,
       };
@@ -354,10 +354,28 @@ export async function runGenerate(options: {
         })
       : undefined;
 
+    const preflightFailure =
+      codex === undefined
+        ? undefined
+        : preflightEvidenceReplay(
+            cwd,
+            resolvedEvidenceRoot,
+            hashMatchedEvidence,
+            target.candidates,
+            codex.replayCommandWrapper,
+          );
+    if (preflightFailure !== undefined) {
+      finalStatus = "deferred";
+      finalError = `Pre-call evidence replay failed: ${preflightFailure}`;
+    }
     let feedback: string | undefined;
     const attemptedFeedback = new Set<string>();
     const promptTarget: SelfHealTarget = { ...target, evidence_files: hashMatchedEvidence };
-    for (let attempt = 1; codex !== undefined || attempt <= 2; attempt += 1) {
+    for (
+      let attempt = 1;
+      preflightFailure === undefined && (codex !== undefined || attempt <= 2);
+      attempt += 1
+    ) {
       const roundedTotalUsd = roundUsd(totalEstimatedUsd);
       const remainingUsd = roundUsd(Math.max(0, runBudgetUsd - roundedTotalUsd));
       if (remainingUsd <= 0) {
@@ -476,7 +494,13 @@ export async function runGenerate(options: {
         skipValidation: true,
       });
 
-      const patch = verdict.ok ? captureCandidatePatch(cwd, baseSha, verdict.changed_files) : "";
+      // A broken local replay process cannot judge the candidate. Send the statically
+      // admissible diff to the independent verifier and avoid a paid retry on transport errors.
+      const verificationRequired = verdict.replay_unavailable === true;
+      const patch =
+        verdict.ok || verificationRequired
+          ? captureCandidatePatch(cwd, baseSha, verdict.changed_files)
+          : "";
       if (patch.trim().length > 0) {
         const patchBytes = Buffer.from(patch, "utf8");
         producedProposal = proposalSchema.parse({
@@ -499,7 +523,7 @@ export async function runGenerate(options: {
           ),
         ]);
         finalStatus = "patch_ready";
-        finalError = undefined;
+        finalError = verificationRequired ? verdict.violations.join("\n") : undefined;
         break;
       }
 
@@ -582,7 +606,7 @@ async function main(): Promise<void> {
     ...(budgetLedgerPath === undefined ? {} : { budgetLedgerPath }),
   });
   console.log(JSON.stringify({ has_patch: result.hasPatch, usage: result.usage }, null, 2));
-  if (!result.hasPatch) process.exitCode = 1;
+  if (!result.hasPatch && result.usage.status !== "deferred") process.exitCode = 1;
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
 import { collectProvider } from "../src/catalog/collector.ts";
 import { fetchSource } from "../src/catalog/fetch.ts";
+import { fireworksFlightRecords } from "../src/catalog/fireworks-flight.ts";
 import { compileInferencePriceMapping } from "../src/catalog/inference-pricing-compilation.ts";
 import { sha256 } from "../src/catalog/io.ts";
 import { manifests } from "../src/catalog/manifests.ts";
@@ -124,6 +125,93 @@ it("selects Standard for the exact Flex router and rejects an explicit Priority 
     }).candidates,
   ).toEqual([]);
   expect(tier(chatId, "priority").status).toBe("matched");
+});
+
+it("binds per-model Ultra-fast preview and both documented Spot invocation forms", async () => {
+  const ultra = "accounts/fireworks/routers/example-ultrafast";
+  const preview = "accounts/fireworks/routers/example-preview-ultrafast";
+  const spot = `${chatId}-spot`;
+  const link = (label: string) => `[${label}](https://app.fireworks.ai/models/fireworks/example)`;
+  const bundle = {
+    ...fireworksBundle,
+    documents: fireworksBundle.documents.map((document) => {
+      let body = document.body;
+      if (document.url.endsWith("/serverless-modes.md")) {
+        body = body
+          .replace("Ultra-fast (preview)", "Ultra-fast")
+          .replace(
+            "| Another Model | `accounts/fireworks/routers/another-ultrafast` |",
+            `| Example | \`${ultra}\` |\n| Example Preview (Preview) | \`${preview}\` |`,
+          );
+      } else if (document.url.endsWith("/serverless/pricing.md")) {
+        body = body.replace(
+          "## Decision models",
+          [
+            `| ${link("Example Ultra-fast")} | $5 / $1 / $15 | — |`,
+            `| ${link("Example Preview Ultra-fast (Preview)")} | $6 / $1.2 / $18 | — |`,
+            `| ${link("Example Spot")} | $0.5 / $0.1 / $1.5 | — |`,
+            "## Decision models",
+          ].join("\n"),
+        );
+      } else if (document.url.endsWith("/spot-serverless.md")) {
+        body = [
+          "## Pricing",
+          "| Model | Mode | Input | Cached input | Output |",
+          "| - | - | - | - | - |",
+          `| ${link("Example")} | Spot | $0.5 | $0.1 | $1.5 |`,
+          '### Set `service_tier` to `"spot"`',
+          `Use \`${chatId}\`.`,
+          "### Use the Spot model ID",
+          `Use \`${spot}\`.`,
+        ].join("\n");
+      }
+      return { ...document, body };
+    }),
+  };
+  const candidate = await collect(undefined, bundle);
+  const request = lookup(candidate);
+  for (const [id, numerator, denominator] of [
+    [ultra, "1", "200000"],
+    [preview, "3", "500000"],
+    [spot, "1", "2000000"],
+  ] as const) {
+    expect(inputRate(candidate, `fireworks/${id}`)).toEqual([{ numerator, denominator }]);
+    expect(request({ provider_id: "fireworks", model_id: id }).status).toBe("matched");
+  }
+  expect(candidate.catalog.models.find(({ model_id }) => model_id === preview)?.release_stage).toBe(
+    "preview",
+  );
+  expect(candidate.catalog.models.find(({ model_id }) => model_id === ultra)?.release_stage).toBe(
+    "unknown",
+  );
+  const tier = (value: string) =>
+    request({
+      provider_id: "fireworks",
+      model_id: chatId,
+      selectors: [
+        {
+          dimension: { namespace: "kmodels", value: "service_tier" },
+          kind: "categorical",
+          value: { namespace: "provider", provider_id: "fireworks", value },
+        },
+      ],
+    });
+  expect(tier("spot").status).toBe("matched");
+  expect(tier("standard").status).toBe("matched");
+});
+
+it("skips length-framed Flight bytes even when they look like another record", () => {
+  const bytes = Buffer.from("\n4:E{}\n");
+  const binary = `<script>self.__next_f.push([3,"${bytes.toString("base64")}"])</script>`;
+  const start = consoleFlightFrame(`3:o${bytes.length.toString(16)},`);
+  const end = consoleFlightFrame('5:{"success":true}\n');
+  expect(fireworksFlightRecords(start + binary + end)).toEqual({
+    records: [{ success: true }],
+    errors: [],
+  });
+  expect(() => fireworksFlightRecords(start + consoleFlightFrame("too"))).toThrow(
+    /record was truncated/,
+  );
 });
 
 it("recovers documented rates when the console requires login and retains quotes on invalid widgets", async () => {

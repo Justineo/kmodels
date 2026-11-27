@@ -26,7 +26,8 @@ The [model console](https://app.fireworks.ai/models/fireworks/glm-5p3) is a pric
 for each admitted library card. Its server-rendered price widget can publish typed
 Serverless modes, exact invocation recipes and SKU amounts. Follow only the
 card's literal API identity, with bounded profiles, bytes and concurrency. Read genuine React
-Flight element properties, skip byte-counted text records, and validate each mode's owner.
+Flight element properties, skip length-framed text and binary records by their byte counts,
+and validate each mode's owner.
 `usageIdentifier` supplies the literal request ID; an empty value means the card's model ID.
 `serviceTier` supplies the request flag. Do not infer router IDs from suffixes or admit
 unrendered aliases. Preserve independently documented IDs and tariffs when a console mode
@@ -74,10 +75,11 @@ this availability claim even if a console mode still advertises a Priority SKU.
 Fast, Ultra-fast, Flex and US-only variants with a distinct ID require an exact match in the
 [mode](https://docs.fireworks.ai/serverless/serverless-modes) or
 [US-only](https://docs.fireworks.ai/serverless/us-only-serverless) route table and keep their
-own model records even when pricing is absent. The route-table heading is matched
-case-insensitively because the provider controls its casing and changed
-`Ultra-fast (Preview)` to `Ultra-fast (preview)`; the published IDs and price labels stay
-exact. A price row without a matching card or router is a
+own model records even when pricing is absent. Both published Ultra-fast headings are matched
+case-insensitively. The legacy heading marks every row Preview and the current table marks
+individual models Preview. Join the reviewed label and mode independent of that lifecycle
+marker, keeping exact request IDs and admitting no variant rate through the base card alone.
+A price row without a matching card or router is a
 reconciliation finding. For other admitted cards, the labeled Serverless price panel
 supplies rates when the meter and unit are explicit. A retrieval model publishes no output
 tokens, so its card rate is the input rate whether the panel labels the unit
@@ -92,9 +94,11 @@ rather than borrowing the base model's rate. Flex prices arrive as an adjacent d
 that names the same base card link, so the Flex row binds to its own router ID instead of
 repeating the base model's standard rate.
 
-The [Spot guide](https://docs.fireworks.ai/guides/spot-serverless) owns Spot identifiers and
-their token rates. A Spot ID has a separate model record and rate. A retry using the Standard
-ID is a separate request with its own rate.
+The [Spot guide](https://docs.fireworks.ai/guides/spot-serverless) owns Spot invocation and
+rates. Replay supports its legacy identifier table and the current mode table with documented
+request IDs. A dedicated Spot ID has its own rate, and an explicitly documented
+`service_tier: "spot"` also selects that tariff on the base ID. Standard retains its own
+tariff. The adjacent Spot row in the main price book represents that same commercial offer.
 
 The [embedding guide](https://docs.fireworks.ai/guides/querying-embeddings-models) publishes
 callable legacy embeddings absent from the library. Admit the literal request IDs from the

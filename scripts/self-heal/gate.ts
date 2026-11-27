@@ -33,11 +33,13 @@ export interface GateVerdict {
   forbidden_files: string[];
   violations: string[];
   replayed_sources: string[];
+  replay_unavailable?: true;
 }
 
 const HARD_FORBIDDEN_PATTERNS: readonly RegExp[] = [
   /^\.github\//,
   /^scripts\/self-heal\//,
+  /^scripts\/replay-catalog-evidence\.ts$/,
   /^scripts\/validate-changes\.ts$/,
   /^scripts\/deployment-receipt\.ts$/,
   /^src\/catalog\/transport\//,
@@ -702,14 +704,15 @@ function parseReplaySummary(
   role: "Candidate" | "Baseline",
   stdout: string,
   sourceId: string,
-): { ok: true; summary: ReplaySummary } | { ok: false; reason: string } {
+): { ok: true; summary: ReplaySummary } | { ok: false; reason: string; replayUnavailable?: true } {
   let summary: ReplaySummary;
   try {
     summary = replaySummarySchema.parse(JSON.parse(stdout));
   } catch (error) {
     return {
       ok: false,
-      reason: `${role} replay produced invalid summary JSON for ${sourceId}: ${error instanceof Error ? error.message : String(error)}`,
+      replayUnavailable: true,
+      reason: `${role} replay produced invalid summary JSON for ${sourceId} (${Buffer.byteLength(stdout)} stdout bytes): ${error instanceof Error ? error.message : String(error)}`,
     };
   }
   if (summary.source_id !== sourceId) {
@@ -722,7 +725,7 @@ function parseReplaySummary(
 }
 
 function inspectBaselineNonZeroError(
-  baseline: { status: number | null; stdout: string; stderr: string },
+  baseline: ReplayOutput,
   sourceId: string,
 ):
   | { ok: true; combined: string; parsed: ReturnType<typeof parseBaselineReplayError> }
@@ -810,12 +813,99 @@ function checkTargetKeysReduced(
   return undefined;
 }
 
+type ReplayOutput = { status: number | null; stdout: string; stderr: string };
+
+function checkBaselineParseFailure(
+  sourceId: string,
+  baseline: ReplayOutput,
+  matchingCandidates: readonly CatalogRepairCandidate[],
+  fallbackSourceHash?: string,
+): string | undefined {
+  const targetContractKeys = extractTargetContractDiagnosticKeys(matchingCandidates);
+  const targetParseMessages = extractTargetParseFailureMessages(matchingCandidates);
+  if (matchingCandidates.some(hasOmittedDependencyFailure)) {
+    return `Target for ${sourceId} includes omitted dependency failure(s) that cannot be completely verified via single-source replay`;
+  }
+  if (baseline.status === null) {
+    return `Baseline replay for ${sourceId} terminated without a normal exit code (status: null)`;
+  }
+  if (baseline.status === 0) {
+    return `Baseline replay for ${sourceId} exited 0 and did not reproduce source_parse_failure`;
+  }
+  const inspected = inspectBaselineNonZeroError(baseline, sourceId);
+  if (!inspected.ok) return inspected.reason;
+  const parsedError = inspected.parsed;
+  if (!parsedError.structured) {
+    return `Baseline replay for ${sourceId} did not emit a structured replay parse_error payload; original failure cannot be verified`;
+  }
+  if (parsedError.stage !== "parse_error") {
+    return `Baseline replay for ${sourceId} failed at stage ${parsedError.stage ?? "unknown"} instead of parse_error`;
+  }
+  const targetFingerprints = new Set(
+    matchingCandidates
+      .map((c) => c.error_fingerprint)
+      .filter((fp): fp is string => fp !== undefined),
+  );
+  const targetSourceHashes = new Set(
+    matchingCandidates.map((c) => c.source_hash).filter((h): h is string => h !== undefined),
+  );
+  if (targetSourceHashes.size > 0) {
+    const observedHash = parsedError.sourceHash ?? fallbackSourceHash;
+    if (observedHash === undefined || !targetSourceHashes.has(observedHash)) {
+      return `Replay evidence source_hash (${observedHash ?? "missing"}) does not match failing collection body hash for ${sourceId}`;
+    }
+  }
+  if (targetFingerprints.size > 0) {
+    if (
+      parsedError.errorFingerprint === undefined ||
+      !targetFingerprints.has(parsedError.errorFingerprint)
+    ) {
+      return `Baseline parse_error fingerprint (${parsedError.errorFingerprint ?? "missing"}) did not match targeted failure fingerprint for ${sourceId}`;
+    }
+  }
+  if (targetContractKeys.size > 0) {
+    // Target carries structured contract diagnostics: baseline MUST emit ALL of them in structured parse_error
+    // (including findings accumulated via onContractFinding prior to the final throw).
+    const missingFromBaseline = [...targetContractKeys]
+      .sort()
+      .filter((key) => !parsedError.keys.has(key));
+    if (missingFromBaseline.length > 0) {
+      return `Baseline parse error for ${sourceId} did not reproduce target contract diagnostic(s): ${missingFromBaseline.join(", ")}`;
+    }
+  }
+  // Independently verify the final terminating exception message (even when pre-throw contract
+  // diagnostics were also present, e.g. Vercel emitting `/name` before throwing a distinct error).
+  const normalizedBaselineMessage =
+    parsedError.message === undefined ? "" : normalizeFailureMessage(parsedError.message);
+  if (targetParseMessages.normalized.size === 0 || normalizedBaselineMessage.length === 0) {
+    return `Cannot identify original parse failure for ${sourceId}; refusing to treat arbitrary parse_error as verified`;
+  }
+  if (targetParseMessages.normalized.size > 1) {
+    return `Target for ${sourceId} records ${targetParseMessages.normalized.size} distinct parse failures; single-source replay cannot verify all of them`;
+  }
+  if (!targetParseMessages.normalized.has(normalizedBaselineMessage)) {
+    return `Baseline parse_error for ${sourceId} ("${parsedError.message}") did not match targeted failure message`;
+  }
+  // Check raw pre-normalized text for 1,024-char truncation or redaction placeholders.
+  const hasAmbiguousRedactionOrTruncation =
+    targetParseMessages.raw.some(mayBeRedactedOrTruncatedMessage) ||
+    (parsedError.message !== undefined && mayBeRedactedOrTruncatedMessage(parsedError.message));
+  if (
+    hasAmbiguousRedactionOrTruncation &&
+    targetFingerprints.size === 0 &&
+    targetSourceHashes.size === 0
+  ) {
+    return `Redacted or truncated failure message for ${sourceId} lacks error_fingerprint or source_hash binding; refusing to match ambiguous redacted text`;
+  }
+  return undefined;
+}
+
 export function evaluateBeforeAfterReplay(params: {
   sourceId: string;
-  baseline: { status: number | null; stdout: string; stderr: string };
-  candidate: { status: number | null; stdout: string; stderr: string };
+  baseline: ReplayOutput;
+  candidate: ReplayOutput;
   targetCandidates?: readonly CatalogRepairCandidate[];
-}): { ok: boolean; reason?: string } {
+}): { ok: boolean; reason?: string; replayUnavailable?: true } {
   const { sourceId, baseline, candidate } = params;
   const allTargets = params.targetCandidates ?? [];
   const matchingCandidates = allTargets.filter((item) => item.source_id === sourceId);
@@ -834,7 +924,6 @@ export function evaluateBeforeAfterReplay(params: {
   }
   const targetReasons = extractTargetReconciliationReasons(matchingCandidates);
   const targetContractKeys = extractTargetContractDiagnosticKeys(matchingCandidates);
-  const targetParseMessages = extractTargetParseFailureMessages(matchingCandidates);
   const expectsContractFinding = matchingCandidates.some(
     (item) =>
       (item.triggers ?? [item.trigger]).includes("source_contract_change") ||
@@ -862,79 +951,15 @@ export function evaluateBeforeAfterReplay(params: {
   // matching the exact source, stage, and ALL targeted diagnostics or recorded error message(s),
   // AND candidate MUST parse cleanly with zero unresolved or newly introduced drift diagnostics.
   if (expectsParseFailure) {
-    if (matchingCandidates.some(hasOmittedDependencyFailure)) {
-      return {
-        ok: false,
-        reason: `Target for ${sourceId} includes omitted dependency failure(s) that cannot be completely verified via single-source replay`,
-      };
-    }
-    if (baseline.status === null) {
-      return {
-        ok: false,
-        reason: `Baseline replay for ${sourceId} terminated without a normal exit code (status: null)`,
-      };
-    }
-    if (baseline.status === 0) {
-      return {
-        ok: false,
-        reason: `Baseline replay for ${sourceId} exited 0 and did not reproduce source_parse_failure`,
-      };
-    }
-    const inspected = inspectBaselineNonZeroError(baseline, sourceId);
-    if (!inspected.ok) return inspected;
-    const parsedError = inspected.parsed;
-    if (!parsedError.structured) {
-      return {
-        ok: false,
-        reason: `Baseline replay for ${sourceId} did not emit a structured replay parse_error payload; original failure cannot be verified`,
-      };
-    }
-    if (parsedError.stage !== "parse_error") {
-      return {
-        ok: false,
-        reason: `Baseline replay for ${sourceId} failed at stage ${parsedError.stage ?? "unknown"} instead of parse_error`,
-      };
-    }
-    const targetFingerprints = new Set(
-      matchingCandidates
-        .map((c) => c.error_fingerprint)
-        .filter((fp): fp is string => fp !== undefined),
+    const baselineFailure = checkBaselineParseFailure(
+      sourceId,
+      baseline,
+      matchingCandidates,
+      candidateSummary.source_hash,
     );
-    const targetSourceHashes = new Set(
-      matchingCandidates.map((c) => c.source_hash).filter((h): h is string => h !== undefined),
-    );
-    if (targetSourceHashes.size > 0) {
-      const observedHash = parsedError.sourceHash ?? candidateSummary.source_hash;
-      if (observedHash === undefined || !targetSourceHashes.has(observedHash)) {
-        return {
-          ok: false,
-          reason: `Replay evidence source_hash (${observedHash ?? "missing"}) does not match failing collection body hash for ${sourceId}`,
-        };
-      }
-    }
-    if (targetFingerprints.size > 0) {
-      if (
-        parsedError.errorFingerprint === undefined ||
-        !targetFingerprints.has(parsedError.errorFingerprint)
-      ) {
-        return {
-          ok: false,
-          reason: `Baseline parse_error fingerprint (${parsedError.errorFingerprint ?? "missing"}) did not match targeted failure fingerprint for ${sourceId}`,
-        };
-      }
-    }
+    if (baselineFailure !== undefined) return { ok: false, reason: baselineFailure };
+
     if (targetContractKeys.size > 0) {
-      // Target carries structured contract diagnostics: baseline MUST emit ALL of them in structured parse_error
-      // (including findings accumulated via onContractFinding prior to the final throw).
-      const missingFromBaseline = [...targetContractKeys]
-        .sort()
-        .filter((key) => !parsedError.keys.has(key));
-      if (missingFromBaseline.length > 0) {
-        return {
-          ok: false,
-          reason: `Baseline parse error for ${sourceId} did not reproduce target contract diagnostic(s): ${missingFromBaseline.join(", ")}`,
-        };
-      }
       const remainingOnCandidate = [...targetContractKeys].sort().filter((key) => {
         // For a `reject / unknown_field` target path, allow downgrading to a benign
         // `accept_with_signal / unknown_field` hint on candidate while still rejecting any
@@ -950,42 +975,6 @@ export function evaluateBeforeAfterReplay(params: {
           reason: `Candidate replay for ${sourceId} still contains target contract diagnostic(s): ${remainingOnCandidate.join(", ")}`,
         };
       }
-    }
-    // Independently verify the final terminating exception message (even when pre-throw contract
-    // diagnostics were also present, e.g. Vercel emitting `/name` before throwing a distinct error).
-    const normalizedBaselineMessage =
-      parsedError.message === undefined ? "" : normalizeFailureMessage(parsedError.message);
-    if (targetParseMessages.normalized.size === 0 || normalizedBaselineMessage.length === 0) {
-      return {
-        ok: false,
-        reason: `Cannot identify original parse failure for ${sourceId}; refusing to treat arbitrary parse_error as verified`,
-      };
-    }
-    if (targetParseMessages.normalized.size > 1) {
-      return {
-        ok: false,
-        reason: `Target for ${sourceId} records ${targetParseMessages.normalized.size} distinct parse failures; single-source replay cannot verify all of them`,
-      };
-    }
-    if (!targetParseMessages.normalized.has(normalizedBaselineMessage)) {
-      return {
-        ok: false,
-        reason: `Baseline parse_error for ${sourceId} ("${parsedError.message}") did not match targeted failure message`,
-      };
-    }
-    // Check raw pre-normalized text for 1,024-char truncation or redaction placeholders.
-    const hasAmbiguousRedactionOrTruncation =
-      targetParseMessages.raw.some(mayBeRedactedOrTruncatedMessage) ||
-      (parsedError.message !== undefined && mayBeRedactedOrTruncatedMessage(parsedError.message));
-    if (
-      hasAmbiguousRedactionOrTruncation &&
-      targetFingerprints.size === 0 &&
-      targetSourceHashes.size === 0
-    ) {
-      return {
-        ok: false,
-        reason: `Redacted or truncated failure message for ${sourceId} lacks error_fingerprint or source_hash binding; refusing to match ambiguous redacted text`,
-      };
     }
     const candidateDriftKeys = nonExtensionContractDiagnosticKeys(candidateContractCounts);
     if (candidateDriftKeys.length > 0) {
@@ -1191,6 +1180,107 @@ function verifyBoundFile(
   return { ok: true, fullPath };
 }
 
+type ReplayCommandWrapper = (
+  replayArgs: readonly string[],
+  replayCwd: string,
+) => { command: string; args: string[]; env?: NodeJS.ProcessEnv };
+
+function boundReplayArgs(entry: BoundEvidenceFile, root: string) {
+  const evidence = verifyBoundFile(
+    root,
+    entry.relative_path,
+    entry.sha256,
+    entry.source_id,
+    "Evidence",
+  );
+  if (!evidence.ok) return evidence;
+  const context =
+    entry.context_relative_path === undefined
+      ? undefined
+      : verifyBoundFile(
+          root,
+          entry.context_relative_path,
+          entry.context_sha256,
+          entry.source_id,
+          "Evidence context",
+        );
+  if (context?.ok === false) return context;
+  return {
+    ok: true as const,
+    args: [
+      "scripts/replay-catalog-evidence.ts",
+      entry.source_id,
+      evidence.fullPath,
+      ...(context === undefined ? [] : [context.fullPath]),
+    ],
+  };
+}
+
+function runReplay(args: readonly string[], cwd: string, wrapper?: ReplayCommandWrapper) {
+  const wrapped = wrapper?.(args, cwd);
+  return spawnSync(wrapped?.command ?? process.execPath, wrapped?.args ?? args, {
+    cwd,
+    env: wrapped?.env ?? sanitizedUntrustedEnv(),
+    encoding: "utf8",
+    maxBuffer: SELF_HEAL_MAX_BUFFER,
+    timeout: 120_000,
+    killSignal: "SIGKILL",
+  });
+}
+
+export function preflightEvidenceReplay(
+  cwd: string,
+  evidenceRoot: string,
+  evidenceFiles: readonly BoundEvidenceFile[],
+  candidates: readonly CatalogRepairCandidate[],
+  wrapper: ReplayCommandWrapper,
+): string | undefined {
+  for (const entry of evidenceFiles) {
+    const bound = boundReplayArgs(entry, evidenceRoot);
+    if (!bound.ok) return bound.violation;
+    const replay = runReplay(bound.args, cwd, wrapper);
+    if (replay.error !== undefined || replay.status === null) {
+      return `Replay process failed for ${entry.source_id}: ${replay.error?.message ?? replay.signal}`;
+    }
+    const targets = candidates.filter((candidate) => candidate.source_id === entry.source_id);
+    const parseFailure = targets.some((candidate) =>
+      (candidate.triggers ?? [candidate.trigger]).includes("source_parse_failure"),
+    );
+    if (parseFailure) {
+      const failure = checkBaselineParseFailure(entry.source_id, replay, targets);
+      if (failure !== undefined) return failure;
+    } else {
+      if (replay.status !== 0)
+        return `Baseline replay failed for ${entry.source_id}: ${replay.stderr.trim().slice(0, 300)}`;
+      const parsed = parseReplaySummary("Baseline", replay.stdout, entry.source_id);
+      if (!parsed.ok) return parsed.reason;
+      const baseline = parsed.summary;
+      const contractCounts = contractDiagnosticCounts(baseline);
+      const rejectContractCounts = rejectContractDiagnosticCounts(baseline);
+      const reconciliation = repairableReasonCounts(baseline);
+      const targetError =
+        checkTargetKeysReduced(
+          entry.source_id,
+          "target diagnostic(s)",
+          extractTargetReconciliationReasons(targets),
+          (key) => reconciliation.get(key) ?? 0,
+          () => 0,
+        ) ??
+        checkTargetKeysReduced(
+          entry.source_id,
+          "target contract diagnostic(s)",
+          extractTargetContractDiagnosticKeys(targets),
+          (key) => (isUnknownFieldKey(key) ? rejectContractCounts : contractCounts).get(key) ?? 0,
+          () => 0,
+        );
+      if (targetError !== undefined) return targetError;
+      if (countRepairableDiagnostics(baseline) === 0 && totalContractFindings(baseline) === 0) {
+        return `Baseline replay no longer reproduces repairable diagnostics for ${entry.source_id}`;
+      }
+    }
+  }
+}
+
 function git(args: readonly string[], cwd?: string): string {
   return runGit(args, cwd ?? process.cwd());
 }
@@ -1214,14 +1304,7 @@ export function runSelfHealGate(options: {
   evidenceFiles?: readonly BoundEvidenceFile[];
   requireEvidenceReplay?: boolean;
   skipEvidenceReplay?: boolean;
-  replayCommandWrapper?: (
-    replayArgs: readonly string[],
-    replayCwd: string,
-  ) => {
-    command: string;
-    args: string[];
-    env?: NodeJS.ProcessEnv;
-  };
+  replayCommandWrapper?: ReplayCommandWrapper;
   compareBaselineReplay?: boolean;
   installCiPrerequisites?: boolean;
   skipValidation?: boolean;
@@ -1273,6 +1356,7 @@ export function runSelfHealGate(options: {
   violations.push(...auditDiffSafety(diff, { untrackedFiles, beforeFiles, afterFiles }));
 
   const replayed_sources: string[] = [];
+  let unavailableReplays = 0;
   const evidenceFiles = options.evidenceFiles ?? [];
   const targetCandidates = options.targetCandidates ?? [];
   const readiness = inspectTargetReplayReadiness(targetCandidates, evidenceFiles);
@@ -1314,73 +1398,39 @@ export function runSelfHealGate(options: {
         }
       }
       for (const entry of evidenceFiles) {
-        const verifiedEvidence = verifyBoundFile(
-          evidenceRoot,
-          entry.relative_path,
-          entry.sha256,
-          entry.source_id,
-          "Evidence",
-        );
-        if (!verifiedEvidence.ok) {
-          violations.push(verifiedEvidence.violation);
+        const bound = boundReplayArgs(entry, evidenceRoot);
+        if (!bound.ok) {
+          violations.push(bound.violation);
           continue;
         }
-        const resolvedPath = verifiedEvidence.fullPath;
-
-        let resolvedContextPath: string | undefined;
-        if (entry.context_relative_path !== undefined) {
-          const verifiedContext = verifyBoundFile(
-            evidenceRoot,
-            entry.context_relative_path,
-            entry.context_sha256,
-            entry.source_id,
-            "Evidence context",
-          );
-          if (!verifiedContext.ok) {
-            violations.push(verifiedContext.violation);
-            continue;
-          }
-          resolvedContextPath = verifiedContext.fullPath;
-        }
-
-        const replayArgs = [
-          "node",
-          "scripts/replay-catalog-evidence.ts",
-          entry.source_id,
-          resolvedPath,
-          ...(resolvedContextPath === undefined ? [] : [resolvedContextPath]),
-        ];
-
-        const replay = (replayCwd: string) => {
-          const wrapped = options.replayCommandWrapper?.(replayArgs, replayCwd);
-          return spawnSync(wrapped?.command ?? "vp", wrapped?.args ?? replayArgs, {
-            cwd: replayCwd,
-            env: wrapped?.env ?? untrustedEnv,
-            encoding: "utf8",
-            maxBuffer: SELF_HEAL_MAX_BUFFER,
-          });
-        };
+        const replay = (replayCwd: string) =>
+          runReplay(bound.args, replayCwd, options.replayCommandWrapper);
         const candidateReplay = replay(cwd);
 
         if (baselineDir !== undefined) {
           const baselineReplay = replay(baselineDir);
+          const processError = candidateReplay.error ?? baselineReplay.error;
+          if (
+            processError !== undefined ||
+            candidateReplay.status === null ||
+            baselineReplay.status === null
+          ) {
+            violations.push(
+              `Replay process failed for ${entry.source_id}: ${processError?.message ?? candidateReplay.signal ?? baselineReplay.signal}`,
+            );
+            unavailableReplays += 1;
+            continue;
+          }
           const comparison = evaluateBeforeAfterReplay({
             sourceId: entry.source_id,
-            baseline: {
-              status: baselineReplay.status,
-              stdout: baselineReplay.stdout,
-              stderr: baselineReplay.stderr,
-            },
-            candidate: {
-              status: candidateReplay.status,
-              stdout: candidateReplay.stdout,
-              stderr: candidateReplay.stderr,
-            },
+            baseline: baselineReplay,
+            candidate: candidateReplay,
             ...(options.targetCandidates === undefined
               ? {}
               : { targetCandidates: options.targetCandidates }),
           });
           if (!comparison.ok) {
+            if (comparison.replayUnavailable === true) unavailableReplays += 1;
             violations.push(
               comparison.reason ?? `Before/after replay failed for ${entry.source_id}`,
             );
@@ -1464,6 +1514,9 @@ export function runSelfHealGate(options: {
     forbidden_files: classification.forbidden_files,
     violations,
     replayed_sources,
+    ...(unavailableReplays > 0 && unavailableReplays === violations.length
+      ? { replay_unavailable: true }
+      : {}),
   };
 }
 

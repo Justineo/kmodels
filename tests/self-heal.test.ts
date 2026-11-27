@@ -138,10 +138,29 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
 
   it("defers an unchanged paid failure within the rolling window and advances to another provider", () => {
     const nowMs = Date.parse("2026-11-23T12:00:00.000Z");
-    const report = makeRefreshReport([
+    const rawReport = makeRefreshReport([
       { id: "anthropic", sourceId: "anthropic-models", outcome: "parse_failed" },
       { id: "cohere", sourceId: "cohere-models", outcome: "parse_failed" },
     ]);
+    const reportWithHash = (hash: string, message = "Anthropic parser drifted") => ({
+      ...rawReport,
+      providers: rawReport.providers.map((provider) =>
+        provider.provider_id !== "anthropic"
+          ? provider
+          : {
+              ...provider,
+              attempt: {
+                ...provider.attempt,
+                sources: provider.attempt.sources.map((source) => ({
+                  ...source,
+                  content_hash: hash,
+                  message,
+                })),
+              },
+            },
+      ),
+    });
+    const report = reportWithHash("a".repeat(64));
     const evidenceFiles = [
       {
         source_id: "anthropic-models",
@@ -169,24 +188,34 @@ describe("self-heal triage, compressed evidence discovery & anti-starvation", ()
       ...file,
       relative_path: "next/anthropic-models.json.gz",
       sha256: "c".repeat(64),
+      source_hash: "d".repeat(64),
     }));
+    const recapturedReport = reportWithHash("d".repeat(64));
     const repeated = { ...options, budgetLedger, evidenceFiles: recapturedEvidence };
-    expect(selectSelfHealTarget(report, [], repeated)).toMatchObject({
+    expect(selectSelfHealTarget(recapturedReport, [], repeated)).toMatchObject({
       target: { provider_id: "cohere" },
       skipped_providers: [{ provider_id: "anthropic", reason: "recent_incomplete_repair" }],
     });
     for (const change of [
       { repairRevision: "new-code" },
-      {
-        evidenceFiles: recapturedEvidence.map((file) => ({ ...file, source_hash: "d".repeat(64) })),
-      },
       { providerFilter: "anthropic" },
       { nowMs: Date.parse("2026-11-24T06:00:00.000Z") },
     ]) {
-      expect(selectSelfHealTarget(report, [], { ...repeated, ...change }).target?.provider_id).toBe(
-        "anthropic",
-      );
+      expect(
+        selectSelfHealTarget(recapturedReport, [], { ...repeated, ...change }).target?.provider_id,
+      ).toBe("anthropic");
     }
+    expect(
+      selectSelfHealTarget(
+        reportWithHash("d".repeat(64), "New Anthropic parser failure"),
+        [],
+        repeated,
+      ).target?.provider_id,
+    ).toBe("anthropic");
+    expect(
+      selectSelfHealTarget(report, [], { ...repeated, requireSourceEvidence: true }).target
+        ?.provider_id,
+    ).not.toBe("anthropic");
   });
 
   it("defers only the source with an open PR even after another paid attempt for its provider", () => {

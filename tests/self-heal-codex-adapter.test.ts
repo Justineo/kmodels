@@ -1423,10 +1423,14 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
     "accept stopped patch",
     "reject stopped patch",
     "accept oversized request patch",
+    "handoff truncated replay",
+    "defer malformed baseline",
   ] as const;
   it.each(replayScenarios)("keeps candidate replay isolated: %s", async (scenario) => {
     const oversizedRequest = scenario === "accept oversized request patch";
-    const budgetStop = scenario !== "retry" && !oversizedRequest;
+    const truncatedReplay = scenario === "handoff truncated replay";
+    const malformedBaseline = scenario === "defer malformed baseline";
+    const budgetStop = scenario === "accept stopped patch" || scenario === "reject stopped patch";
     // Distinct replay failures can lead to a third attempt without reloading tampered dependencies.
     const root = await makeTempDir("self-heal-isolation-");
     const repo = join(root, "repo");
@@ -1449,7 +1453,8 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
         `writeFileSync(${JSON.stringify(replayEnvDump)}, JSON.stringify({ hasKey: 'SELF_HEAL_API_KEY' in process.env }));`,
         "const parser = readFileSync(join(process.cwd(), 'src/catalog/openai.ts'), 'utf8');",
         "const reason_counts = parser.includes('FIXED_PARSER') ? {} : { pricing_input_contract_partial: parser.includes('SECOND_ATTEMPT') ? 2 : 1 };",
-        "console.log(JSON.stringify({ schema_version: 1, stage: 'parse', source_id: 'openai-pricing', models: [], reconciliation: { reason_counts } }));",
+        `const truncated = ${JSON.stringify(malformedBaseline)} || (${JSON.stringify(truncatedReplay)} && parser.includes('FIXED_PARSER'));`,
+        "console.log(truncated ? '{' : JSON.stringify({ schema_version: 1, stage: 'parse', source_id: 'openai-pricing', models: [], reconciliation: { reason_counts } }));",
       ].join("\n"),
       "utf8",
     );
@@ -1494,21 +1499,25 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
         "});",
         "if (!res.ok) process.exit(92);",
         "await res.text();",
-        ...(scenario !== "retry"
+        ...(budgetStop || oversizedRequest || truncatedReplay
           ? [
               `writeFileSync(join(process.cwd(), 'src/catalog/openai.ts'), ${JSON.stringify(
                 scenario === "reject stopped patch"
                   ? "export const v = 2; // still broken\n"
                   : "export const v = 3; // FIXED_PARSER\n",
               )});`,
-              "const blocked = await fetch(`${baseUrl}/responses`, {",
-              "  method: 'POST',",
-              "  headers: { authorization: `Bearer ${process.env.CODEX_API_KEY}`, 'content-type': 'application/json' },",
-              `  body: JSON.stringify({ input: [{ role: 'user', content: 'x'.repeat(${oversizedRequest ? 9 * 1024 * 1024 : 120000}) }], max_output_tokens: 64 }),`,
-              "});",
-              `if (blocked.status !== ${oversizedRequest ? 400 : 429}) process.exit(93);`,
-              "await blocked.text();",
-              "process.exit(1);",
+              ...(truncatedReplay
+                ? ["process.exit(0);"]
+                : [
+                    "const blocked = await fetch(`${baseUrl}/responses`, {",
+                    "  method: 'POST',",
+                    "  headers: { authorization: `Bearer ${process.env.CODEX_API_KEY}`, 'content-type': 'application/json' },",
+                    `  body: JSON.stringify({ input: [{ role: 'user', content: 'x'.repeat(${oversizedRequest ? 9 * 1024 * 1024 : 120000}) }], max_output_tokens: 64 }),`,
+                    "});",
+                    `if (blocked.status !== ${oversizedRequest ? 400 : 429}) process.exit(93);`,
+                    "await blocked.text();",
+                    "process.exit(1);",
+                  ]),
             ]
           : []),
         "if (attempt === 1) {",
@@ -1604,20 +1613,51 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
             { status: 200, headers: { "content-type": "text/event-stream" } },
           ),
       });
-      const attempts = scenario === "retry" ? 3 : 1;
-      expect(genResult.hasPatch).toBe(scenario !== "reject stopped patch");
+      const attempts = malformedBaseline ? 0 : scenario === "retry" ? 3 : 1;
+      expect(genResult.hasPatch).toBe(!malformedBaseline && scenario !== "reject stopped patch");
       expect(genResult.usage.attempts).toBe(attempts);
       expect(genResult.usage.usage_known).toBe(true);
       expect(genResult.usage.input_tokens).toBe(attempts * 100);
       expect(genResult.usage.output_tokens).toBe(attempts * 50);
-      if (scenario === "reject stopped patch") {
+      if (malformedBaseline) {
+        expect(genResult.usage).toMatchObject({
+          status: "deferred",
+          estimated_usd: 0,
+          error: expect.stringContaining("Pre-call evidence replay failed"),
+        });
+        await expect(readFile(attemptCounter)).rejects.toThrow(/ENOENT/);
+      } else if (scenario === "reject stopped patch") {
         expect(genResult.usage.status).toBe("budget_exceeded");
         expect(genResult.usage.error).toContain("Self-heal USD cap");
         expect(genResult.usage.error).toContain("pricing_input_contract_partial (1 -> 1)");
         await expect(readFile(join(ext, "out", "candidate.patch"))).rejects.toThrow(/ENOENT/);
       } else {
         expect(genResult.usage.status).toBe("patch_ready");
-        expect(genResult.usage.error).toBeUndefined();
+        if (truncatedReplay) {
+          expect(genResult.usage.error).toContain("Candidate replay produced invalid summary JSON");
+          const verdict = runSelfHealGate({
+            cwd: repo,
+            base: baseSha,
+            targetProvider: "openai",
+            evidenceRoot: join(ext, "evidence"),
+            evidenceFiles: [
+              {
+                source_id: "openai-pricing",
+                relative_path: evidenceRel,
+                source_hash: "a".repeat(64),
+                sha256: sha256(evidenceBytes),
+                context_relative_path: contextRel,
+                context_sha256: sha256(contextBytes),
+              },
+            ],
+            compareBaselineReplay: true,
+            skipValidation: true,
+          });
+          expect(verdict.ok).toBe(false);
+          expect(verdict.violations).toEqual([expect.stringContaining("invalid summary JSON")]);
+        } else {
+          expect(genResult.usage.error).toBeUndefined();
+        }
         expect(await readFile(join(ext, "out", "candidate.patch"), "utf8")).toContain(
           "FIXED_PARSER",
         );
@@ -1634,7 +1674,7 @@ describe("self-heal Codex adapter end-to-end isolation", () => {
         .trim()
         .split("\n")
         .map((line) => JSON.parse(line) as Record<string, unknown>);
-      expect(sandboxCalls).toHaveLength(2 * attempts);
+      expect(sandboxCalls).toHaveLength(1 + 2 * attempts);
       for (const call of sandboxCalls) {
         expect(call.hasSelfHealApiKey).toBe(false);
         expect(call.hasRunnerTemp).toBe(false);

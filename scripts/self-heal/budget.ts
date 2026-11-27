@@ -277,6 +277,7 @@ export function findRecentIncompleteRepairRun(
       (entry.outcome === "budget_rejected" ||
         entry.outcome === "no_patch" ||
         entry.outcome === "generate_failed" ||
+        entry.outcome === "publish_failed" ||
         entry.outcome === "rejected") &&
       (entry.observed_usd ?? (entry.usage_known ? entry.estimated_usd : 0)) > 0 &&
       Date.parse(entry.recorded_at) >= cutoff,

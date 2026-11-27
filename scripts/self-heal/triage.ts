@@ -8,7 +8,7 @@ import {
   type CatalogRepairCandidate,
 } from "../../src/catalog/catalog-repair.ts";
 import { manifests } from "../../src/catalog/manifests.ts";
-import { sha256 } from "../../src/catalog/io.ts";
+import { sha256, stableCompactJson } from "../../src/catalog/io.ts";
 import { providerModelSchema } from "../../src/catalog/schema.ts";
 import { sourceErrorMessage } from "../../src/catalog/source-failure.ts";
 import { parseReplayContext, verifiedCatalogEvidence } from "../replay-catalog-evidence.ts";
@@ -625,7 +625,8 @@ export function selectSelfHealTarget(
         continue;
       }
     }
-    // Source-body hashes stay stable across captures whose metadata or compression changes.
+    // A new capture can change unrelated bytes without changing the failure. Preserve exact
+    // evidence hashes in the target for replay, and key paid retries on the diagnostic itself.
     const incidentFingerprint =
       options.repairRevision === undefined || evidenceFiles.length === 0
         ? undefined
@@ -633,11 +634,8 @@ export function selectSelfHealTarget(
             JSON.stringify([
               options.repairRevision,
               providerId,
-              targetCandidates.map((candidate) => JSON.stringify(candidate)).sort(),
-              evidenceFiles
-                .map((file) =>
-                  JSON.stringify([file.source_id, file.source_hash, file.context_sha256]),
-                )
+              targetCandidates
+                .map(({ source_hash: _sourceHash, ...candidate }) => stableCompactJson(candidate))
                 .sort(),
             ]),
           );
@@ -944,10 +942,21 @@ async function main(): Promise<void> {
     triggerRunId === undefined || budgetLedger === undefined
       ? undefined
       : sha256(
-          runGit(["ls-tree", "HEAD"], process.cwd())
-            .split("\n")
-            .filter((entry) => !entry.endsWith("\tdata"))
-            .join("\n"),
+          runGit(
+            [
+              "ls-tree",
+              "HEAD",
+              "--",
+              "src/catalog",
+              "scripts/self-heal",
+              "scripts/replay-catalog-evidence.ts",
+              ".node-version",
+              "package.json",
+              "pnpm-lock.yaml",
+              "pnpm-workspace.yaml",
+            ],
+            process.cwd(),
+          ),
         );
 
   const result = selectSelfHealTarget(refreshTelemetry, JSON.parse(quarantineRaw), {

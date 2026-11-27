@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -262,13 +263,14 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(
       },
       findings,
     );
-    console.log(JSON.stringify(summary, null, 2));
+    writeFileSync(1, `${JSON.stringify(summary, null, 2)}\n`);
   } catch (error) {
     const contract = contractEvidence(error);
     if (contract !== undefined) findings.add(contract);
     const replayCounts = findings.replayCounts();
-    console.error(
-      JSON.stringify({
+    writeFileSync(
+      2,
+      `${JSON.stringify({
         schema_version: 1,
         stage: failureStage,
         source_id: sourceId,
@@ -284,7 +286,7 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(
               contract_findings_total: replayCounts.total_findings,
               contract_diagnostic_counts: replayCounts.diagnostic_counts,
             }),
-      }),
+      })}\n`,
     );
     process.exitCode = 1;
   }

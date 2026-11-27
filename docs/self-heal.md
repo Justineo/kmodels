@@ -45,26 +45,31 @@ verification gate**.
      is self-contained and requires no external catalog context) before admitting any target.
      Uploads only evidence and replay context bound to the selected target. An open repair PR
      defers its source. Scheduled triage defers an identical incident for the rolling budget
-     window after an incomplete attempt with observed spend. Dedupe matches diagnostics, source
-     and replay-context hashes, and the checked-out code excluding generated data. A sibling
-     source, new incident, changed evidence, or changed code can be eligible immediately.
+     window after an incomplete attempt with observed spend. The retry identity uses the source,
+     failure diagnostics and the checked-out collection, replay and toolchain inputs. Recaptured
+     HTML, replay context and generated data can change independently of that identity. Exact
+     evidence and context hashes still bind every replay. A sibling source, changed diagnostic or
+     changed collection or replay code can be eligible immediately.
    - **`generate`** (`contents: read`, `persist-credentials: false`, **no write `GH_TOKEN`**):
      Holds only `SELF_HEAL_API_KEY`. Rechecks the rolling budget before invoking a paid agent
      (emitting `status: "deferred"`, `attempts: 0`, `$0` on pre-call budget refusal) and refuses
      unsupported/unverifiable triggers or missing/hash-mismatched/invalid replay context at `$0`.
      Checks out pinned `base_sha`, passes only hash-matched evidence into the agent prompt, strips
      `GH_TOKEN`/`GITHUB_TOKEN` from the agent subprocess and passes the remaining USD to each
-     attempt. The built-in adapter can retry while it records positive settled spend, has budget
-     left, and receives new gate feedback. Custom agent commands are tried at most twice.
-     Before a scheduled paid
-     attempt, it also rechecks recent incomplete incidents. It enforces the USD cap on cumulative
+     attempt. The built-in adapter first checks that the pinned parser can replay the bound capture
+     in the read-only sandbox and still reproduce the reported failure. A stale target or failed
+     preflight defers generation at zero cost. The built-in adapter can retry while it records
+     positive settled spend, has budget left, and receives new gate feedback. Custom agent
+     commands are tried at most twice. Before a scheduled paid attempt, generation rechecks
+     recent incomplete incidents. It enforces the USD cap on cumulative
      reported spend rounded to 6 decimal places and preserves each valid USD or token count
      independently. Incomplete usage stops the retry. A built-in Codex session that exits early
      with settled usage sends its working diff through the same local gate before generation
-     finishes or retries. It always emits `usage.json` (tagged with `generate_run_attempt`) and
-     exports `proposal_artifact_id`
-     and `generate_attempt` for the artifact, which includes `candidate.patch` and `proposal.json`
-     when ready.
+     finishes or retries. An unavailable local replay process or malformed machine output sends a
+     diff that passed all static checks to independent verification without another paid attempt.
+     Semantic replay violations still reject the candidate. Generation emits `usage.json`
+     with `generate_run_attempt` and exports `proposal_artifact_id` and `generate_attempt`.
+     When a proposal is ready the artifact also includes `candidate.patch` and `proposal.json`.
    - **`verify`** (`contents: read`, `persist-credentials: false`, **no write `GH_TOKEN`**, **no
      `SELF_HEAL_API_KEY`**): Downloads upstream artifacts by immutable `artifact-id` (surviving
      GitHub "Re-run failed jobs"). Independently executes symlinked-worktree before/after
@@ -90,7 +95,8 @@ verification gate**.
      exact-patch `verification-receipt.json` (exporting `verify_artifact_id`).
    - **`publish`** (`if: always()`, `contents: write`, `pull-requests: write`, `actions: write`,
      **no `SELF_HEAL_API_KEY`**, **never executes candidate code**): Downloads upstream artifacts by
-     immutable `artifact-id`. Leaves the budget ledger untouched on verified zero-call pre-flight
+     immutable `artifact-id`. Checks out only the pinned commit so settlement can proceed without
+     a repository history fetch. Leaves the budget ledger untouched on verified zero-call pre-flight
      refusals (`deferred` / pre-call `no_patch` with `attempts: 0` and `$0`), and settles the
      trusted budget ledger keyed by `(run_id, generate_attempt)` — comparing USD sums
      and caps at 6-decimal precision (`roundUsd`) and looking up existing runs across the full
@@ -150,7 +156,7 @@ skips `generate`, `verify`, and `publish`.
 
 ## Deterministic verification gate (`scripts/self-heal/gate.ts`)
 
-- **Hard-forbidden paths (`rejected`)**: `.github/**`, `scripts/self-heal/**`,
+- **Hard-forbidden paths (`rejected`)**: `.github/**`, `scripts/self-heal/**`, `scripts/replay-catalog-evidence.ts`,
   `scripts/validate-changes.ts`, `scripts/deployment-receipt.ts`, `src/catalog/transport/**`,
   `data/**`, `packages/**`, `package.json`, `pnpm-lock.yaml`, `vite.config.ts`, `tsconfig*.json`.
 - **Provider-scoped + reverse-dependency auto-push allowlist (`auto_push`)**: Only files strictly

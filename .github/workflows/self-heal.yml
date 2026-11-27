@@ -310,7 +310,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.triage.outputs.base_sha }}
-          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up catalog toolchain
@@ -367,7 +366,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.triage.outputs.base_sha }}
-          fetch-depth: 0
 
       - name: Set up catalog toolchain
         uses: ./.github/actions/setup-catalog-toolchain
