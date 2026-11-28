@@ -73,6 +73,7 @@ export async function runPublish(options: {
   proposalDir?: string;
   verifyDir?: string;
   verifyJobResult?: string;
+  generationSkipped?: boolean;
   runId?: string;
   runAttempt?: number;
   generateAttempt?: number;
@@ -162,6 +163,14 @@ export async function runPublish(options: {
     return result;
   };
 
+  if (options.generationSkipped === true) {
+    return finish(
+      "deferred",
+      { violations: ["Pre-generation checks did not complete successfully; no paid step ran"] },
+      false,
+    );
+  }
+
   // Settle usage from attempts that produced no eligible patch.
   let rawProposal: unknown;
   let rawReceipt: unknown;
@@ -218,18 +227,12 @@ export async function runPublish(options: {
   let proposal: ReturnType<typeof proposalSchema.parse>;
   let patchPath: string;
   let patchBytes: Buffer;
-  let receipt: VerificationReceipt;
+  let receipt: VerificationReceipt | undefined;
   try {
     proposal = proposalSchema.parse(rawProposal);
     patchPath = join(resolve(options.proposalDir!), "candidate.patch");
     patchBytes = await readFile(patchPath);
-    if (rawReceipt === undefined) {
-      return finish("rejected", {
-        patch_sha256: proposal.patch_sha256,
-        violations: ["Missing verification receipt from isolated verify job"],
-      });
-    }
-    receipt = verificationReceiptSchema.parse(rawReceipt);
+    receipt = rawReceipt === undefined ? undefined : verificationReceiptSchema.parse(rawReceipt);
   } catch (error) {
     return finish("rejected", {
       violations: [
@@ -239,42 +242,63 @@ export async function runPublish(options: {
   }
 
   // Trusted invariant verification (zero candidate code execution).
-  const violations: string[] = [...receipt.violations];
-  if (options.verifyJobResult !== undefined && options.verifyJobResult !== "success") {
-    violations.push(
-      `Isolated verification job did not succeed (result: ${options.verifyJobResult})`,
-    );
-  }
-  if (!receipt.ok) {
-    violations.push("Isolated verification job rejected the candidate patch");
-  }
-  if (proposal.provider_id !== target.provider_id || receipt.provider_id !== target.provider_id) {
+  const violations: string[] = [];
+  if (
+    proposal.provider_id !== target.provider_id ||
+    (receipt !== undefined && receipt.provider_id !== target.provider_id)
+  ) {
     violations.push("Proposal/receipt provider does not match triage target");
   }
   const actualPatchHash = sha256(patchBytes);
-  if (actualPatchHash !== proposal.patch_sha256 || actualPatchHash !== receipt.patch_sha256) {
+  if (
+    actualPatchHash !== proposal.patch_sha256 ||
+    (receipt !== undefined && actualPatchHash !== receipt.patch_sha256)
+  ) {
     violations.push("Patch SHA-256 does not match proposal and verification receipt");
   }
   const headSha = runCommand("git", ["rev-parse", "HEAD"], cwd);
-  if (headSha !== proposal.base_sha || headSha !== receipt.base_sha) {
+  if (headSha !== proposal.base_sha || (receipt !== undefined && headSha !== receipt.base_sha)) {
     violations.push(
-      `Trusted checkout HEAD (${headSha}) does not match verified base_sha (${receipt.base_sha})`,
+      `Trusted checkout HEAD (${headSha}) does not match proposal/receipt base_sha (${proposal.base_sha})`,
     );
   }
+  const expectedFiles = [...proposal.changed_files].sort();
   const patchPaths = parsePatchPaths(patchBytes.toString("utf8"));
-  const expectedFiles = [...receipt.changed_files].sort();
   if (
     JSON.stringify(patchPaths) !== JSON.stringify(expectedFiles) ||
-    JSON.stringify([...proposal.changed_files].sort()) !== JSON.stringify(expectedFiles)
+    (receipt !== undefined &&
+      JSON.stringify([...receipt.changed_files].sort()) !== JSON.stringify(expectedFiles))
   ) {
-    violations.push("Exact file set in candidate.patch does not match verification receipt");
+    violations.push(
+      "Exact file set in candidate.patch does not match proposal and verification receipt",
+    );
   }
 
-  // Re-verify path classification on the trusted clean checkout (including reverse-dependency ownership).
   const classification = classifyChangedPaths(expectedFiles, target.provider_id, { repoRoot: cwd });
   if (classification.mode === "rejected") {
     violations.push(
       `Trusted path classification rejected files: ${classification.forbidden_files.join(", ")}`,
+    );
+  }
+
+  const verificationBlocked =
+    violations.length === 0 &&
+    (receipt === undefined || (!receipt.ok && receipt.verification_blocked === true));
+  if (receipt === undefined) {
+    violations.push(
+      "Missing verification receipt from isolated verify job; reuse the proposal without regeneration",
+    );
+  } else {
+    violations.push(...receipt.violations);
+    if (receipt.verification_blocked === true) {
+      violations.push("Verification blocked; reuse the existing proposal without regeneration");
+    } else if (!receipt.ok) {
+      violations.push("Isolated verification job rejected the candidate patch");
+    }
+  }
+  if (options.verifyJobResult !== undefined && options.verifyJobResult !== "success") {
+    violations.push(
+      `Isolated verification job did not succeed (result: ${options.verifyJobResult})`,
     );
   }
 
@@ -295,8 +319,8 @@ export async function runPublish(options: {
     }
   }
 
-  if (violations.length > 0) {
-    return finish("rejected", {
+  if (violations.length > 0 || receipt === undefined) {
+    return finish(verificationBlocked ? "verification_blocked" : "rejected", {
       patch_sha256: proposal.patch_sha256,
       mode: "rejected",
       violations: [...new Set(violations)],
@@ -429,11 +453,13 @@ async function main(): Promise<void> {
     ...(verifyJobResult === undefined ? {} : { verifyJobResult }),
     ...(generateAttempt === undefined ? {} : { generateAttempt }),
     ...(budgetLedgerPath === undefined ? {} : { budgetLedgerPath }),
+    generationSkipped: process.env.GENERATION_SKIPPED === "true",
     dryRun: args.includes("--dry-run"),
   });
   console.log(JSON.stringify(outcome, null, 2));
   if (
     outcome.outcome === "rejected" ||
+    outcome.outcome === "verification_blocked" ||
     outcome.outcome === "budget_rejected" ||
     outcome.outcome === "generate_failed" ||
     outcome.outcome === "publish_failed"

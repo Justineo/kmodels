@@ -45,13 +45,18 @@ verification gate**.
      is self-contained and requires no external catalog context) before admitting any target.
      Uploads only evidence and replay context bound to the selected target. An open repair PR
      defers its source. Scheduled triage defers an identical incident for the rolling budget
-     window after an incomplete attempt with observed spend. The retry identity uses the source,
+     window after an incomplete attempt with observed spend. If verification was blocked, it
+     defers that incident for at least seven days while the existing proposal is retained, even
+     if usage is unknown. The retry identity uses the source,
      failure diagnostics and the checked-out collection, replay and toolchain inputs. Recaptured
      HTML, replay context and generated data can change independently of that identity. Exact
      evidence and context hashes still bind every replay. A sibling source, changed diagnostic or
      changed collection or replay code can be eligible immediately.
    - **`generate`** (`contents: read`, `persist-credentials: false`, **no write `GH_TOKEN`**):
-     Holds only `SELF_HEAL_API_KEY`. Rechecks the rolling budget before invoking a paid agent
+     Runs the unit suite once on the pinned, unpatched base before exposing `SELF_HEAL_API_KEY`
+     to the generator step. A red or interrupted baseline skips the paid step entirely. This
+     catches shared test failures without building or running browser checks on every baseline.
+     Rechecks the rolling budget before invoking a paid agent
      (emitting `status: "deferred"`, `attempts: 0`, `$0` on pre-call budget refusal) and refuses
      unsupported/unverifiable triggers or missing/hash-mismatched/invalid replay context at `$0`.
      Checks out pinned `base_sha`, passes only hash-matched evidence into the agent prompt, strips
@@ -92,12 +97,20 @@ verification gate**.
      summary caps so neither new regressions beyond #8 nor surviving findings beyond #8/#16 are
      misclassified), automatic Playwright Chromium installation whenever `validate-changes.ts --plan` schedules `test:e2e` or
      `test:pricing-performance`, and `vp node scripts/validate-changes.ts <base_sha>`. Emits an
-     exact-patch `verification-receipt.json` (exporting `verify_artifact_id`).
+     exact-patch `verification-receipt.json` (exporting `verify_artifact_id`). A replay process
+     failure, interrupted validator, explicit test/hook timeout or failed browser installation
+     retries once on a fresh checkout of the same base using the same proposal and evidence,
+     with no generator invocation. Persistent interruptions or a missing receipt block
+     verification without treating the proposal as a proven regression. Use the failed verify
+     job's re-run option on the original workflow run, not a new generation, to reuse its
+     artifacts while retained. Policy, digest and ordinary assertion failures still reject.
+     A new checkout at a different SHA cannot reuse an old proposal as if it were exact-base verified.
    - **`publish`** (`if: always()`, `contents: write`, `pull-requests: write`, `actions: write`,
      **no `SELF_HEAL_API_KEY`**, **never executes candidate code**): Downloads upstream artifacts by
      immutable `artifact-id`. Checks out only the pinned commit so settlement can proceed without
      a repository history fetch. Leaves the budget ledger untouched on verified zero-call pre-flight
-     refusals (`deferred` / pre-call `no_patch` with `attempts: 0` and `$0`), and settles the
+     refusals (the paid step was skipped, or usage records `deferred` / pre-call `no_patch` with
+     `attempts: 0` and `$0`), and settles the
      trusted budget ledger keyed by `(run_id, generate_attempt)` — comparing USD sums
      and caps at 6-decimal precision (`roundUsd`) and looking up existing runs across the full
      retained ledger (not just the last 24h) so >24h re-runs keep their original timestamp outside

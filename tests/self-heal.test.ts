@@ -21,6 +21,7 @@ import {
   defaultBudgetLimits,
   emptyBudgetLedger,
   evaluateBudget,
+  findRecentIncompleteRepairRun,
   readBudgetLedger,
   type BudgetLedger,
   type BudgetLimits,
@@ -38,6 +39,7 @@ import {
   findCrossProviderImporters,
   needsBrowserPrerequisite,
   runSelfHealGate,
+  validationWasInterrupted,
 } from "../scripts/self-heal/gate.ts";
 import { runGenerate } from "../scripts/self-heal/generate.ts";
 import { runVerify } from "../scripts/self-heal/verify.ts";
@@ -2852,6 +2854,23 @@ describe("self-heal ownership, reverse-deps, replay semantics & large-diff handl
     expect(needsBrowserPrerequisite([["check"], ["test", "related"]])).toBe(false);
   });
 
+  it("distinguishes runner interruptions from ordinary validation failures", () => {
+    const normalExit = { signal: null, stderr: "AssertionError: expected 1 to be 2" };
+    expect(validationWasInterrupted(normalExit)).toBe(false);
+    expect(validationWasInterrupted({ ...normalExit, signal: "SIGTERM" })).toBe(true);
+    expect(validationWasInterrupted({ ...normalExit, error: new Error("spawn vp ENOENT") })).toBe(
+      true,
+    );
+    for (const kind of ["Test", "Hook"]) {
+      expect(
+        validationWasInterrupted({
+          signal: null,
+          stderr: `Error: ${kind} timed out in 20000ms.`,
+        }),
+      ).toBe(true);
+    }
+  });
+
   it("audits untracked files, deleted thresholds, per-source thresholds, and >2 MiB fixture diffs without ENOBUFS", async () => {
     const beforeSource = [
       '  { id: "source-a", minModels: 10 },',
@@ -2894,7 +2913,7 @@ describe("self-heal ownership, reverse-deps, replay semantics & large-diff handl
 });
 
 describe("self-heal zero-cost end-to-end 4-job pipeline", () => {
-  async function createTestFixtureRepos() {
+  async function createTestFixtureRepos(incidentFingerprint?: string) {
     const root = await makeTempDir("kmodels-e2e-heal-");
     const bareRemote = join(root, "remote.git");
     const seedRepo = join(root, "seed");
@@ -2933,10 +2952,105 @@ describe("self-heal zero-cost end-to-end 4-job pipeline", () => {
         reason: "Quarantined validation mismatch",
       },
     ]);
+    if (triageTarget.target !== undefined && incidentFingerprint !== undefined)
+      triageTarget.target.incident_fingerprint = incidentFingerprint;
     await writeFile(triagePath, `${JSON.stringify(triageTarget, null, 2)}\n`);
 
     return { root, bareRemote, baseSha, artifactsDir, evidenceDir, triagePath, cloneCheckout };
   }
+
+  it("does not charge blocked preflight or pay again while blocked verification can reuse a proposal", async () => {
+    const fingerprint = "c".repeat(64);
+    const { artifactsDir, baseSha, evidenceDir, triagePath, cloneCheckout } =
+      await createTestFixtureRepos(fingerprint);
+    const cwd = cloneCheckout("publish");
+    const genRepo = cloneCheckout("gen");
+    const verifyRepo = cloneCheckout("verify");
+    const ledgerPath = join(artifactsDir, "budget-ledger.json");
+    const proposalDir = join(artifactsDir, "proposal-out");
+    const verifyDir = join(artifactsDir, "verify-out");
+    const publishOptions = {
+      cwd,
+      triageFile: triagePath,
+      proposalDir,
+      budgetLedgerPath: ledgerPath,
+    };
+    const preflight = await runPublish({ ...publishOptions, generationSkipped: true });
+    expect(preflight.outcome).toBe("deferred");
+    expect((await readBudgetLedger(ledgerPath)).entries).toEqual([]);
+
+    const generated = await runGenerate({
+      cwd: genRepo,
+      triageFile: triagePath,
+      evidenceRoot: evidenceDir,
+      outputDir: proposalDir,
+      allowZeroEvidenceForTest: true,
+      agentCommand: String.raw`printf "export const v = 2;\n" > src/catalog/fireworks.ts && printf '{"input_tokens":20,"output_tokens":10,"estimated_usd":0.25}' > "$SELF_HEAL_USAGE_FILE"`,
+    });
+    expect(generated.hasPatch).toBe(true);
+
+    // No receipt (e.g. the runner was cancelled before upload) leaves the same proposal available.
+    const sameRun = { ...publishOptions, runId: "paid-run", generateAttempt: 1 };
+    const missingReceipt = await runPublish({ ...sameRun, verifyJobResult: "cancelled" });
+    expect(missingReceipt).toMatchObject({
+      outcome: "verification_blocked",
+      patch_sha256: generated.proposal?.patch_sha256,
+    });
+
+    const verifyOptions = {
+      cwd: verifyRepo,
+      triageFile: triagePath,
+      evidenceRoot: evidenceDir,
+      proposalDir,
+      outputDir: verifyDir,
+      requireEvidenceReplay: false,
+    };
+    const fakeBin = join(artifactsDir, "bin");
+    await mkdir(fakeBin);
+    await writeFile(
+      join(fakeBin, "vp"),
+      "#!/bin/sh\nprintf 'Error: Hook timed out in 20000ms.\\n' >&2\nexit 1\n",
+      { mode: 0o755 },
+    );
+    const path = process.env.PATH;
+    let firstReceipt;
+    try {
+      process.env.PATH = `${fakeBin}:${path ?? ""}`;
+      firstReceipt = await runVerify(verifyOptions);
+    } finally {
+      if (path === undefined) delete process.env.PATH;
+      else process.env.PATH = path;
+    }
+    expect(firstReceipt).toMatchObject({ ok: false, mode: "rejected", verification_blocked: true });
+
+    const retry = await runPublish({ ...sameRun, verifyDir, verifyJobResult: "failure" });
+    expect(retry.outcome).toBe("verification_blocked");
+    expect(git(["rev-parse", "HEAD"], cwd)).toBe(baseSha);
+
+    const ledger = await readBudgetLedger(ledgerPath);
+    expect(ledger.entries).toHaveLength(1);
+    expect(ledger.entries[0]?.estimated_usd).toBe(0.25);
+    const afterTwoDays = Date.now() + 2 * 24 * 3_600_000;
+    expect(findRecentIncompleteRepairRun(ledger, fingerprint, afterTwoDays, 24)).toBe("paid-run");
+    expect(findRecentIncompleteRepairRun(ledger, "d".repeat(64), afterTwoDays, 24)).toBeUndefined();
+
+    // Independent successful verification can resume delivery without calling the agent again.
+    const replay = await runVerify({
+      ...verifyOptions,
+      cwd: cloneCheckout("verify-retry"),
+      skipValidation: true,
+    });
+    expect(replay).toMatchObject({ ok: true, patch_sha256: firstReceipt.patch_sha256 });
+    expect(replay.verification_blocked).toBeUndefined();
+    const recovered = await runPublish({
+      ...sameRun,
+      verifyDir,
+      verifyJobResult: "success",
+      dryRun: true,
+    });
+    expect(recovered.outcome).toBe("dry_run");
+    expect((await readBudgetLedger(ledgerPath)).entries).toHaveLength(1);
+  });
 
   it("delivers an exact verified patch via generate -> isolated verify -> publish without leaking workflow files", async () => {
     const { artifactsDir, evidenceDir, triagePath, cloneCheckout } = await createTestFixtureRepos();
@@ -3808,6 +3922,13 @@ describe("self-heal 4-job workflow security boundary", () => {
     );
     expect(generateBlock).toContain("generate_attempt: ${{ github.run_attempt }}");
     expect(generateBlock).toContain("--budget-ledger");
+    const baseline = generateBlock.indexOf("vp test --run --project unit");
+    expect(baseline).toBeGreaterThan(0);
+    expect(baseline).toBeLessThan(generateBlock.indexOf("SELF_HEAL_API_KEY:"));
+    expect(generateBlock).toContain("steps.gen.outcome == 'skipped'");
+    expect(verifyBlock).toContain('if [[ "$status" != 75 ]]');
+    expect(verifyBlock).toContain('git worktree add --detach "$retry_dir" "$base_sha"');
+    expect(publishBlock).toContain("needs.generate.outputs.generation_skipped");
     expect(generateBlock).toContain("artifact-ids: ${{ needs.triage.outputs.triage_artifact_id }}");
     expect(verifyBlock).toContain(
       "verify_artifact_id: ${{ steps.upload_verify.outputs.artifact-id }}",

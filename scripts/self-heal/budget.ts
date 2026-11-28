@@ -8,6 +8,7 @@ export const budgetOutcomeSchema = z.enum([
   "auto_push",
   "draft_pr",
   "rejected",
+  "verification_blocked",
   "budget_rejected",
   "deferred",
   "generate_failed",
@@ -272,17 +273,22 @@ export function findRecentIncompleteRepairRun(
 ): string | undefined {
   if (ledger === undefined || fingerprint === undefined) return undefined;
   const cutoff = nowMs - windowHours * 3_600_000;
-  return ledger.entries.findLast(
-    (entry) =>
-      entry.incident_fingerprint === fingerprint &&
+  // Prefer reusing the saved proposal while its seven-day artifact is retained, even if usage is unknown.
+  const proposalCutoff = Math.min(cutoff, nowMs - 7 * 24 * 3_600_000);
+  return ledger.entries.findLast((entry) => {
+    if (entry.incident_fingerprint !== fingerprint) return false;
+    const recordedAt = Date.parse(entry.recorded_at);
+    if (entry.outcome === "verification_blocked") return recordedAt >= proposalCutoff;
+    return (
+      recordedAt >= cutoff &&
       (entry.outcome === "budget_rejected" ||
         entry.outcome === "no_patch" ||
         entry.outcome === "generate_failed" ||
         entry.outcome === "publish_failed" ||
         entry.outcome === "rejected") &&
-      (entry.observed_usd ?? (entry.usage_known ? entry.estimated_usd : 0)) > 0 &&
-      Date.parse(entry.recorded_at) >= cutoff,
-  )?.run_id;
+      (entry.observed_usd ?? (entry.usage_known ? entry.estimated_usd : 0)) > 0
+    );
+  })?.run_id;
 }
 
 function maxOptionalInt(a: number | null, b: number | null): number | null {

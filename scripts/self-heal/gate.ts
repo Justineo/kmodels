@@ -34,6 +34,7 @@ export interface GateVerdict {
   violations: string[];
   replayed_sources: string[];
   replay_unavailable?: true;
+  validation_unavailable?: true;
 }
 
 const HARD_FORBIDDEN_PATTERNS: readonly RegExp[] = [
@@ -549,6 +550,19 @@ function extractTargetReconciliationReasons(
 
 const ENVIRONMENT_ERROR_PATTERN =
   /ERR_MODULE_NOT_FOUND|Cannot find (?:package|module)|ENOENT: no such file|EACCES:|SyntaxError: Cannot use import statement|requires (?:the collected |the |parsed )?catalog/i;
+
+// An interrupted validator or a runner timeout is not evidence of a candidate regression.
+export function validationWasInterrupted(result: {
+  error?: Error | undefined;
+  signal: NodeJS.Signals | null;
+  stderr: string;
+}): boolean {
+  return (
+    result.error !== undefined ||
+    result.signal !== null ||
+    /\b(?:Test|Hook) timed out in \d+ms\b/i.test(result.stderr)
+  );
+}
 
 export function needsBrowserPrerequisite(commands: readonly (readonly string[])[]): boolean {
   return commands.some(
@@ -1460,6 +1474,7 @@ export function runSelfHealGate(options: {
     }
   }
 
+  let validationUnavailable = false;
   if (violations.length === 0 && options.skipValidation !== true) {
     const shouldInstallPrereqs =
       options.installCiPrerequisites ?? process.env.GITHUB_ACTIONS === "true";
@@ -1482,6 +1497,7 @@ export function runSelfHealGate(options: {
               { cwd, env: untrustedEnv, stdio: "inherit" },
             );
             if (installBrowser.status !== 0) {
+              validationUnavailable = true;
               violations.push(
                 "Failed to install Playwright Chromium for planned browser validation",
               );
@@ -1496,10 +1512,18 @@ export function runSelfHealGate(options: {
       const validation = spawnSync("vp", ["node", "scripts/validate-changes.ts", base], {
         cwd,
         env: untrustedEnv,
-        stdio: "inherit",
+        encoding: "utf8",
+        maxBuffer: SELF_HEAL_MAX_BUFFER,
       });
+      process.stdout.write(validation.stdout ?? "");
+      process.stderr.write(validation.stderr ?? "");
       if (validation.status !== 0) {
-        violations.push("validate-changes failed");
+        validationUnavailable = validationWasInterrupted(validation);
+        violations.push(
+          validationUnavailable
+            ? `validate-changes interrupted: ${validation.error?.message ?? validation.signal ?? "test or hook timed out"}`
+            : "validate-changes failed",
+        );
       }
     }
   }
@@ -1514,6 +1538,7 @@ export function runSelfHealGate(options: {
     forbidden_files: classification.forbidden_files,
     violations,
     replayed_sources,
+    ...(validationUnavailable ? { validation_unavailable: true } : {}),
     ...(unavailableReplays > 0 && unavailableReplays === violations.length
       ? { replay_unavailable: true }
       : {}),

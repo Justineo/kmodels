@@ -222,6 +222,7 @@ jobs:
       has_patch: ${{ steps.gen.outputs.has_patch }}
       proposal_artifact_id: ${{ steps.upload_proposal.outputs.artifact-id }}
       generate_attempt: ${{ github.run_attempt }}
+      generation_skipped: ${{ steps.gen.outcome == 'skipped' }}
     steps:
       - name: Checkout pinned base SHA (no write credentials)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -233,21 +234,10 @@ jobs:
         uses: ./.github/actions/setup-catalog-toolchain
 
       - name: Hydrate accepted catalog for pricing lookup
-        run: |
-          if ! vp node scripts/catalog-snapshot.ts hydrate; then
-            mkdir -p "$RUNNER_TEMP/self-heal/proposal-out"
-            jq -n --argjson attempt "${GITHUB_RUN_ATTEMPT:-1}" '{
-              status: "deferred",
-              generate_run_attempt: $attempt,
-              usage_known: true,
-              input_tokens: 0,
-              output_tokens: 0,
-              estimated_usd: 0,
-              attempts: 0,
-              error: "Catalog snapshot hydration failed before any paid generation call"
-            }' > "$RUNNER_TEMP/self-heal/proposal-out/usage.json"
-            exit 1
-          fi
+        run: vp node scripts/catalog-snapshot.ts hydrate
+
+      - name: Check the pinned unit baseline before paying for generation
+        run: vp test --run --project unit --reporter=minimal --reporter=github-actions --silent=passed-only
 
       - name: Restore rolling self-heal budget ledger (read-only re-check before paid generation)
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -334,11 +324,27 @@ jobs:
 
       - name: Verify candidate patch in read-only isolation
         run: |
-          vp node scripts/self-heal/verify.ts \
-            --triage-file "$RUNNER_TEMP/self-heal/triage-packet/target.json" \
-            --evidence-root "$RUNNER_TEMP/self-heal/triage-packet/evidence" \
-            --proposal-dir "$RUNNER_TEMP/self-heal/proposal-out" \
-            --output-dir "$RUNNER_TEMP/self-heal/verify-out"
+          verify() {
+            vp node scripts/self-heal/verify.ts \
+              --triage-file "$RUNNER_TEMP/self-heal/triage-packet/target.json" \
+              --evidence-root "$RUNNER_TEMP/self-heal/triage-packet/evidence" \
+              --proposal-dir "$RUNNER_TEMP/self-heal/proposal-out" \
+              --output-dir "$RUNNER_TEMP/self-heal/verify-out"
+          }
+
+          status=0
+          base_sha="$(git rev-parse HEAD)"
+          verify || status=$?
+          if [[ "$status" != 75 ]]; then exit "$status"; fi
+
+          echo "::warning title=Verification blocked::Retrying the same proposal once on a clean checkout without generation."
+          # The first attempt may have changed tracked, untracked, or ignored files.
+          retry_dir="$RUNNER_TEMP/self-heal/verify-retry"
+          git worktree add --detach "$retry_dir" "$base_sha"
+          cd "$retry_dir"
+          vp install --frozen-lockfile
+          vp node scripts/catalog-snapshot.ts hydrate
+          verify
 
       - name: Upload verification receipt (always)
         id: upload_verify
@@ -416,6 +422,7 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
           VERIFY_JOB_RESULT: ${{ needs.verify.result }}
           GENERATE_RUN_ATTEMPT: ${{ needs.generate.outputs.generate_attempt }}
+          GENERATION_SKIPPED: ${{ needs.generate.outputs.generation_skipped }}
           SELF_HEAL_MAX_RUN_USD: ${{ vars.SELF_HEAL_MAX_RUN_USD }}
           SELF_HEAL_MAX_WINDOW_USD: ${{ vars.SELF_HEAL_MAX_WINDOW_USD }}
         run: |

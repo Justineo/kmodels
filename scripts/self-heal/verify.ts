@@ -21,6 +21,7 @@ export const verificationReceiptSchema = z.strictObject({
   protected_files: z.array(z.string().min(1)),
   replayed_sources: z.array(z.string().min(1)),
   violations: z.array(z.string()),
+  verification_blocked: z.literal(true).optional(),
   verified_at: z.string().min(1),
 });
 
@@ -88,6 +89,7 @@ export async function runVerify(options: {
   }
 
   let ok = false;
+  let blocked = false;
   let mode: VerificationReceipt["mode"] = "rejected";
   let protectedFiles: string[] = [];
   let replayedSources: string[] = [];
@@ -112,7 +114,9 @@ export async function runVerify(options: {
     });
 
     finalViolations = [...verdict.violations];
+    blocked = verdict.replay_unavailable === true || verdict.validation_unavailable === true;
     if (JSON.stringify(verdict.changed_files) !== JSON.stringify(expectedPaths)) {
+      blocked = false;
       finalViolations.push(
         `Applied working tree files (${verdict.changed_files.join(", ")}) drifted from proposal files (${expectedPaths.join(", ")})`,
       );
@@ -138,6 +142,7 @@ export async function runVerify(options: {
     protected_files: protectedFiles,
     replayed_sources: replayedSources,
     violations: finalViolations,
+    ...(blocked ? { verification_blocked: true } : {}),
     verified_at: new Date().toISOString(),
   });
 
@@ -168,7 +173,8 @@ async function main(): Promise<void> {
     skipBaselineCompare: args.includes("--skip-baseline-compare"),
   });
   console.log(JSON.stringify(receipt, null, 2));
-  if (!receipt.ok) process.exitCode = 1;
+  // EX_TEMPFAIL tells the workflow to retry verification, not generation.
+  if (!receipt.ok) process.exitCode = receipt.verification_blocked === true ? 75 : 1;
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
