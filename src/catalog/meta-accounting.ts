@@ -82,6 +82,7 @@ function integer(body: string, owner: string, name: string): boolean {
 export function extractMetaPricingInputs(
   bundle: LinkedBundle,
   sourceRef: string,
+  overviewLinksImageGeneration: boolean,
   reconcile?: (item: PricingReconciliationItem) => void,
 ): SourcePricingInputFact[] {
   const available = metaApiEndpoints(bundle);
@@ -191,7 +192,7 @@ export function extractMetaPricingInputs(
   const images = document(bundle, "api-reference/images/schemas");
   if (images !== undefined || available.has("Image generation") || available.has("Image editing")) {
     expected += 1;
-    const ownsImages = ["images/create-image", "images/edit-image"].some((path) => {
+    const endpointOwnsImages = ["images/create-image", "images/edit-image"].some((path) => {
       const endpoint = document(bundle, `api-reference/${path}`);
       const response =
         endpoint === undefined ? undefined : markdownSection(endpoint, 3, "Response");
@@ -204,10 +205,25 @@ export function extractMetaPricingInputs(
         available.has(path === "images/create-image" ? "Image generation" : "Image editing")
       );
     });
-    if (
+    const data = images === undefined ? undefined : field(images, "Images Response", "data");
+    // The overview and schema can establish ownership when the generation reference is absent,
+    // but must not override a present reference whose response contract could not be verified.
+    const overviewOwnsImages =
+      !endpointOwnsImages &&
+      overviewLinksImageGeneration &&
       images !== undefined &&
-      ownsImages &&
-      field(images, "Images Response", "data")?.get("Type") ===
+      !bundle.documents.some(
+        ({ url }) => url === `${origin}/docs/api-reference/images/create-image.md`,
+      ) &&
+      markdownProse(markdownSection(images, 1, "Images schemas") ?? "")
+        .trimStart()
+        .startsWith(
+          `The full schema and model definitions referenced by the [Images](${origin}/docs/api-reference/images/create-image) endpoints.`,
+        ) &&
+      data?.get("Description") === "Array of generated images.";
+    if (
+      (endpointOwnsImages || overviewOwnsImages) &&
+      data?.get("Type") ===
         "array of [`ImageObject`](https://dev.meta.ai/docs/api-reference/images/schemas#image-object)"
     )
       facts.push({

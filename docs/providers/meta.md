@@ -84,9 +84,9 @@ does not claim equal quality across versions. Unstated capabilities and release 
 ## Usage contracts
 
 Optional first-party endpoint Markdown and typed schemas own accounting fields independently of
-prices. Response ownership follows the HTTP 200 JSON type or the SSE wire union, then the terminal
-event and usage object. An unrelated schema or code example cannot establish a response counter.
-Missing, duplicate or malformed companions withhold only their dependent mappings.
+prices. Response ownership normally follows the HTTP 200 JSON type or the SSE wire union, then the
+terminal event and usage object. An unrelated schema or code example cannot establish a response
+counter. Unverified companions withhold only their dependent mappings.
 
 - Responses and Chat Completions expose total input, cached input and output counts for synchronous
   responses and complete terminal events. The caching guide explicitly defines cached tokens as a
@@ -98,9 +98,12 @@ Missing, duplicate or malformed companions withhold only their dependent mapping
   latter's already-billed 50-frame minimum. Synchronous and terminal SSE mappings use these counters
   directly; raw video frame count does not substitute for the billed quantity.
 - The Images endpoints return an `ImagesResponse.data` array of generated images. Its length
-  supplies the successful returned-image quantity. Partial image events and token-usage fields do
-  not add image or token charges. Conversational Responses image counting remains caller-owned
-  because its output array mixes item types.
+  supplies the successful returned-image quantity. When the generation endpoint Markdown is
+  absent, the exact Muse Image 1.0 overview must link `/v1/images/generations` to that endpoint's
+  reference and the typed Images schema must explicitly name that reference and describe `data`
+  as generated images. This does not override a present but unverified generation reference.
+  Partial image events and token-usage fields do not add image or token charges. Conversational
+  Responses image counting remains caller-owned because its output array mixes item types.
 - Voice transcription retains caller-supplied whole audio seconds. The native duration fields
   report milliseconds, including cumulative streaming progress; dividing by 1,000 alone would
   violate the published round-down rule. No such locator is advertised as billable seconds.
