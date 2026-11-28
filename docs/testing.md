@@ -56,6 +56,8 @@ their complete reviewed inventories in 30-second setup hooks, then check the aff
 the normal five-second test budget. Keep the full provider fixtures: their independent service
 books satisfy the provider topology contract. Fixture acquisition, assembly and lookup preparation
 belong in the bounded setup rather than the consumer assertion's budget.
+The Bedrock Nova Geo regression prepares its standard, mismatched and latency-optimized catalogs
+sequentially in a 60-second setup hook, then checks them through the public lookup.
 These timeouts bound a stalled test or setup; they are not product performance targets. Choose
 the boundary and budget for the work being exercised and cold CI measurements, rather than
 preserving an inherited limit unconditionally. Keep semantic assertions in the test. Moving

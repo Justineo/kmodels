@@ -626,7 +626,7 @@ it("associates the AWS GovCloud profile geography published by the model card", 
   ).toBe("unreviewed_id");
 }, 20_000);
 
-it("binds Nova Geo prices through the exact page token and native SKU", async () => {
+async function prepareNovaGeoLookups() {
   const reviewed = bundleSchema.parse(JSON.parse(await fixture("bedrock/nova-global-tiers.json")));
   const sku = "FY8T82UUN7VZR55K";
   const rateCode = `${sku}.JRTCKXETXF.6YS6EN2CT7`;
@@ -686,45 +686,58 @@ it("binds Nova Geo prices through the exact page token and native SKU", async ()
         },
       );
     });
-  const provider_id = "amazon-bedrock";
-  const model_id = "us.amazon.nova-2-lite-v1:0";
-  const selectors = [
-    select("region", "us-east-1"),
-    select("service_tier", "standard"),
-    select("speed", "standard"),
-  ];
-  const query = lookup(await build("0.0003300000"));
-  const result = query({ provider_id, model_id, selectors });
-  expect(result.status).toBe("matched");
-  expect(
-    result.candidates.flatMap(({ offer }) =>
-      offer.terms.flatMap((term) =>
-        term.kind === "rate" && term.meter.value === "input_text"
-          ? term.variants.map(({ price }) => price.value)
-          : [],
+  return {
+    standard: lookup(await build("0.0003300000")),
+    mismatched: lookup(await build("0.0003400000")),
+    optimized: lookup(await build("0.0003300000", true)),
+  };
+}
+
+describe("Bedrock Nova Geo prices", () => {
+  let queries: Awaited<ReturnType<typeof prepareNovaGeoLookups>>;
+
+  beforeAll(async () => {
+    queries = await prepareNovaGeoLookups();
+  }, 60_000);
+
+  it("binds Nova Geo prices through the exact page token and native SKU", () => {
+    const { standard, mismatched, optimized } = queries;
+    const provider_id = "amazon-bedrock";
+    const model_id = "us.amazon.nova-2-lite-v1:0";
+    const selectors = [
+      select("region", "us-east-1"),
+      select("service_tier", "standard"),
+      select("speed", "standard"),
+    ];
+    const result = standard({ provider_id, model_id, selectors });
+    expect(result.status).toBe("matched");
+    expect(
+      result.candidates.flatMap(({ offer }) =>
+        offer.terms.flatMap((term) =>
+          term.kind === "rate" && term.meter.value === "input_text"
+            ? term.variants.map(({ price }) => price.value)
+            : [],
+        ),
       ),
-    ),
-  ).toEqual([{ numerator: "33", denominator: "100000000" }]);
-  expect(query({ provider_id, model_id: "jp.amazon.nova-2-lite-v1:0", selectors }).reason).toBe(
-    "no_applicable_price",
-  );
-  expect(lookup(await build("0.0003400000"))({ provider_id, model_id, selectors }).reason).toBe(
-    "no_applicable_price",
-  );
-  const optimized = lookup(await build("0.0003300000", true));
-  expect(
-    optimized({
-      provider_id,
-      model_id,
-      meter: { namespace: "kmodels", value: "input_text" },
-      selectors: [
-        select("region", "us-east-1"),
-        select("service_tier", "standard"),
-        select("speed", "optimized"),
-      ],
-    }).status,
-  ).toBe("matched");
-}, 20_000);
+    ).toEqual([{ numerator: "33", denominator: "100000000" }]);
+    expect(
+      standard({ provider_id, model_id: "jp.amazon.nova-2-lite-v1:0", selectors }).reason,
+    ).toBe("no_applicable_price");
+    expect(mismatched({ provider_id, model_id, selectors }).reason).toBe("no_applicable_price");
+    expect(
+      optimized({
+        provider_id,
+        model_id,
+        meter: { namespace: "kmodels", value: "input_text" },
+        selectors: [
+          select("region", "us-east-1"),
+          select("service_tier", "standard"),
+          select("speed", "optimized"),
+        ],
+      }).status,
+    ).toBe("matched");
+  });
+});
 
 it("retains Nova Pro optimized tariffs in all three evidenced source Regions through public lookup", async () => {
   const reviewed = bundleSchema.parse(JSON.parse(await fixture("bedrock/nova-pro-latency.json")));
