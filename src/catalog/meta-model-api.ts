@@ -338,15 +338,25 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
     "usage.video_frames_processed reports the frames billed for that request",
   );
 
+  let overviewLinksImageGeneration = false;
   for (const [sectionId, name, priceSection, page] of [
     ["muse-image", "Muse Image", "image-generation", image],
     ["muse-voice-transcribe", "Muse Voice Transcribe", "muse-voice-transcribe-pricing", voice],
     ["sam-3", "Segment Anything Model 3.1", "sam-pricing", segmentation],
   ] as const) {
-    const identities = table(section(catalog, sectionId), ["Model ID", "Input", "Output"]);
+    const overview = section(catalog, sectionId);
+    const identities = table(overview, ["Model ID", "Input", "Output"]);
     const id = identities[0]?.[0];
     if (identities.length !== 1 || id === undefined)
       throw new Error("Meta single-model tariff scope changed");
+    if (sectionId === "muse-image" && id === "muse-image-1.0")
+      overviewLinksImageGeneration = overview('p a[href="/docs/api-reference/images/create-image"]')
+        .toArray()
+        .some(
+          (link) =>
+            overview(link).text().trim() === "/v1/images/generations" &&
+            overview(link).closest("blockquote,pre,template").length === 0,
+        );
     if (
       sectionId === "sam-3" &&
       (id !== "sam-3.1" || pricing(`#${priceSection}`).text() !== "Segment Anything Model 3.1")
@@ -439,6 +449,7 @@ export function parseMetaModelApi(input: SourceParseInput): SourceParseResult {
   const pricingInputs = extractMetaPricingInputs(
     bundle,
     input.source.id,
+    overviewLinksImageGeneration,
     input.onPricingReconciliation,
   );
   bindMetaRates(bundle, models, pricingInputs);

@@ -3814,7 +3814,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "meta-model-api", minModels: 1, maxModels: 30 },
-        extractorVersion: "meta-model-api-v5",
+        extractorVersion: "meta-model-api-v6",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",

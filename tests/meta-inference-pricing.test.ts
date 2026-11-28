@@ -309,6 +309,75 @@ it("reads SAM billed counters and returned image arrays while leaving floored au
   expect(prices("muse-image-1.0", "output_text")).toEqual([]);
 });
 
+it.each([
+  "complete",
+  "unlinked overview",
+  "unowned schema",
+  "untyped data",
+  "conflicting endpoint",
+])("reviews Images response accounting with %s evidence", async (evidence) => {
+  const bundle = await fixture();
+  const generation = "/api-reference/images/create-image.md";
+  bundle.documents = bundle.documents.filter(
+    ({ url }) =>
+      !url.endsWith("/api-reference/images/edit-image.md") &&
+      (evidence === "conflicting endpoint" || !url.endsWith(generation)),
+  );
+  const schema = bundle.documents.find(({ url }) => url.endsWith("/images/schemas.md"));
+  if (!schema) throw new Error("Missing Images schema fixture");
+  schema.body = await readFile(
+    new URL("./fixtures/meta/images-accounting-without-endpoints.md", import.meta.url),
+    "utf8",
+  );
+  if (evidence === "unlinked overview")
+    bundle.index.body = bundle.index.body.replaceAll(
+      'href="/docs/api-reference/images/create-image"',
+      'href="/docs/image-generation"',
+    );
+  if (evidence === "unowned schema")
+    schema.body = schema.body.replace("/images/create-image)", "/images/edit-image)");
+  if (evidence === "untyped data")
+    schema.body = schema.body.replace("array of [`ImageObject`]", "[`ImageObject`]");
+  if (evidence === "conflicting endpoint") {
+    const endpoint = bundle.documents.find(({ url }) => url.endsWith(generation));
+    if (!endpoint) throw new Error("Missing Images endpoint fixture");
+    endpoint.body = endpoint.body.replace("[`ImagesResponse`]", "[`OtherResponse`]");
+  }
+  const reconcile = vi.fn();
+  const { pricing_inputs: inputs, models } = parseSource({
+    provider: { ...manifest.provider, source_ids: [source.id] },
+    source,
+    body: JSON.stringify(bundle),
+    observedAt: at,
+    onPricingReconciliation: reconcile,
+  });
+  const complete = evidence === "complete";
+  expect(reconcile).toHaveBeenCalledWith({
+    disposition: complete ? "normalized" : "unbound",
+    reason_code: complete ? "pricing_input_contract_bound" : "pricing_input_contract_partial",
+    sample: `${complete ? 17 : 16}/17 Meta pricing inputs`,
+  });
+  expect(inputs?.filter(({ key }) => key === "images.generated_images")).toEqual(
+    complete
+      ? [
+          {
+            key: "images.generated_images",
+            channel: "response",
+            locator: { kind: "json_pointer", value: "/data" },
+            reduction: { kind: "array_length" },
+            availability: "success_only",
+            source_ref: "meta-model-api",
+          },
+        ]
+      : [],
+  );
+  const rate = models.find(({ model_id }) => model_id === "muse-image-1.0")?.price_facts[0];
+  expect(rate?.price).toBe("0.01");
+  expect(rate?.charge_binding?.quantity_methods).toEqual(
+    complete ? bindings("muse-image-1.0", "image_generation")[0]?.quantity_methods : undefined,
+  );
+});
+
 it("withholds only a malformed native counter and keeps prices and independent protocols", async () => {
   const candidate = await collect((bundle) => {
     const doc = bundle.documents.find(({ url }) => url.endsWith("responses/schemas.md"));
