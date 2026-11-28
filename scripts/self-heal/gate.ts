@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync
 import { tmpdir } from "node:os";
 import { join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 import { z } from "zod";
 import { sha256 } from "../../src/catalog/io.ts";
 import { sourceErrorMessage } from "../../src/catalog/source-failure.ts";
@@ -560,7 +561,9 @@ export function validationWasInterrupted(result: {
   return (
     result.error !== undefined ||
     result.signal !== null ||
-    /\b(?:Test|Hook) timed out in \d+ms\b/i.test(result.stderr)
+    /^ *FAIL +[^\r\n]+\r?\nError: (?:Test|Hook) timed out in \d+ms\./m.test(
+      stripVTControlCharacters(result.stderr),
+    )
   );
 }
 

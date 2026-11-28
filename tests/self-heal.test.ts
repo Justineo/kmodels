@@ -2857,6 +2857,9 @@ describe("self-heal ownership, reverse-deps, replay semantics & large-diff handl
   it("distinguishes runner interruptions from ordinary validation failures", () => {
     const normalExit = { signal: null, stderr: "AssertionError: expected 1 to be 2" };
     expect(validationWasInterrupted(normalExit)).toBe(false);
+    expect(
+      validationWasInterrupted({ ...normalExit, stderr: "Error: Test timed out in 10ms." }),
+    ).toBe(false);
     expect(validationWasInterrupted({ ...normalExit, signal: "SIGTERM" })).toBe(true);
     expect(validationWasInterrupted({ ...normalExit, error: new Error("spawn vp ENOENT") })).toBe(
       true,
@@ -2865,7 +2868,7 @@ describe("self-heal ownership, reverse-deps, replay semantics & large-diff handl
       expect(
         validationWasInterrupted({
           signal: null,
-          stderr: `Error: ${kind} timed out in 20000ms.`,
+          stderr: ` FAIL  |unit| tests/example.test.ts > check\nError: ${kind} timed out in 20000ms.`,
         }),
       ).toBe(true);
     }
@@ -3009,15 +3012,17 @@ describe("self-heal zero-cost end-to-end 4-job pipeline", () => {
     await mkdir(fakeBin);
     await writeFile(
       join(fakeBin, "vp"),
-      "#!/bin/sh\nprintf 'Error: Hook timed out in 20000ms.\\n' >&2\nexit 1\n",
+      "#!/bin/sh\nprintf ' FAIL  |unit| tests/example.test.ts > check\\nError: Hook timed out in 20000ms.\\n' >&2\nexit 1\n",
       { mode: 0o755 },
     );
     const path = process.env.PATH;
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     let firstReceipt;
     try {
       process.env.PATH = `${fakeBin}:${path ?? ""}`;
       firstReceipt = await runVerify(verifyOptions);
     } finally {
+      stderr.mockRestore();
       if (path === undefined) delete process.env.PATH;
       else process.env.PATH = path;
     }
